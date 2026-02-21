@@ -1,0 +1,309 @@
+import React, { useState, useEffect } from 'react';
+import { Table, Button, Space, Modal, Form, Input, message, Popconfirm, Switch, Upload } from 'antd';
+import { PlusOutlined, EditOutlined, DeleteOutlined, UploadOutlined } from '@ant-design/icons';
+import { useApp } from '../../context/AppContext';
+
+const Companies: React.FC = () => {
+  const { companies, setCompanies, setCurrentCompany } = useApp();
+  const [loading, setLoading] = useState(false);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [editingCompany, setEditingCompany] = useState<any>(null);
+  const [logoBase64, setLogoBase64] = useState<string | null>(null);
+  const [letterheadBase64, setLetterheadBase64] = useState<string | null>(null);
+  const [form] = Form.useForm();
+
+  useEffect(() => {
+    loadCompanies();
+  }, []);
+
+  const loadCompanies = async () => {
+    setLoading(true);
+    try {
+      const result = await (window as any).electronAPI.db.companies.getAll();
+      if (result.success) {
+        setCompanies(result.data || []);
+      }
+    } catch (error) {
+      message.error('Failed to load companies');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const convertToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = error => reject(error);
+    });
+  };
+
+  const handleSave = async (values: any) => {
+    try {
+      const companyData = { ...values };
+
+      // Handle logo upload
+      if (logoBase64) {
+        const fileName = `logo_${Date.now()}.png`;
+        const result = await (window as any).electronAPI.db.files.save(logoBase64, fileName, 'logos');
+        if (result.success) {
+          companyData.logo_path = result.filePath;
+        }
+      }
+
+      // Handle letterhead upload
+      if (letterheadBase64) {
+        const ext = (window as any)._letterheadExt || 'png';
+        const fileName = `letterhead_${Date.now()}.${ext}`;
+        const result = await (window as any).electronAPI.db.files.save(letterheadBase64, fileName, 'letterheads');
+        if (result.success) {
+          companyData.letterhead_path = result.filePath;
+        }
+      }
+
+      if (editingCompany) {
+        const result = await (window as any).electronAPI.db.companies.update(editingCompany.id, companyData);
+        if (result.success) {
+          message.success('Company updated successfully');
+        } else {
+          message.error(result.error || 'Failed to update company');
+        }
+      } else {
+        const result = await (window as any).electronAPI.db.companies.create(companyData);
+        if (result.success) {
+          message.success('Company created successfully');
+          loadCompanies();
+        } else {
+          message.error(result.error || 'Failed to create company');
+        }
+      }
+      setModalVisible(false);
+      setEditingCompany(null);
+      setLogoBase64(null);
+      setLetterheadBase64(null);
+      form.resetFields();
+      loadCompanies();
+    } catch (error) {
+      message.error('Operation failed');
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    try {
+      const result = await (window as any).electronAPI.db.companies.delete(id);
+      if (result.success) {
+        message.success('Company deleted successfully');
+        loadCompanies();
+      } else {
+        message.error(result.error || 'Failed to delete company');
+      }
+    } catch (error) {
+      message.error('Failed to delete company');
+    }
+  };
+
+  const columns = [
+    {
+      title: 'Logo',
+      dataIndex: 'logo_path',
+      key: 'logo',
+      render: (path: string) => path ? (
+        <img src={path} alt="logo" style={{ width: 50, height: 50, objectFit: 'contain' }} />
+      ) : 'No Logo',
+    },
+    {
+      title: 'Name',
+      dataIndex: 'name',
+      key: 'name',
+    },
+    {
+      title: 'Email',
+      dataIndex: 'email',
+      key: 'email',
+    },
+    {
+      title: 'Phone',
+      dataIndex: 'phone',
+      key: 'phone',
+    },
+    {
+      title: 'Actions',
+      key: 'actions',
+      render: (_: any, record: any) => (
+        <Space>
+          <Button
+            icon={<EditOutlined />}
+            onClick={() => {
+              setEditingCompany(record);
+              form.setFieldsValue(record);
+              setModalVisible(true);
+            }}
+          />
+          <Popconfirm
+            title="Are you sure you want to delete this company?"
+            onConfirm={() => handleDelete(record.id)}
+          >
+            <Button danger icon={<DeleteOutlined />} />
+          </Popconfirm>
+        </Space>
+      ),
+    },
+  ];
+
+  return (
+    <div>
+      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
+        <h1>Company Management</h1>
+        <Button
+          type="primary"
+          icon={<PlusOutlined />}
+          onClick={() => {
+            setEditingCompany(null);
+            setLogoBase64(null);
+            setLetterheadBase64(null);
+            form.resetFields();
+            setModalVisible(true);
+          }}
+        >
+          Add Company
+        </Button>
+      </div>
+
+      <Table
+        columns={columns}
+        dataSource={companies}
+        loading={loading}
+        rowKey="id"
+        pagination={{ pageSize: 10 }}
+      />
+
+      <Modal
+        title={editingCompany ? 'Edit Company' : 'Add Company'}
+        open={modalVisible}
+        onCancel={() => {
+          setModalVisible(false);
+          setEditingCompany(null);
+          setLogoBase64(null);
+          setLetterheadBase64(null);
+          form.resetFields();
+        }}
+        onOk={() => form.submit()}
+        width={700}
+      >
+        <Form form={form} layout="vertical" onFinish={handleSave}>
+          <Space align="start" style={{ width: '100%', justifyContent: 'space-between' }}>
+            <div style={{ width: 320 }}>
+              <Form.Item name="name" label="Company Name" rules={[{ required: true }]}>
+                <Input />
+              </Form.Item>
+              <Form.Item name="email" label="Email" rules={[{ type: 'email' }]}>
+                <Input />
+              </Form.Item>
+              <Form.Item name="phone" label="Phone">
+                <Input />
+              </Form.Item>
+              <Form.Item name="currency" label="Currency" initialValue="PKR">
+                <Input />
+              </Form.Item>
+            </div>
+            <div style={{ width: 320 }}>
+              <Form.Item label="Company Logo">
+                <Upload
+                  listType="picture-card"
+                  showUploadList={false}
+                  beforeUpload={async (file) => {
+                    const base64 = await convertToBase64(file);
+                    setLogoBase64(base64);
+                    return false;
+                  }}
+                >
+                  {logoBase64 || editingCompany?.logo_path ? (
+                    <img src={logoBase64 || editingCompany?.logo_path} alt="avatar" style={{ width: '100%' }} />
+                  ) : (
+                    <div>
+                      <PlusOutlined />
+                      <div style={{ marginTop: 8 }}>Upload Logo</div>
+                    </div>
+                  )}
+                </Upload>
+              </Form.Item>
+
+              <Form.Item label="Letterhead / Header">
+                <Upload
+                  accept="image/*,.pdf,.doc,.docx"
+                  showUploadList={false}
+                  beforeUpload={async (file) => {
+                    const base64 = await convertToBase64(file);
+                    // Store extension so we can save it correctly
+                    const ext = file.name.split('.').pop();
+                    setLetterheadBase64(base64);
+                    (window as any)._letterheadExt = ext; // Temporary store extension
+                    return false;
+                  }}
+                >
+                  <Button icon={<UploadOutlined />}>Click to Upload (Image/PDF/Word)</Button>
+                </Upload>
+                {(letterheadBase64 || editingCompany?.letterhead_path) && (
+                  <div style={{ marginTop: 8, border: '1px solid #ddd', padding: 8, textAlign: 'center' }}>
+                    {(letterheadBase64 || editingCompany?.letterhead_path)?.match(/\.(pdf|doc|docx)$/i) || (window as any)._letterheadExt?.match(/(pdf|doc|docx)/i) ? (
+                      <div style={{ padding: 10 }}>
+                        <div style={{ fontSize: 24 }}>📄</div>
+                        <div>{editingCompany?.letterhead_path?.split('/').pop() || 'Document Selected'}</div>
+                      </div>
+                    ) : (
+                      <img
+                        src={letterheadBase64 || editingCompany?.letterhead_path}
+                        alt="letterhead preview"
+                        style={{ width: '100%', maxHeight: 100, objectFit: 'contain' }}
+                      />
+                    )}
+                  </div>
+                )}
+              </Form.Item>
+            </div>
+          </Space>
+
+          <Form.Item name="address" label="Address">
+            <Input.TextArea rows={2} />
+          </Form.Item>
+
+          <Space>
+            <Form.Item name="city" label="City"><Input /></Form.Item>
+            <Form.Item name="state" label="State"><Input /></Form.Item>
+            <Form.Item name="tax_number" label="NTN/Tax Number"><Input /></Form.Item>
+          </Space>
+
+          <Form.Item
+            name="is_gst_enabled"
+            label="Enable GST"
+            valuePropName="checked"
+            initialValue={false}
+          >
+            <Switch checkedChildren="Enabled" unCheckedChildren="Disabled" />
+          </Form.Item>
+          <Form.Item
+            noStyle
+            shouldUpdate={(prevValues, currentValues) =>
+              prevValues.is_gst_enabled !== currentValues.is_gst_enabled
+            }
+          >
+            {({ getFieldValue }) =>
+              getFieldValue('is_gst_enabled') ? (
+                <Form.Item
+                  name="gst_registration_number"
+                  label="GST Registration Number"
+                  rules={[{ required: true, message: 'Please enter GST registration number' }]}
+                >
+                  <Input placeholder="e.g., 12-345678-9" />
+                </Form.Item>
+              ) : null
+            }
+          </Form.Item>
+        </Form>
+      </Modal>
+    </div>
+  );
+};
+
+export default Companies;

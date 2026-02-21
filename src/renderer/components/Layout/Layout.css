@@ -1,0 +1,86 @@
+.app-layout {
+  height: 100vh;
+  overflow: hidden;
+  background-color: #f0f2f5;
+  /* Light gray background for contrast */
+}
+
+
+
+.logo {
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 16px;
+  border-bottom: 1px solid #f0f0f0;
+  background: #fff;
+}
+
+.logo h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: #1890ff;
+}
+
+.app-header {
+  padding: 0 24px;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  /* Subtle shadow */
+  border-bottom: 1px solid #f0f0f0;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.trigger {
+  font-size: 18px;
+  padding: 0 24px 0 0;
+  /* Adjusted padding */
+  cursor: pointer;
+  transition: color 0.3s;
+}
+
+.trigger:hover {
+  color: #1890ff;
+}
+
+.app-content {
+  margin: 24px;
+  padding: 24px;
+  background: #fff;
+  border-radius: 8px;
+  overflow-y: auto;
+  height: calc(100vh - 112px);
+  /* Enhanced card look to pop against gray background */
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03), 0 1px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px 0 rgba(0, 0, 0, 0.02);
+  border: 1px solid #f0f0f0;
+}
+
+/* Smooth transitions */
+.app-sider,
+.app-header,
+.app-content,
+.ant-layout {
+  transition: all 0.3s cubic-bezier(0.2, 0, 0, 1) !important;
+}
+
+.app-sider .ant-layout-sider-children {
+  transition: width 0.3s cubic-bezier(0.2, 0, 0, 1);
+}
