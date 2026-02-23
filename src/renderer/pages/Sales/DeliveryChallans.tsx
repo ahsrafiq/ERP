@@ -6,7 +6,7 @@ import { useApp } from '../../context/AppContext';
 import PrintTemplate from '../../components/PrintTemplate';
 
 const DeliveryChallans: React.FC = () => {
-    const { currentCompany, user, fiscalYear } = useApp();
+    const { currentCompany, companies, user, fiscalYear } = useApp();
     const [challans, setChallans] = useState<any[]>([]);
     const [customers, setCustomers] = useState<any[]>([]);
     const [items, setItems] = useState<any[]>([]);
@@ -275,13 +275,13 @@ const DeliveryChallans: React.FC = () => {
             >
                 <div style={{ maxHeight: '70vh', overflowY: 'auto', padding: '20px', background: '#f5f5f5' }}>
                     <div style={{ background: 'white', padding: '10px', width: '210mm', margin: '0 auto', boxShadow: '0 0 10px rgba(0,0,0,0.1)' }}>
-                        {printData && <PrintTemplate type="challan" data={printData} company={currentCompany} />}
+                        {printData && <PrintTemplate type="challan" data={printData} company={(companies || []).find((c: any) => c.id === printData.company_id) || currentCompany} />}
                     </div>
                 </div>
             </Modal>
 
             <div id="print-container">
-                {printData && <PrintTemplate type="challan" data={printData} company={currentCompany} />}
+                {printData && <PrintTemplate type="challan" data={printData} company={(companies || []).find((c: any) => c.id === printData.company_id) || currentCompany} />}
             </div>
         </div>
     );

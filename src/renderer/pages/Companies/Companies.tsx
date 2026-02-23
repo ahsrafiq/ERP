@@ -8,7 +8,6 @@ const Companies: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingCompany, setEditingCompany] = useState<any>(null);
-  const [logoBase64, setLogoBase64] = useState<string | null>(null);
   const [letterheadBase64, setLetterheadBase64] = useState<string | null>(null);
   const [form] = Form.useForm();
 
@@ -21,13 +20,16 @@ const Companies: React.FC = () => {
     try {
       const result = await (window as any).electronAPI.db.companies.getAll();
       if (result.success) {
-        setCompanies(result.data || []);
+        const data = result.data || [];
+        setCompanies(data);
+        return data;
       }
     } catch (error) {
       message.error('Failed to load companies');
     } finally {
       setLoading(false);
     }
+    return [];
   };
 
   const convertToBase64 = (file: File): Promise<string> => {
@@ -42,20 +44,11 @@ const Companies: React.FC = () => {
   const handleSave = async (values: any) => {
     try {
       const companyData = { ...values };
+      companyData.logo_path = null; // Logo removed - PDF letterhead only
 
-      // Handle logo upload
-      if (logoBase64) {
-        const fileName = `logo_${Date.now()}.png`;
-        const result = await (window as any).electronAPI.db.files.save(logoBase64, fileName, 'logos');
-        if (result.success) {
-          companyData.logo_path = result.filePath;
-        }
-      }
-
-      // Handle letterhead upload
+      // Handle letterhead upload (PDF only)
       if (letterheadBase64) {
-        const ext = (window as any)._letterheadExt || 'png';
-        const fileName = `letterhead_${Date.now()}.${ext}`;
+        const fileName = `letterhead_${Date.now()}.pdf`;
         const result = await (window as any).electronAPI.db.files.save(letterheadBase64, fileName, 'letterheads');
         if (result.success) {
           companyData.letterhead_path = result.filePath;
@@ -70,17 +63,20 @@ const Companies: React.FC = () => {
           message.error(result.error || 'Failed to update company');
         }
       } else {
+        const wasFirstCompany = companies.length === 0;
         const result = await (window as any).electronAPI.db.companies.create(companyData);
         if (result.success) {
           message.success('Company created successfully');
-          loadCompanies();
+          const refreshed = await loadCompanies();
+          if (wasFirstCompany && refreshed.length > 0) {
+            setCurrentCompany(refreshed[0]);
+          }
         } else {
           message.error(result.error || 'Failed to create company');
         }
       }
       setModalVisible(false);
       setEditingCompany(null);
-      setLogoBase64(null);
       setLetterheadBase64(null);
       form.resetFields();
       loadCompanies();
@@ -104,14 +100,6 @@ const Companies: React.FC = () => {
   };
 
   const columns = [
-    {
-      title: 'Logo',
-      dataIndex: 'logo_path',
-      key: 'logo',
-      render: (path: string) => path ? (
-        <img src={path} alt="logo" style={{ width: 50, height: 50, objectFit: 'contain' }} />
-      ) : 'No Logo',
-    },
     {
       title: 'Name',
       dataIndex: 'name',
@@ -160,7 +148,6 @@ const Companies: React.FC = () => {
           icon={<PlusOutlined />}
           onClick={() => {
             setEditingCompany(null);
-            setLogoBase64(null);
             setLetterheadBase64(null);
             form.resetFields();
             setModalVisible(true);
@@ -184,7 +171,6 @@ const Companies: React.FC = () => {
         onCancel={() => {
           setModalVisible(false);
           setEditingCompany(null);
-          setLogoBase64(null);
           setLetterheadBase64(null);
           form.resetFields();
         }}
@@ -208,56 +194,24 @@ const Companies: React.FC = () => {
               </Form.Item>
             </div>
             <div style={{ width: 320 }}>
-              <Form.Item label="Company Logo">
+              <Form.Item label="Letterhead (PDF)">
                 <Upload
-                  listType="picture-card"
+                  accept=".pdf"
                   showUploadList={false}
                   beforeUpload={async (file) => {
                     const base64 = await convertToBase64(file);
-                    setLogoBase64(base64);
-                    return false;
-                  }}
-                >
-                  {logoBase64 || editingCompany?.logo_path ? (
-                    <img src={logoBase64 || editingCompany?.logo_path} alt="avatar" style={{ width: '100%' }} />
-                  ) : (
-                    <div>
-                      <PlusOutlined />
-                      <div style={{ marginTop: 8 }}>Upload Logo</div>
-                    </div>
-                  )}
-                </Upload>
-              </Form.Item>
-
-              <Form.Item label="Letterhead / Header">
-                <Upload
-                  accept="image/*,.pdf,.doc,.docx"
-                  showUploadList={false}
-                  beforeUpload={async (file) => {
-                    const base64 = await convertToBase64(file);
-                    // Store extension so we can save it correctly
-                    const ext = file.name.split('.').pop();
                     setLetterheadBase64(base64);
-                    (window as any)._letterheadExt = ext; // Temporary store extension
                     return false;
                   }}
                 >
-                  <Button icon={<UploadOutlined />}>Click to Upload (Image/PDF/Word)</Button>
+                  <Button icon={<UploadOutlined />}>Click to Upload PDF Letterhead</Button>
                 </Upload>
                 {(letterheadBase64 || editingCompany?.letterhead_path) && (
                   <div style={{ marginTop: 8, border: '1px solid #ddd', padding: 8, textAlign: 'center' }}>
-                    {(letterheadBase64 || editingCompany?.letterhead_path)?.match(/\.(pdf|doc|docx)$/i) || (window as any)._letterheadExt?.match(/(pdf|doc|docx)/i) ? (
-                      <div style={{ padding: 10 }}>
-                        <div style={{ fontSize: 24 }}>📄</div>
-                        <div>{editingCompany?.letterhead_path?.split('/').pop() || 'Document Selected'}</div>
-                      </div>
-                    ) : (
-                      <img
-                        src={letterheadBase64 || editingCompany?.letterhead_path}
-                        alt="letterhead preview"
-                        style={{ width: '100%', maxHeight: 100, objectFit: 'contain' }}
-                      />
-                    )}
+                    <div style={{ padding: 10 }}>
+                      <div style={{ fontSize: 24 }}>📄</div>
+                      <div>{editingCompany?.letterhead_path?.split('/').pop() || 'PDF Letterhead Selected'}</div>
+                    </div>
                   </div>
                 )}
               </Form.Item>

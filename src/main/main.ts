@@ -488,8 +488,8 @@ ipcMain.handle('db:salesInvoices:getById', async (event, id: number) => {
   return dbBridge.salesInvoices.getById(id);
 });
 
-ipcMain.handle('db:salesInvoices:getNextNumber', async (event, companyId: number, fiscalYear?: number | string) => {
-  return dbBridge.salesInvoices.getNextNumber(companyId, fiscalYear);
+ipcMain.handle('db:salesInvoices:getNextNumber', async (event, companyId: number, fiscalYear?: number | string, isGstEnabled?: boolean) => {
+  return dbBridge.salesInvoices.getNextNumber(companyId, fiscalYear, isGstEnabled);
 });
 
 ipcMain.handle('db:salesInvoices:create', async (event, invoice: any) => {

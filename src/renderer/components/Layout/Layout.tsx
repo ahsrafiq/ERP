@@ -55,8 +55,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       children: [
         { key: '/sales/customers', label: 'Customers' },
         { key: '/sales/quotations', label: 'Quotations' },
-        { key: '/sales/invoices', label: 'Invoices' },
         { key: '/sales/delivery-challans', label: 'Delivery Challans' },
+        { key: '/sales/invoices', label: currentCompany?.is_gst_enabled ? 'Invoices' : 'Bills' },
       ],
     },
     {
@@ -186,13 +186,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               }}
               style={{ width: 200, marginLeft: 16 }}
               placeholder="Select Company"
-            >
-              {companies.map(company => (
-                <Select.Option key={company.id} value={company.id}>
-                  {company.name}
-                </Select.Option>
-              ))}
-            </Select>
+              options={companies.map((c) => ({ label: c.name, value: c.id }))}
+            />
             <Input
               addonBefore="FY 20"
               value={fiscalYearInput !== null ? fiscalYearInput : String(fiscalYear).padStart(2, '0')}

@@ -1,9 +1,10 @@
 import React from 'react';
 import { Table } from 'antd';
+import { pdfFileToImage } from '../utils/pdfToImage';
 import './PrintTemplate.css';
 
 interface PrintTemplateProps {
-    type: 'invoice' | 'quotation' | 'challan';
+    type: 'invoice' | 'bill' | 'quotation' | 'challan';
     data: any;
     company: any;
 }
@@ -18,6 +19,7 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company }) =>
     const getTitle = () => {
         switch (type) {
             case 'invoice': return 'SALES INVOICE';
+            case 'bill': return 'SALES BILL';
             case 'quotation': return 'QUOTATION';
             case 'challan': return 'DELIVERY CHALLAN';
             default: return 'DOCUMENT';
@@ -27,6 +29,7 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company }) =>
     const getNumberLabel = () => {
         switch (type) {
             case 'invoice': return 'Invoice No:';
+            case 'bill': return 'Bill No:';
             case 'quotation': return 'Quotation No:';
             case 'challan': return 'Challan No:';
             default: return 'No:';
@@ -35,7 +38,8 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company }) =>
 
     const getNumber = () => {
         switch (type) {
-            case 'invoice': return data.invoice_number;
+            case 'invoice':
+            case 'bill': return data.invoice_number;
             case 'quotation': return data.quotation_number;
             case 'challan': return data.challan_number;
             default: return '';
@@ -44,7 +48,8 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company }) =>
 
     const getDate = () => {
         switch (type) {
-            case 'invoice': return data.invoice_date;
+            case 'invoice':
+            case 'bill': return data.invoice_date;
             case 'quotation': return data.quotation_date;
             case 'challan': return data.challan_date;
             default: return '';
@@ -52,29 +57,28 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company }) =>
     };
 
     const [letterheadBase64, setLetterheadBase64] = React.useState<string | null>(null);
+    const [letterheadError, setLetterheadError] = React.useState<string | null>(null);
 
     React.useEffect(() => {
         const loadLetterhead = async () => {
-            if (company.letterhead_path) {
-                try {
-                    const result = await (window as any).electronAPI.db.files.readAsDataURL(company.letterhead_path);
-                    if (result.success) {
-                        setLetterheadBase64(result.data);
-                    } else {
-                        console.error("Failed to load letterhead via API:", result.error);
-                        setLetterheadBase64(null);
-                    }
-                } catch (err) {
-                    console.error("Error loading letterhead:", err);
-                    setLetterheadBase64(null);
-                }
-            } else {
+            if (!company?.letterhead_path || !company.letterhead_path.toLowerCase().endsWith('.pdf')) {
                 setLetterheadBase64(null);
+                setLetterheadError(null);
+                return;
+            }
+            setLetterheadError(null);
+            try {
+                const pngDataUrl = await pdfFileToImage(company.letterhead_path);
+                setLetterheadBase64(pngDataUrl);
+            } catch (err: any) {
+                console.error("Error loading letterhead:", err);
+                setLetterheadBase64(null);
+                setLetterheadError(err?.message || 'Failed to convert PDF letterhead');
             }
         };
 
         loadLetterhead();
-    }, [company.letterhead_path]);
+    }, [company?.letterhead_path]);
 
     const columns: any[] = [
         {
@@ -129,21 +133,13 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company }) =>
 
     return (
         <div className={`print-template ${company.letterhead_path ? 'has-letterhead' : ''}`}>
-            {/* Header / Letterhead */}
+            {/* Header / Letterhead - PDF converted to PNG for reliable print preview */}
             <div className="print-header">
                 {company.letterhead_path ? (
-                    company.letterhead_path.match(/\.pdf$/i) ? (
-                        <div className="letterhead-container pdf-letterhead">
-                            <iframe
-                                src={`${company.letterhead_path}#toolbar=0&navpanes=0&scrollbar=0`}
-                                width="100%"
-                                style={{ height: '297mm', border: 'none', position: 'absolute', top: 0, left: 0, zIndex: 0, pointerEvents: 'none' }}
-                                title="Letterhead PDF"
-                            />
-                        </div>
-                    ) : (
+                    letterheadBase64 ? (
                         <img
-                            src={letterheadBase64 || company.letterhead_path}
+                            className="letterhead-bg"
+                            src={letterheadBase64}
                             alt="Letterhead"
                             style={{
                                 position: 'absolute',
@@ -158,10 +154,13 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company }) =>
                                 pointerEvents: 'none'
                             }}
                         />
+                    ) : letterheadError ? (
+                        <div className="letterhead-error" style={{ padding: 8, background: '#fff3cd', fontSize: 12 }}>{letterheadError}</div>
+                    ) : (
+                        <div style={{ height: 80, background: '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12 }}>Loading letterhead...</div>
                     )
                 ) : (
                     <div className="company-info-plain">
-                        {company.logo_path && <img src={company.logo_path} alt="Logo" className="logo-img" />}
                         <div className="company-text">
                             <h1 className="company-name">{company.name}</h1>
                             <p className="company-address">{company.address}</p>
@@ -231,10 +230,10 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company }) =>
                                 <span>Subtotal:</span>
                                 <span>{data.subtotal?.toLocaleString()}</span>
                             </div>
-                            {data.tax_amount > 0 && (
+                            {(data.tax_amount > 0 || (type === 'invoice' && (data.gst_total || 0) > 0)) && (
                                 <div className="total-row">
-                                    <span>Tax:</span>
-                                    <span>{data.tax_amount?.toLocaleString()}</span>
+                                    <span>{type === 'invoice' ? 'GST:' : 'Tax:'}</span>
+                                    <span>{(type === 'invoice' ? data.gst_total : data.tax_amount)?.toLocaleString()}</span>
                                 </div>
                             )}
                             <div className="total-row grand-total">

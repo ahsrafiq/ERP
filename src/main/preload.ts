@@ -54,7 +54,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     salesInvoices: {
       getAll: (companyId: number, filters?: any) => ipcRenderer.invoke('db:salesInvoices:getAll', companyId, filters),
       getById: (id: number) => ipcRenderer.invoke('db:salesInvoices:getById', id),
-      getNextNumber: (companyId: number, fiscalYear?: number | string) => ipcRenderer.invoke('db:salesInvoices:getNextNumber', companyId, fiscalYear),
+      getNextNumber: (companyId: number, fiscalYear?: number | string, isGstEnabled?: boolean) => ipcRenderer.invoke('db:salesInvoices:getNextNumber', companyId, fiscalYear, isGstEnabled),
       create: (invoice: any) => ipcRenderer.invoke('db:salesInvoices:create', invoice),
       update: (id: number, invoice: any) => ipcRenderer.invoke('db:salesInvoices:update', id, invoice),
       delete: (id: number) => ipcRenderer.invoke('db:salesInvoices:delete', id),

@@ -5,6 +5,9 @@ import path from 'path';
 export default defineConfig({
   plugins: [react()],
   base: './',
+  optimizeDeps: {
+    include: ['pdfjs-dist'],
+  },
   root: 'src/renderer',
   build: {
     outDir: '../../dist/renderer',

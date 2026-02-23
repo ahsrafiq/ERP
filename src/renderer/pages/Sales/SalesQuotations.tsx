@@ -7,7 +7,8 @@ import { useApp } from '../../context/AppContext';
 import PrintTemplate from '../../components/PrintTemplate';
 
 const SalesQuotations: React.FC = () => {
-    const { currentCompany, user, fiscalYear } = useApp();
+    const { currentCompany, companies, user, fiscalYear } = useApp();
+    const docLabel = currentCompany?.is_gst_enabled ? 'Invoice' : 'Bill';
     const navigate = useNavigate();
     const [quotations, setQuotations] = useState<any[]>([]);
     const [customers, setCustomers] = useState<any[]>([]);
@@ -146,13 +147,13 @@ const SalesQuotations: React.FC = () => {
         try {
             const result = await (window as any).electronAPI.db.salesInvoices.createFromQuotation(record.id, user?.id);
             if (result.success && result.data) {
-                message.success(`Invoice ${result.data.invoice_number} created from quotation`);
+                message.success(`${docLabel} ${result.data.invoice_number} created from quotation`);
                 navigate('/sales/invoices');
             } else {
-                message.error(result.error || 'Failed to create invoice');
+                message.error(result.error || `Failed to create ${docLabel.toLowerCase()}`);
             }
         } catch (error: any) {
-            message.error(error.message || 'Failed to create invoice');
+            message.error(error.message || `Failed to create ${docLabel.toLowerCase()}`);
         }
     };
 
@@ -229,7 +230,7 @@ const SalesQuotations: React.FC = () => {
             key: 'actions',
             render: (_: any, record: any) => (
                 <Space>
-                    <Button icon={<FileTextOutlined />} onClick={() => handleCreateInvoice(record)} title="Create Invoice" />
+                    <Button icon={<FileTextOutlined />} onClick={() => handleCreateInvoice(record)} title={`Create ${docLabel}`} />
                     <Button icon={<PrinterOutlined />} onClick={() => handlePrint(record)} title="Print" />
                     <Button icon={<EditOutlined />} onClick={() => handleEdit(record)} title="Edit" />
                     <Popconfirm
@@ -374,13 +375,13 @@ const SalesQuotations: React.FC = () => {
             >
                 <div style={{ maxHeight: '70vh', overflowY: 'auto', padding: '20px', background: '#f5f5f5' }}>
                     <div style={{ background: 'white', padding: '10px', width: '210mm', margin: '0 auto', boxShadow: '0 0 10px rgba(0,0,0,0.1)' }}>
-                        {printData && <PrintTemplate type="quotation" data={printData} company={currentCompany} />}
+                        {printData && <PrintTemplate type="quotation" data={printData} company={(companies || []).find((c: any) => c.id === printData.company_id) || currentCompany} />}
                     </div>
                 </div>
             </Modal>
 
             <div id="print-container">
-                {printData && <PrintTemplate type="quotation" data={printData} company={currentCompany} />}
+                {printData && <PrintTemplate type="quotation" data={printData} company={(companies || []).find((c: any) => c.id === printData.company_id) || currentCompany} />}
             </div>
         </div>
     );

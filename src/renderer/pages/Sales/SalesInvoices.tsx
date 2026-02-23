@@ -7,7 +7,7 @@ import { useApp } from '../../context/AppContext';
 import PrintTemplate from '../../components/PrintTemplate';
 
 const SalesInvoices: React.FC = () => {
-  const { currentCompany, user, fiscalYear } = useApp();
+  const { currentCompany, companies, user, fiscalYear } = useApp();
   const navigate = useNavigate();
   const [invoices, setInvoices] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
@@ -38,7 +38,7 @@ const SalesInvoices: React.FC = () => {
         setInvoices(result.data || []);
       }
     } catch (error) {
-      message.error('Failed to load invoices');
+        message.error(`Failed to load ${docLabel}s`);
     } finally {
       setLoading(false);
     }
@@ -108,9 +108,13 @@ const SalesInvoices: React.FC = () => {
     }
   };
 
+  const isGst = currentCompany?.is_gst_enabled === 1;
+  const docLabel = isGst ? 'Invoice' : 'Bill';
+  const docPlaceholder = isGst ? 'INV-0001/26' : 'BILL-0001/26';
+
   const loadNextInvoiceNumber = async () => {
     if (!currentCompany) return;
-    const result = await (window as any).electronAPI.db.salesInvoices.getNextNumber(currentCompany.id, fiscalYear);
+    const result = await (window as any).electronAPI.db.salesInvoices.getNextNumber(currentCompany.id, fiscalYear, isGst);
     if (result.success && result.data) form.setFieldValue('invoice_number', result.data);
   };
 
@@ -120,6 +124,7 @@ const SalesInvoices: React.FC = () => {
       const invoiceData = {
         ...values,
         company_id: currentCompany.id,
+        is_gst_enabled: currentCompany.is_gst_enabled,
         invoice_number: values.invoice_number?.trim?.() || undefined,
         fiscal_year: fiscalYear,
         invoice_date: values.invoice_date.format('YYYY-MM-DD'),
@@ -134,7 +139,7 @@ const SalesInvoices: React.FC = () => {
       invoiceData.items.forEach((item: any) => {
         const lineTotal = item.quantity * item.unit_price;
         subtotal += lineTotal;
-        const gstAmount = lineTotal * (item.gst_rate / 100);
+        const gstAmount = isGst ? lineTotal * ((item.gst_rate || 0) / 100) : 0;
         gstTotal += gstAmount;
         item.gst_amount = gstAmount;
         item.line_total = lineTotal + gstAmount;
@@ -147,16 +152,16 @@ const SalesInvoices: React.FC = () => {
       if (editingInvoice) {
         const result = await (window as any).electronAPI.db.salesInvoices.update(editingInvoice.id, invoiceData);
         if (result.success) {
-          message.success('Invoice updated successfully');
+          message.success(`${docLabel} updated successfully`);
         } else {
-          message.error(result.error || 'Failed to update invoice');
+          message.error(result.error || `Failed to update ${docLabel.toLowerCase()}`);
         }
       } else {
         const result = await (window as any).electronAPI.db.salesInvoices.create(invoiceData);
         if (result.success) {
-          message.success('Invoice created successfully');
+          message.success(`${docLabel} created successfully`);
         } else {
-          message.error(result.error || 'Failed to create invoice');
+          message.error(result.error || `Failed to create ${docLabel.toLowerCase()}`);
         }
       }
       setModalVisible(false);
@@ -214,7 +219,7 @@ const SalesInvoices: React.FC = () => {
     try {
       const result = await (window as any).electronAPI.db.deliveryChallans.createFromInvoice(record.id, user?.id);
       if (result.success && result.data) {
-        message.success(`Delivery Challan ${result.data.challan_number} created from invoice`);
+        message.success(`Delivery Challan ${result.data.challan_number} created from ${docLabel.toLowerCase()}`);
         navigate('/sales/delivery-challans');
       } else {
         message.error(result.error || 'Failed to create delivery challan');
@@ -226,7 +231,7 @@ const SalesInvoices: React.FC = () => {
 
   const columns = [
     {
-      title: 'Invoice Number',
+      title: `${docLabel} #`,
       dataIndex: 'invoice_number',
       key: 'invoice_number',
     },
@@ -290,7 +295,7 @@ const SalesInvoices: React.FC = () => {
           <Button
             icon={<PrinterOutlined />}
             onClick={() => handlePrint(record)}
-            title="Print Invoice"
+            title={`Print ${docLabel}`}
           />
           <Button
             icon={<EditOutlined />}
@@ -319,7 +324,7 @@ const SalesInvoices: React.FC = () => {
             }}
           />
           <Popconfirm
-            title="Are you sure you want to delete this invoice?"
+            title={`Are you sure you want to delete this ${docLabel.toLowerCase()}?`}
             onConfirm={() => handleDelete(record.id)}
           >
             <Button danger icon={<DeleteOutlined />} />
@@ -332,7 +337,7 @@ const SalesInvoices: React.FC = () => {
   return (
     <div>
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
-        <h1>Sales Invoices</h1>
+        <h1>Sales {docLabel}s</h1>
         <Button
           type="primary"
           icon={<PlusOutlined />}
@@ -343,7 +348,7 @@ const SalesInvoices: React.FC = () => {
             await loadNextInvoiceNumber();
           }}
         >
-          New Invoice
+          New {docLabel}
         </Button>
       </div>
 
@@ -356,7 +361,7 @@ const SalesInvoices: React.FC = () => {
       />
 
       <Modal
-        title={editingInvoice ? 'Edit Invoice' : 'New Invoice'}
+        title={editingInvoice ? `Edit ${docLabel}` : `New ${docLabel}`}
         open={modalVisible}
         onCancel={() => {
           setModalVisible(false);
@@ -367,8 +372,8 @@ const SalesInvoices: React.FC = () => {
         width={900}
       >
         <Form form={form} layout="vertical" onFinish={handleSave}>
-          <Form.Item name="invoice_number" label="Invoice #" rules={[{ required: true, message: 'Required' }]}>
-            <Input placeholder="e.g. INV-0001/26" style={{ width: 160 }} />
+          <Form.Item name="invoice_number" label={`${docLabel} #`} rules={[{ required: true, message: 'Required' }]}>
+            <Input placeholder={`e.g. ${docPlaceholder}`} style={{ width: 160 }} />
           </Form.Item>
           <Form.Item name="customer_id" label="Customer" rules={[{ required: true }]}>
             <Select>
@@ -488,7 +493,7 @@ const SalesInvoices: React.FC = () => {
       >
         <Form form={paymentForm} layout="vertical" onFinish={handleRecordPayment}>
           <div style={{ marginBottom: 16 }}>
-            <strong>Invoice: </strong> {selectedInvoice?.invoice_number} <br />
+            <strong>{docLabel}: </strong> {selectedInvoice?.invoice_number} <br />
             <strong>Pending Balance: </strong> {selectedInvoice?.balance.toFixed(2)}
           </div>
           <Form.Item
@@ -540,9 +545,9 @@ const SalesInvoices: React.FC = () => {
           <div style={{ background: 'white', padding: '10px', width: '210mm', margin: '0 auto', boxShadow: '0 0 10px rgba(0,0,0,0.1)' }}>
             {printData && (
               <PrintTemplate
-                type="invoice"
+                type={isGst ? 'invoice' : 'bill'}
                 data={printData}
-                company={currentCompany}
+                company={(companies || []).find((c: any) => c.id === printData.company_id) || currentCompany}
               />
             )}
           </div>
@@ -551,7 +556,7 @@ const SalesInvoices: React.FC = () => {
 
       {/* Hidden Print Container */}
       <div id="print-container">
-        {printData && <PrintTemplate type="invoice" data={printData} company={currentCompany} />}
+        {printData && <PrintTemplate type={isGst ? 'invoice' : 'bill'} data={printData} company={(companies || []).find((c: any) => c.id === printData.company_id) || currentCompany} />}
       </div>
     </div>
   );
