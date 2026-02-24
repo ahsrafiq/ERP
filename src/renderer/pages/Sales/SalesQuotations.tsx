@@ -8,7 +8,6 @@ import PrintTemplate from '../../components/PrintTemplate';
 
 const SalesQuotations: React.FC = () => {
     const { currentCompany, companies, user, fiscalYear } = useApp();
-    const docLabel = currentCompany?.is_gst_enabled ? 'Invoice' : 'Bill';
     const navigate = useNavigate();
     const [quotations, setQuotations] = useState<any[]>([]);
     const [customers, setCustomers] = useState<any[]>([]);
@@ -19,6 +18,10 @@ const SalesQuotations: React.FC = () => {
     const [form] = Form.useForm();
     const [printData, setPrintData] = useState<any>(null);
     const [isPreviewVisible, setIsPreviewVisible] = useState(false);
+    const [letterheadReady, setLetterheadReady] = useState(false);
+    const [attentionPerson, setAttentionPerson] = useState('');
+    const [attentionModalVisible, setAttentionModalVisible] = useState(false);
+    const [currentPrintRecord, setCurrentPrintRecord] = useState<any>(null);
 
     const watchedCustomerId = Form.useWatch('customer_id', form);
 
@@ -57,7 +60,7 @@ const SalesQuotations: React.FC = () => {
                     const terms = result.data.terms_and_conditions != null ? String(result.data.terms_and_conditions) : '';
                     form.setFieldsValue({ terms_and_conditions: terms });
                 }
-            } catch (_) {}
+            } catch (_) { }
         })();
         return () => { cancelled = true; };
     }, [modalVisible, watchedCustomerId, form]);
@@ -88,10 +91,19 @@ const SalesQuotations: React.FC = () => {
     };
 
     const handlePrint = async (record: any) => {
+        setCurrentPrintRecord(record);
+        setAttentionPerson(''); // Reset
+        setAttentionModalVisible(true);
+    };
+
+    const proceedToPrint = async () => {
+        if (!currentPrintRecord) return;
+        setAttentionModalVisible(false);
         try {
-            const result = await (window as any).electronAPI.db.salesQuotations.getById(record.id);
+            setLetterheadReady(false);
+            const result = await (window as any).electronAPI.db.salesQuotations.getById(currentPrintRecord.id);
             if (result.success && result.data) {
-                setPrintData(result.data);
+                setPrintData({ ...result.data, attention_person: attentionPerson });
                 setIsPreviewVisible(true);
             }
         } catch (error) {
@@ -111,6 +123,8 @@ const SalesQuotations: React.FC = () => {
 
     const handleSavePDF = async () => {
         try {
+            document.body.classList.add('capturing-pdf');
+            await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
             const result = await (window as any).electronAPI.db.files.printToPDF();
             if (result.success) {
                 message.success(`Saved to: ${result.filePath}`);
@@ -119,6 +133,8 @@ const SalesQuotations: React.FC = () => {
             }
         } catch (error) {
             message.error('Failed to save PDF');
+        } finally {
+            document.body.classList.remove('capturing-pdf');
         }
     };
 
@@ -143,17 +159,17 @@ const SalesQuotations: React.FC = () => {
         }
     };
 
-    const handleCreateInvoice = async (record: any) => {
+    const handleCreateChallan = async (record: any) => {
         try {
-            const result = await (window as any).electronAPI.db.salesInvoices.createFromQuotation(record.id, user?.id);
+            const result = await (window as any).electronAPI.db.deliveryChallans.createFromQuotation(record.id, user?.id);
             if (result.success && result.data) {
-                message.success(`${docLabel} ${result.data.invoice_number} created from quotation`);
-                navigate('/sales/invoices');
+                message.success(`Delivery Challan ${result.data.challan_number} created from quotation`);
+                navigate('/sales/delivery-challans');
             } else {
-                message.error(result.error || `Failed to create ${docLabel.toLowerCase()}`);
+                message.error(result.error || 'Failed to create delivery challan');
             }
         } catch (error: any) {
-            message.error(error.message || `Failed to create ${docLabel.toLowerCase()}`);
+            message.error(error.message || 'Failed to create delivery challan');
         }
     };
 
@@ -187,7 +203,7 @@ const SalesQuotations: React.FC = () => {
             // Calculate totals
             let subtotal = 0;
             quotationData.items?.forEach((item: any) => {
-                item.line_total = item.quantity * item.unit_price;
+                item.line_total = (Number(item.quantity) || 0) * (Number(item.unit_price) || 0);
                 subtotal += item.line_total;
             });
             quotationData.subtotal = subtotal;
@@ -220,6 +236,29 @@ const SalesQuotations: React.FC = () => {
         }
     };
 
+    const handleFormChange = (changedValues: any, allValues: any) => {
+        if (changedValues.items) {
+            const changedItems = changedValues.items;
+            const updatedItems = [...allValues.items];
+
+            changedItems.forEach((item: any, index: number) => {
+                if (item && item.item_id) {
+                    const selectedItem = items.find(i => i.id === item.item_id);
+                    if (selectedItem) {
+                        updatedItems[index] = {
+                            ...updatedItems[index],
+                            brand_name: selectedItem.brand_name || '—',
+                            description: selectedItem.description || '',
+                            unit_price: selectedItem.selling_price || 0,
+                        };
+                    }
+                }
+            });
+
+            form.setFieldsValue({ items: updatedItems });
+        }
+    };
+
     const columns = [
         { title: 'Quo #', dataIndex: 'quotation_number', key: 'quo_number' },
         { title: 'Customer', dataIndex: 'customer_name', key: 'customer' },
@@ -230,7 +269,7 @@ const SalesQuotations: React.FC = () => {
             key: 'actions',
             render: (_: any, record: any) => (
                 <Space>
-                    <Button icon={<FileTextOutlined />} onClick={() => handleCreateInvoice(record)} title={`Create ${docLabel}`} />
+                    <Button icon={<FileTextOutlined />} onClick={() => handleCreateChallan(record)} title="Create Delivery Challan" />
                     <Button icon={<PrinterOutlined />} onClick={() => handlePrint(record)} title="Print" />
                     <Button icon={<EditOutlined />} onClick={() => handleEdit(record)} title="Edit" />
                     <Popconfirm
@@ -260,8 +299,13 @@ const SalesQuotations: React.FC = () => {
 
             <Table columns={columns} dataSource={quotations} loading={loading} rowKey="id" />
 
-            <Modal title={editingQuotation ? 'Edit Quotation' : 'New Quotation'} open={modalVisible} onCancel={() => setModalVisible(false)} onOk={() => form.submit()} width={900}>
-                <Form form={form} layout="vertical" onFinish={handleSave}>
+            <Modal title={editingQuotation ? 'Edit Quotation' : 'New Quotation'} open={modalVisible} onCancel={() => setModalVisible(false)} onOk={() => form.submit()} width={1100} destroyOnClose>
+                <Form
+                    form={form}
+                    layout="vertical"
+                    onFinish={handleSave}
+                    onValuesChange={handleFormChange}
+                >
                     <Row gutter={16} style={{ marginBottom: 0 }}>
                         <Col flex="0 0 160px">
                             <Form.Item name="quotation_number" label="Quotation #" rules={[{ required: true, message: 'Required' }]}>
@@ -334,15 +378,44 @@ const SalesQuotations: React.FC = () => {
                                 {fields.map(({ key, name, ...restField }) => (
                                     <Space key={key} style={{ display: 'flex', marginBottom: 8 }} align="baseline">
                                         <Form.Item {...restField} name={[name, 'item_id']} rules={[{ required: true, message: 'Select item' }]}>
-                                            <Select placeholder="Item" style={{ width: 250 }}>
+                                            <Select
+                                                placeholder="Item"
+                                                style={{ width: 250 }}
+                                                showSearch
+                                                filterOption={(input, option) =>
+                                                    (option?.children as unknown as string).toLowerCase().includes(input.toLowerCase())
+                                                }
+                                                onChange={(itemId) => {
+                                                    const item = items.find(i => i.id === itemId);
+                                                    if (item) {
+                                                        const currentItems = form.getFieldValue('items') || [];
+                                                        currentItems[name] = {
+                                                            ...currentItems[name],
+                                                            description: item.description || '',
+                                                            brand: item.brand_name || '',
+                                                            unit_price: item.selling_price || 0
+                                                        };
+                                                        form.setFieldsValue({ items: currentItems });
+                                                    }
+                                                }}
+                                            >
                                                 {items.map(i => <Select.Option key={i.id} value={i.id}>{i.name}</Select.Option>)}
                                             </Select>
+                                        </Form.Item>
+                                        <Form.Item {...restField} name={[name, 'description']}>
+                                            <Input placeholder="Description" style={{ width: 300 }} />
+                                        </Form.Item>
+                                        <Form.Item {...restField} name={[name, 'brand']}>
+                                            <Input placeholder="Brand" style={{ width: 120 }} />
                                         </Form.Item>
                                         <Form.Item {...restField} name={[name, 'quantity']} rules={[{ required: true, message: 'Enter qty' }]}>
                                             <InputNumber placeholder="Qty" min={1} />
                                         </Form.Item>
                                         <Form.Item {...restField} name={[name, 'unit_price']} rules={[{ required: true, message: 'Enter price' }]}>
                                             <InputNumber placeholder="Price" min={0} />
+                                        </Form.Item>
+                                        <Form.Item {...restField} name={[name, 'availability']}>
+                                            <Input placeholder="Availability" style={{ width: 150 }} />
                                         </Form.Item>
                                         <Button onClick={() => remove(name)}>Remove</Button>
                                     </Space>
@@ -362,26 +435,69 @@ const SalesQuotations: React.FC = () => {
             </Modal>
 
             <Modal
+                title="Print Details"
+                open={attentionModalVisible}
+                onCancel={() => setAttentionModalVisible(false)}
+                onOk={proceedToPrint}
+                okText="Proceed to Print"
+            >
+                <Form layout="vertical">
+                    <Form.Item label="Attention Person Name">
+                        <Input
+                            value={attentionPerson}
+                            onChange={(e) => setAttentionPerson(e.target.value)}
+                            placeholder="Enter contact person name"
+                            autoFocus
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') proceedToPrint();
+                            }}
+                        />
+                    </Form.Item>
+                </Form>
+            </Modal>
+
+            <Modal
                 title="Print Preview"
                 open={isPreviewVisible}
                 onCancel={() => setIsPreviewVisible(false)}
                 width={1000}
                 footer={[
                     <Button key="cancel" onClick={() => setIsPreviewVisible(false)}>Close</Button>,
-                    <Button key="pdf" icon={<PrinterOutlined />} onClick={handleSavePDF}>Save as PDF</Button>,
+                    <Button
+                        key="pdf"
+                        icon={<PrinterOutlined />}
+                        onClick={handleSavePDF}
+                        disabled={(printData && (companies || []).find((c: any) => c.id === printData.company_id)?.letterhead_path) && !letterheadReady}
+                    >
+                        Save as PDF
+                    </Button>,
                     <Button key="print" type="primary" onClick={actualPrint}>Print</Button>
                 ]}
                 className="print-preview-modal"
             >
                 <div style={{ maxHeight: '70vh', overflowY: 'auto', padding: '20px', background: '#f5f5f5' }}>
                     <div style={{ background: 'white', padding: '10px', width: '210mm', margin: '0 auto', boxShadow: '0 0 10px rgba(0,0,0,0.1)' }}>
-                        {printData && <PrintTemplate type="quotation" data={printData} company={(companies || []).find((c: any) => c.id === printData.company_id) || currentCompany} />}
+                        {printData && (
+                            <PrintTemplate
+                                type="quotation"
+                                data={printData}
+                                company={(companies || []).find((c: any) => c.id === printData.company_id) || currentCompany}
+                                onLetterheadReady={() => setLetterheadReady(true)}
+                            />
+                        )}
                     </div>
                 </div>
             </Modal>
 
             <div id="print-container">
-                {printData && <PrintTemplate type="quotation" data={printData} company={(companies || []).find((c: any) => c.id === printData.company_id) || currentCompany} />}
+                {printData && (
+                    <PrintTemplate
+                        type="quotation"
+                        data={printData}
+                        company={(companies || []).find((c: any) => c.id === printData.company_id) || currentCompany}
+                        onLetterheadReady={() => setLetterheadReady(true)}
+                    />
+                )}
             </div>
         </div>
     );

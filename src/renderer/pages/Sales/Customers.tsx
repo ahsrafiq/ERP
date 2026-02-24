@@ -101,6 +101,11 @@ const Customers: React.FC = () => {
       key: 'phone',
     },
     {
+      title: 'PR Number',
+      dataIndex: 'pr_number',
+      key: 'pr_number',
+    },
+    {
       title: 'Balance',
       dataIndex: 'balance',
       key: 'balance',
@@ -216,6 +221,9 @@ const Customers: React.FC = () => {
             <Input />
           </Form.Item>
           <Form.Item name="tax_number" label="Tax Number">
+            <Input />
+          </Form.Item>
+          <Form.Item name="pr_number" label="PR Number">
             <Input />
           </Form.Item>
           <Form.Item

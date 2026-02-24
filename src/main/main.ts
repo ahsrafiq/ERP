@@ -339,7 +339,7 @@ ipcMain.handle('file:printToPDF', async (event) => {
     try {
       const data = await event.sender.printToPDF({
         printBackground: true,
-        margins: { marginType: 'default' },
+        margins: { marginType: 'none' },
         pageSize: 'A4',
       });
       fs.writeFileSync(filePath, data);
@@ -492,6 +492,10 @@ ipcMain.handle('db:salesInvoices:getNextNumber', async (event, companyId: number
   return dbBridge.salesInvoices.getNextNumber(companyId, fiscalYear, isGstEnabled);
 });
 
+ipcMain.handle('db:salesInvoices:getNextPoNumber', async (event, companyId: number, fiscalYear?: number | string) => {
+  return dbBridge.salesInvoices.getNextPoNumber(companyId, fiscalYear);
+});
+
 ipcMain.handle('db:salesInvoices:create', async (event, invoice: any) => {
   return dbBridge.salesInvoices.create(invoice);
 });
@@ -506,6 +510,10 @@ ipcMain.handle('db:salesInvoices:delete', async (event, id: number) => {
 
 ipcMain.handle('db:salesInvoices:createFromQuotation', async (event, quotationId: number, createdBy?: number) => {
   return dbBridge.salesInvoices.createFromQuotation(quotationId, createdBy);
+});
+
+ipcMain.handle('db:salesInvoices:createFromChallan', async (event, challanId: number, createdBy?: number) => {
+  return dbBridge.salesInvoices.createFromChallan(challanId, createdBy);
 });
 
 ipcMain.handle('db:salesQuotations:getAll', async (event, companyId: number, filters?: any) => {
@@ -544,6 +552,10 @@ ipcMain.handle('db:deliveryChallans:getNextNumber', async (event, companyId: num
   return dbBridge.deliveryChallans.getNextNumber(companyId, fiscalYear);
 });
 
+ipcMain.handle('db:deliveryChallans:getNextPoNumber', async (event, companyId: number, fiscalYear?: number | string) => {
+  return dbBridge.deliveryChallans.getNextPoNumber(companyId, fiscalYear);
+});
+
 ipcMain.handle('db:deliveryChallans:create', async (event, challan: any) => {
   return dbBridge.deliveryChallans.create(challan);
 });
@@ -558,6 +570,10 @@ ipcMain.handle('db:deliveryChallans:delete', async (event, id: number) => {
 
 ipcMain.handle('db:deliveryChallans:createFromInvoice', async (event, invoiceId: number, createdBy?: number) => {
   return dbBridge.deliveryChallans.createFromInvoice(invoiceId, createdBy);
+});
+
+ipcMain.handle('db:deliveryChallans:createFromQuotation', async (event, quotationId: number, createdBy?: number) => {
+  return dbBridge.deliveryChallans.createFromQuotation(quotationId, createdBy);
 });
 
 ipcMain.handle('db:purchaseInvoices:getAll', async (event, companyId: number, filters?: any) => {

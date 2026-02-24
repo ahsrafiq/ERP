@@ -38,7 +38,7 @@ const SalesInvoices: React.FC = () => {
         setInvoices(result.data || []);
       }
     } catch (error) {
-        message.error(`Failed to load ${docLabel}s`);
+      message.error(`Failed to load ${docLabel}s`);
     } finally {
       setLoading(false);
     }
@@ -69,9 +69,11 @@ const SalesInvoices: React.FC = () => {
   };
 
   const [isPreviewVisible, setIsPreviewVisible] = useState(false);
+  const [letterheadReady, setLetterheadReady] = useState(false);
 
   const handlePrint = async (record: any) => {
     try {
+      setLetterheadReady(false);
       const result = await (window as any).electronAPI.db.salesInvoices.getById(record.id);
       if (result.success && result.data) {
         setPrintData(result.data);
@@ -97,6 +99,8 @@ const SalesInvoices: React.FC = () => {
 
   const handleSavePDF = async () => {
     try {
+      document.body.classList.add('capturing-pdf');
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
       const result = await (window as any).electronAPI.db.files.printToPDF();
       if (result.success) {
         message.success(`Saved to: ${result.filePath}`);
@@ -105,6 +109,32 @@ const SalesInvoices: React.FC = () => {
       }
     } catch (error) {
       message.error('Failed to save PDF');
+    } finally {
+      document.body.classList.remove('capturing-pdf');
+    }
+  };
+
+  const handleNewInvoice = async () => {
+    setEditingInvoice(null);
+    form.resetFields();
+    setModalVisible(true);
+
+    if (currentCompany) {
+      try {
+        const [invRes, poRes] = await Promise.all([
+          (window as any).electronAPI.db.salesInvoices.getNextNumber(currentCompany.id, fiscalYear, isGst),
+          (window as any).electronAPI.db.salesInvoices.getNextPoNumber(currentCompany.id, fiscalYear)
+        ]);
+
+        form.setFieldsValue({
+          invoice_number: invRes.success ? invRes.data : undefined,
+          po_number: poRes.success ? poRes.data : undefined,
+          invoice_date: dayjs(),
+        });
+      } catch (err) {
+        console.error('Failed to pre-fill invoice:', err);
+        form.setFieldsValue({ invoice_date: dayjs() });
+      }
     }
   };
 
@@ -112,11 +142,6 @@ const SalesInvoices: React.FC = () => {
   const docLabel = isGst ? 'Invoice' : 'Bill';
   const docPlaceholder = isGst ? 'INV-0001/26' : 'BILL-0001/26';
 
-  const loadNextInvoiceNumber = async () => {
-    if (!currentCompany) return;
-    const result = await (window as any).electronAPI.db.salesInvoices.getNextNumber(currentCompany.id, fiscalYear, isGst);
-    if (result.success && result.data) form.setFieldValue('invoice_number', result.data);
-  };
 
   const handleSave = async (values: any) => {
     if (!currentCompany) return;
@@ -246,6 +271,11 @@ const SalesInvoices: React.FC = () => {
       key: 'invoice_date',
     },
     {
+      title: 'PO Number',
+      dataIndex: 'po_number',
+      key: 'po_number',
+    },
+    {
       title: 'Total Amount',
       dataIndex: 'total_amount',
       key: 'total_amount',
@@ -341,12 +371,7 @@ const SalesInvoices: React.FC = () => {
         <Button
           type="primary"
           icon={<PlusOutlined />}
-          onClick={async () => {
-            setEditingInvoice(null);
-            form.resetFields();
-            setModalVisible(true);
-            await loadNextInvoiceNumber();
-          }}
+          onClick={handleNewInvoice}
         >
           New {docLabel}
         </Button>
@@ -372,9 +397,14 @@ const SalesInvoices: React.FC = () => {
         width={900}
       >
         <Form form={form} layout="vertical" onFinish={handleSave}>
-          <Form.Item name="invoice_number" label={`${docLabel} #`} rules={[{ required: true, message: 'Required' }]}>
-            <Input placeholder={`e.g. ${docPlaceholder}`} style={{ width: 160 }} />
-          </Form.Item>
+          <Space align="start">
+            <Form.Item name="invoice_number" label={`${docLabel} #`} rules={[{ required: true, message: 'Required' }]}>
+              <Input placeholder={`e.g. ${docPlaceholder}`} style={{ width: 160 }} />
+            </Form.Item>
+            <Form.Item name="po_number" label="PO Number">
+              <Input placeholder="e.g. PO-12345" style={{ width: 160 }} />
+            </Form.Item>
+          </Space>
           <Form.Item name="customer_id" label="Customer" rules={[{ required: true }]}>
             <Select>
               {customers.map(customer => (
@@ -428,6 +458,8 @@ const SalesInvoices: React.FC = () => {
                             const currentItems = form.getFieldValue('items');
                             currentItems[name] = {
                               ...currentItems[name],
+                              description: item.description || '',
+                              brand: item.brand_name || '',
                               unit_price: item.selling_price,
                               gst_rate: item.gst_rate || 0,
                             };
@@ -442,12 +474,21 @@ const SalesInvoices: React.FC = () => {
                         ))}
                       </Select>
                     </Form.Item>
+                    <Form.Item {...restField} name={[name, 'description']}>
+                      <Input placeholder="Description" style={{ width: 200 }} />
+                    </Form.Item>
+                    <Form.Item {...restField} name={[name, 'brand']}>
+                      <Input placeholder="Brand" style={{ width: 100 }} />
+                    </Form.Item>
+                    <Form.Item {...restField} name={[name, 'availability']}>
+                      <Input placeholder="Availability" style={{ width: 120 }} />
+                    </Form.Item>
                     <Form.Item
                       {...restField}
                       name={[name, 'quantity']}
                       rules={[{ required: true, message: 'Quantity' }]}
                     >
-                      <InputNumber placeholder="Qty" min={0.01} />
+                      <InputNumber placeholder="Qty" min={0.01} style={{ width: 80 }} />
                     </Form.Item>
                     <Form.Item
                       {...restField}
@@ -532,7 +573,12 @@ const SalesInvoices: React.FC = () => {
           <Button key="cancel" onClick={() => setIsPreviewVisible(false)}>
             Close
           </Button>,
-          <Button key="pdf" icon={<PrinterOutlined />} onClick={handleSavePDF}>
+          <Button
+            key="pdf"
+            icon={<PrinterOutlined />}
+            onClick={handleSavePDF}
+            disabled={(printData && (companies || []).find((c: any) => c.id === printData.company_id)?.letterhead_path) && !letterheadReady}
+          >
             Save as PDF
           </Button>,
           <Button key="print" type="primary" onClick={actualPrint}>
@@ -548,15 +594,23 @@ const SalesInvoices: React.FC = () => {
                 type={isGst ? 'invoice' : 'bill'}
                 data={printData}
                 company={(companies || []).find((c: any) => c.id === printData.company_id) || currentCompany}
+                onLetterheadReady={() => setLetterheadReady(true)}
               />
             )}
           </div>
         </div>
       </Modal>
 
-      {/* Hidden Print Container */}
+      {/* Hidden Print Container - used for PDF capture */}
       <div id="print-container">
-        {printData && <PrintTemplate type={isGst ? 'invoice' : 'bill'} data={printData} company={(companies || []).find((c: any) => c.id === printData.company_id) || currentCompany} />}
+        {printData && (
+          <PrintTemplate
+            type={isGst ? 'invoice' : 'bill'}
+            data={printData}
+            company={(companies || []).find((c: any) => c.id === printData.company_id) || currentCompany}
+            onLetterheadReady={() => setLetterheadReady(true)}
+          />
+        )}
       </div>
     </div>
   );

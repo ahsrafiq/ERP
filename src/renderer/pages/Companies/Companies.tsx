@@ -9,6 +9,7 @@ const Companies: React.FC = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [editingCompany, setEditingCompany] = useState<any>(null);
   const [letterheadBase64, setLetterheadBase64] = useState<string | null>(null);
+  const [letterheadFileName, setLetterheadFileName] = useState<string>('');
   const [form] = Form.useForm();
 
   useEffect(() => {
@@ -46,9 +47,10 @@ const Companies: React.FC = () => {
       const companyData = { ...values };
       companyData.logo_path = null; // Logo removed - PDF letterhead only
 
-      // Handle letterhead upload (PDF only)
+      // Handle letterhead upload (PDF or image)
       if (letterheadBase64) {
-        const fileName = `letterhead_${Date.now()}.pdf`;
+        const ext = letterheadFileName.split('.').pop()?.toLowerCase() || 'pdf';
+        const fileName = `letterhead_${Date.now()}.${ext}`;
         const result = await (window as any).electronAPI.db.files.save(letterheadBase64, fileName, 'letterheads');
         if (result.success) {
           companyData.letterhead_path = result.filePath;
@@ -78,6 +80,7 @@ const Companies: React.FC = () => {
       setModalVisible(false);
       setEditingCompany(null);
       setLetterheadBase64(null);
+      setLetterheadFileName('');
       form.resetFields();
       loadCompanies();
     } catch (error) {
@@ -149,6 +152,7 @@ const Companies: React.FC = () => {
           onClick={() => {
             setEditingCompany(null);
             setLetterheadBase64(null);
+            setLetterheadFileName('');
             form.resetFields();
             setModalVisible(true);
           }}
@@ -172,6 +176,7 @@ const Companies: React.FC = () => {
           setModalVisible(false);
           setEditingCompany(null);
           setLetterheadBase64(null);
+          setLetterheadFileName('');
           form.resetFields();
         }}
         onOk={() => form.submit()}
@@ -194,26 +199,46 @@ const Companies: React.FC = () => {
               </Form.Item>
             </div>
             <div style={{ width: 320 }}>
-              <Form.Item label="Letterhead (PDF)">
+              <Form.Item label="Letterhead (PDF or Image)">
                 <Upload
-                  accept=".pdf"
+                  accept=".pdf,.jpg,.jpeg,.png"
                   showUploadList={false}
                   beforeUpload={async (file) => {
                     const base64 = await convertToBase64(file);
                     setLetterheadBase64(base64);
+                    setLetterheadFileName(file.name);
                     return false;
                   }}
                 >
-                  <Button icon={<UploadOutlined />}>Click to Upload PDF Letterhead</Button>
+                  <Button icon={<UploadOutlined />}>Upload Letterhead (PDF/JPG/PNG)</Button>
                 </Upload>
-                {(letterheadBase64 || editingCompany?.letterhead_path) && (
-                  <div style={{ marginTop: 8, border: '1px solid #ddd', padding: 8, textAlign: 'center' }}>
-                    <div style={{ padding: 10 }}>
-                      <div style={{ fontSize: 24 }}>📄</div>
-                      <div>{editingCompany?.letterhead_path?.split('/').pop() || 'PDF Letterhead Selected'}</div>
+                {/* Preview: show chosen file or existing letterhead */}
+                {letterheadBase64 ? (
+                  // Newly selected file preview
+                  /\.(jpg|jpeg|png)$/i.test(letterheadFileName) ? (
+                    <div style={{ marginTop: 8, border: '1px solid #ddd', padding: 4, textAlign: 'center' }}>
+                      <img src={letterheadBase64} alt="Letterhead preview" style={{ maxWidth: '100%', maxHeight: 120, objectFit: 'contain' }} />
+                      <div style={{ fontSize: 12, color: '#555', marginTop: 4 }}>{letterheadFileName}</div>
                     </div>
-                  </div>
-                )}
+                  ) : (
+                    <div style={{ marginTop: 8, border: '1px solid #ddd', padding: 8, textAlign: 'center' }}>
+                      <div style={{ fontSize: 24 }}>📄</div>
+                      <div>{letterheadFileName}</div>
+                    </div>
+                  )
+                ) : editingCompany?.letterhead_path ? (
+                  // Existing saved letterhead
+                  /\.(jpg|jpeg|png)/i.test(editingCompany.letterhead_path) ? (
+                    <div style={{ marginTop: 8, fontSize: 12, color: '#555' }}>
+                      🖼️ Current: {editingCompany.letterhead_path.split('/').pop()}
+                    </div>
+                  ) : (
+                    <div style={{ marginTop: 8, border: '1px solid #ddd', padding: 8, textAlign: 'center' }}>
+                      <div style={{ fontSize: 24 }}>📄</div>
+                      <div style={{ fontSize: 12 }}>{editingCompany.letterhead_path.split('/').pop()}</div>
+                    </div>
+                  )
+                ) : null}
               </Form.Item>
             </div>
           </Space>

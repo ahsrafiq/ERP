@@ -16,12 +16,15 @@ const defaultConfig: AppConfig = {
     serverPort: 3000,
 };
 
-const configPath = path.join(app.getPath('userData'), 'config.json');
+function getConfigPath() {
+    return path.join(app.getPath('userData'), 'config.json');
+}
 
 export function getConfig(): AppConfig {
     try {
-        if (fs.existsSync(configPath)) {
-            const data = fs.readFileSync(configPath, 'utf8');
+        const path = getConfigPath();
+        if (fs.existsSync(path)) {
+            const data = fs.readFileSync(path, 'utf8');
             return { ...defaultConfig, ...JSON.parse(data) };
         }
     } catch (error) {
@@ -32,7 +35,7 @@ export function getConfig(): AppConfig {
 
 export function saveConfig(config: AppConfig): void {
     try {
-        fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+        fs.writeFileSync(getConfigPath(), JSON.stringify(config, null, 2));
     } catch (error) {
         console.error('Error saving config:', error);
     }

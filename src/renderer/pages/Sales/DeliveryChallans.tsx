@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { Table, Button, Space, Modal, Form, Input, DatePicker, Select, InputNumber, message, Popconfirm } from 'antd';
-import { PlusOutlined, EditOutlined, PrinterOutlined, DeleteOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, PrinterOutlined, DeleteOutlined, FileTextOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
+import { useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import PrintTemplate from '../../components/PrintTemplate';
 
 const DeliveryChallans: React.FC = () => {
     const { currentCompany, companies, user, fiscalYear } = useApp();
+    const navigate = useNavigate();
+    const docLabel = currentCompany?.is_gst_enabled ? 'Invoice' : 'Bill';
     const [challans, setChallans] = useState<any[]>([]);
     const [customers, setCustomers] = useState<any[]>([]);
     const [items, setItems] = useState<any[]>([]);
@@ -16,6 +19,7 @@ const DeliveryChallans: React.FC = () => {
     const [form] = Form.useForm();
     const [printData, setPrintData] = useState<any>(null);
     const [isPreviewVisible, setIsPreviewVisible] = useState(false);
+    const [letterheadReady, setLetterheadReady] = useState(false);
 
     useEffect(() => {
         if (currentCompany) {
@@ -52,6 +56,7 @@ const DeliveryChallans: React.FC = () => {
 
     const handlePrint = async (record: any) => {
         try {
+            setLetterheadReady(false);
             const result = await (window as any).electronAPI.db.deliveryChallans.getById(record.id);
             if (result.success && result.data) {
                 setPrintData(result.data);
@@ -74,6 +79,8 @@ const DeliveryChallans: React.FC = () => {
 
     const handleSavePDF = async () => {
         try {
+            document.body.classList.add('capturing-pdf');
+            await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
             const result = await (window as any).electronAPI.db.files.printToPDF();
             if (result.success) {
                 message.success(`Saved to: ${result.filePath}`);
@@ -82,13 +89,34 @@ const DeliveryChallans: React.FC = () => {
             }
         } catch (error) {
             message.error('Failed to save PDF');
+        } finally {
+            document.body.classList.remove('capturing-pdf');
         }
     };
 
-    const loadNextChallanNumber = async () => {
-        if (!currentCompany) return;
-        const result = await (window as any).electronAPI.db.deliveryChallans.getNextNumber(currentCompany.id, fiscalYear);
-        if (result.success && result.data) form.setFieldValue('challan_number', result.data);
+
+    const handleNewChallan = async () => {
+        setEditingChallan(null);
+        form.resetFields();
+        setModalVisible(true);
+
+        if (currentCompany) {
+            try {
+                const [challanRes, poRes] = await Promise.all([
+                    (window as any).electronAPI.db.deliveryChallans.getNextNumber(currentCompany.id, fiscalYear),
+                    (window as any).electronAPI.db.deliveryChallans.getNextPoNumber(currentCompany.id, fiscalYear)
+                ]);
+
+                form.setFieldsValue({
+                    challan_number: challanRes.success ? challanRes.data : undefined,
+                    po_number: poRes.success ? poRes.data : undefined,
+                    challan_date: dayjs(),
+                });
+            } catch (err) {
+                console.error('Failed to pre-fill challan:', err);
+                form.setFieldsValue({ challan_date: dayjs() });
+            }
+        }
     };
 
     const handleEdit = async (record: any) => {
@@ -102,6 +130,20 @@ const DeliveryChallans: React.FC = () => {
             setModalVisible(true);
         } else {
             message.error('Failed to fetch challan details');
+        }
+    };
+
+    const handleCreateInvoice = async (record: any) => {
+        try {
+            const result = await (window as any).electronAPI.db.salesInvoices.createFromChallan(record.id, user?.id);
+            if (result.success && result.data) {
+                message.success(`${docLabel} ${result.data.invoice_number} created from challan`);
+                navigate('/sales/invoices');
+            } else {
+                message.error(result.error || `Failed to create ${docLabel.toLowerCase()}`);
+            }
+        } catch (error: any) {
+            message.error(error.message || `Failed to create ${docLabel.toLowerCase()}`);
         }
     };
 
@@ -169,12 +211,14 @@ const DeliveryChallans: React.FC = () => {
         { title: 'Challan #', dataIndex: 'challan_number', key: 'challan_number' },
         { title: 'Customer', dataIndex: 'customer_name', key: 'customer' },
         { title: 'Date', dataIndex: 'challan_date', key: 'date', render: (d: string) => dayjs(d).format('DD/MM/YYYY') },
+        { title: 'PO Number', dataIndex: 'po_number', key: 'po_number' },
         { title: 'Total Qty', dataIndex: 'total_quantity', key: 'qty' },
         {
             title: 'Actions',
             key: 'actions',
             render: (_: any, record: any) => (
                 <Space>
+                    <Button icon={<FileTextOutlined />} onClick={() => handleCreateInvoice(record)} title={`Create ${docLabel}`} />
                     <Button icon={<PrinterOutlined />} onClick={() => handlePrint(record)} title="Print" />
                     <Button icon={<EditOutlined />} onClick={() => handleEdit(record)} title="Edit" />
                     <Popconfirm
@@ -192,12 +236,7 @@ const DeliveryChallans: React.FC = () => {
         <div>
             <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
                 <h1>Delivery Challans</h1>
-                <Button type="primary" icon={<PlusOutlined />} onClick={async () => {
-                    setEditingChallan(null);
-                    form.resetFields();
-                    setModalVisible(true);
-                    await loadNextChallanNumber();
-                }}>
+                <Button type="primary" icon={<PlusOutlined />} onClick={handleNewChallan}>
                     New Challan
                 </Button>
             </div>
@@ -218,6 +257,9 @@ const DeliveryChallans: React.FC = () => {
                         <Form.Item name="challan_date" label="Date" rules={[{ required: true }]} initialValue={dayjs()}>
                             <DatePicker />
                         </Form.Item>
+                        <Form.Item name="po_number" label="PO Number">
+                            <Input placeholder="e.g. PO-12345" style={{ width: 160 }} />
+                        </Form.Item>
                     </Space>
 
                     <Form.List
@@ -235,17 +277,45 @@ const DeliveryChallans: React.FC = () => {
                         {(fields, { add, remove }, { errors }) => (
                             <>
                                 {fields.map(({ key, name, ...restField }) => (
-                                    <Space key={key} style={{ display: 'flex', marginBottom: 8 }} align="baseline">
-                                        <Form.Item {...restField} name={[name, 'item_id']} rules={[{ required: true, message: 'Select item' }]}>
-                                            <Select placeholder="Item" style={{ width: 400 }}>
-                                                {items.map(i => <Select.Option key={i.id} value={i.id}>{i.name} ({i.code})</Select.Option>)}
-                                            </Select>
+                                    <div key={key} style={{ borderBottom: '1px solid #f0f0f0', marginBottom: 16, paddingBottom: 16 }}>
+                                        <Space style={{ display: 'flex', marginBottom: 8 }} align="baseline">
+                                            <Form.Item {...restField} name={[name, 'item_id']} rules={[{ required: true, message: 'Select item' }]}>
+                                                <Select
+                                                    placeholder="Item"
+                                                    style={{ width: 300 }}
+                                                    showSearch
+                                                    optionFilterProp="children"
+                                                    onChange={(itemId) => {
+                                                        const item = items.find(i => i.id === itemId);
+                                                        if (item) {
+                                                            const currentItems = form.getFieldValue('items') || [];
+                                                            currentItems[name] = {
+                                                                ...currentItems[name],
+                                                                description: item.description || '',
+                                                                brand: item.brand_name || ''
+                                                            };
+                                                            form.setFieldsValue({ items: currentItems });
+                                                        }
+                                                    }}
+                                                >
+                                                    {items.map(i => <Select.Option key={i.id} value={i.id}>{i.name} ({i.code})</Select.Option>)}
+                                                </Select>
+                                            </Form.Item>
+                                            <Form.Item {...restField} name={[name, 'brand']}>
+                                                <Input placeholder="Brand" style={{ width: 120 }} />
+                                            </Form.Item>
+                                            <Form.Item {...restField} name={[name, 'availability']}>
+                                                <Input placeholder="Availability" style={{ width: 150 }} />
+                                            </Form.Item>
+                                            <Form.Item {...restField} name={[name, 'quantity']} rules={[{ required: true, message: 'Enter qty' }]}>
+                                                <InputNumber placeholder="Qty" min={1} />
+                                            </Form.Item>
+                                            <Button danger onClick={() => remove(name)} icon={<DeleteOutlined />} />
+                                        </Space>
+                                        <Form.Item {...restField} name={[name, 'description']} style={{ marginBottom: 0 }}>
+                                            <Input.TextArea placeholder="Item Description" autoSize={{ minRows: 1, maxRows: 3 }} />
                                         </Form.Item>
-                                        <Form.Item {...restField} name={[name, 'quantity']} rules={[{ required: true, message: 'Enter qty' }]}>
-                                            <InputNumber placeholder="Qty" min={1} />
-                                        </Form.Item>
-                                        <Button onClick={() => remove(name)}>Remove</Button>
-                                    </Space>
+                                    </div>
                                 ))}
                                 <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />}>Add Item</Button>
                                 <div style={{ color: '#ff4d4f', marginTop: 8 }}>
@@ -268,22 +338,43 @@ const DeliveryChallans: React.FC = () => {
                 width={1000}
                 footer={[
                     <Button key="cancel" onClick={() => setIsPreviewVisible(false)}>Close</Button>,
-                    <Button key="pdf" icon={<PrinterOutlined />} onClick={handleSavePDF}>Save as PDF</Button>,
+                    <Button
+                        key="pdf"
+                        icon={<PrinterOutlined />}
+                        onClick={handleSavePDF}
+                        disabled={(printData && (companies || []).find((c: any) => c.id === printData.company_id)?.letterhead_path) && !letterheadReady}
+                    >
+                        Save as PDF
+                    </Button>,
                     <Button key="print" type="primary" onClick={actualPrint}>Print</Button>
                 ]}
                 className="print-preview-modal"
             >
                 <div style={{ maxHeight: '70vh', overflowY: 'auto', padding: '20px', background: '#f5f5f5' }}>
                     <div style={{ background: 'white', padding: '10px', width: '210mm', margin: '0 auto', boxShadow: '0 0 10px rgba(0,0,0,0.1)' }}>
-                        {printData && <PrintTemplate type="challan" data={printData} company={(companies || []).find((c: any) => c.id === printData.company_id) || currentCompany} />}
+                        {printData && (
+                            <PrintTemplate
+                                type="challan"
+                                data={printData}
+                                company={(companies || []).find((c: any) => c.id === printData.company_id) || currentCompany}
+                                onLetterheadReady={() => setLetterheadReady(true)}
+                            />
+                        )}
                     </div>
                 </div>
             </Modal>
 
             <div id="print-container">
-                {printData && <PrintTemplate type="challan" data={printData} company={(companies || []).find((c: any) => c.id === printData.company_id) || currentCompany} />}
+                {printData && (
+                    <PrintTemplate
+                        type="challan"
+                        data={printData}
+                        company={(companies || []).find((c: any) => c.id === printData.company_id) || currentCompany}
+                        onLetterheadReady={() => setLetterheadReady(true)}
+                    />
+                )}
             </div>
-        </div>
+        </div >
     );
 };
 

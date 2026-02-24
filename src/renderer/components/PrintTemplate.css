@@ -1,19 +1,59 @@
 /* src/renderer/components/PrintTemplate.css */
 .print-template {
+    position: relative;
+    width: 210mm;
+    min-height: 297mm;
+    margin: 0 auto;
     padding: 40px;
     background: white;
     color: #333;
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     line-height: 1.5;
-    width: 210mm;
-    /* A4 width */
-    margin: 0 auto;
+    box-sizing: border-box;
 }
 
-.print-header {
+/* Full-page letterhead background - covers entire A4 */
+.print-template.has-letterhead {
+    padding: 0;
+}
+
+.letterhead-bg {
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 297mm !important;
+    object-fit: contain !important;
+    object-position: top center !important;
+    z-index: 0 !important;
+    pointer-events: none !important;
+    display: block !important;
+}
+
+.letterhead-error,
+.letterhead-loading {
+    position: relative;
+    z-index: 2;
+    padding: 6px 12px;
+    font-size: 12px;
+    text-align: center;
+}
+
+.letterhead-error {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.letterhead-loading {
+    background: #e8f4fd;
+    color: #0c6694;
+}
+
+.print-header-fallback {
     margin-bottom: 30px;
-    border-bottom: 2px solid #333;
     padding-bottom: 20px;
+    border-bottom: 2px solid #333;
 }
 
 .letterhead-img {
@@ -44,10 +84,14 @@
 .document-title {
     text-align: center;
     margin: 20px 0;
-    background: #f0f0f0;
     padding: 10px;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
+}
+
+/* Gray background only when no letterhead */
+.print-template:not(.has-letterhead) .document-title {
+    background: #f0f0f0;
 }
 
 .document-title h2 {
@@ -157,10 +201,11 @@
 @media print {
     @page {
         size: A4;
-        margin: 10mm;
+        margin: 0;
     }
 
-    html, body {
+    html,
+    body {
         margin: 0 !important;
         padding: 0 !important;
         background: white !important;
@@ -172,10 +217,12 @@
     body * {
         visibility: hidden;
     }
+
     #print-container,
     #print-container * {
         visibility: visible !important;
     }
+
     #print-container {
         display: block !important;
         position: absolute !important;
@@ -199,11 +246,6 @@
         page-break-inside: avoid;
     }
 
-    .has-letterhead .print-header {
-        border-bottom: none;
-        margin-bottom: 0;
-    }
-
     .ant-table-thead th {
         background-color: #eee !important;
         -webkit-print-color-adjust: exact;
@@ -218,36 +260,60 @@
     .items-table {
         page-break-inside: auto;
     }
+
     .items-table tr {
         page-break-inside: avoid;
     }
 }
 
-.print-template.has-letterhead {
+.has-letterhead .print-header-fallback {
+    display: none;
+}
+
+/* Content layer - transparent, overlaid on letterhead */
+.print-content {
     position: relative;
-    padding-top: 40mm;
-    /* Space for letterhead at top */
-    padding-bottom: 20mm;
-    /* Space for letterhead at bottom */
+    z-index: 1;
+    background: transparent !important;
+    padding: 65mm 15mm 45mm 15mm;
+    /* Top clears header, bottom clears footer of typical letterhead */
     box-sizing: border-box;
     min-height: 297mm;
-    /* Full A4 height */
 }
 
-.has-letterhead .print-header {
-    border-bottom: none;
-    margin-bottom: 0;
-}
-
-.print-content {
-    background: rgba(255, 255, 255, 0.95);
-    /* Slight transparency to see letterhead behind */
+/* When no letterhead, use normal padding */
+.print-template:not(.has-letterhead) .print-content {
     padding: 20px;
+    min-height: auto;
 }
 
 #print-container {
     display: none;
     overflow: hidden;
+}
+
+/* When saving as PDF: show only print container (like @media print) */
+body.capturing-pdf * {
+    visibility: hidden !important;
+}
+
+body.capturing-pdf #print-container,
+body.capturing-pdf #print-container * {
+    visibility: visible !important;
+}
+
+body.capturing-pdf #print-container {
+    display: block !important;
+    position: fixed !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 210mm !important;
+    min-height: 297mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white !important;
+    overflow: visible !important;
+    z-index: 99999 !important;
 }
 
 /* Visible in modal for preview if needed */

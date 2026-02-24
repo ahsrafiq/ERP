@@ -5,9 +5,21 @@ import { SettingOutlined } from '@ant-design/icons';
 interface Company {
   id: number;
   name: string;
-  currency: string;
+  logo_path?: string;
+  letterhead_path?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  postal_code?: string;
+  phone?: string;
+  email?: string;
+  tax_number?: string;
   is_gst_enabled: number;
   gst_registration_number?: string;
+  currency: string;
+  fiscal_year_start?: string;
+  is_active: number;
 }
 
 interface User {
@@ -47,7 +59,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const n = parseInt(stored, 10);
         if (n >= 0 && n <= 99) return n;
       }
-    } catch (_) {}
+    } catch (_) { }
     return new Date().getFullYear() % 100;
   });
   const setFiscalYear = (year: number) => {
