@@ -23,7 +23,8 @@
     "cors": "^2.8.6",
     "electron-updater": "^6.1.7",
     "express": "^5.2.1",
-    "pdfjs-dist": "^5.4.624"
+    "pdfjs-dist": "^5.4.624",
+    "xlsx-js-style": "^1.2.0"
   },
   "devDependencies": {
     "@ant-design/icons": "^5.2.6",

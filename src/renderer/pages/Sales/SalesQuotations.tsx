@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Button, Space, Modal, Form, Input, DatePicker, Select, InputNumber, message, Popconfirm, Row, Col } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, PrinterOutlined, FileTextOutlined } from '@ant-design/icons';
+import { Table, Button, Space, Modal, Form, Input, DatePicker, Select, InputNumber, message, Popconfirm, Row, Col, Tag } from 'antd';
+import { PlusOutlined, EditOutlined, DeleteOutlined, PrinterOutlined, FileTextOutlined, CheckCircleOutlined, MinusCircleOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
@@ -18,7 +18,6 @@ const SalesQuotations: React.FC = () => {
     const [form] = Form.useForm();
     const [printData, setPrintData] = useState<any>(null);
     const [isPreviewVisible, setIsPreviewVisible] = useState(false);
-    const [letterheadReady, setLetterheadReady] = useState(false);
     const [attentionPerson, setAttentionPerson] = useState('');
     const [attentionModalVisible, setAttentionModalVisible] = useState(false);
     const [currentPrintRecord, setCurrentPrintRecord] = useState<any>(null);
@@ -100,7 +99,6 @@ const SalesQuotations: React.FC = () => {
         if (!currentPrintRecord) return;
         setAttentionModalVisible(false);
         try {
-            setLetterheadReady(false);
             const result = await (window as any).electronAPI.db.salesQuotations.getById(currentPrintRecord.id);
             if (result.success && result.data) {
                 setPrintData({ ...result.data, attention_person: attentionPerson });
@@ -123,15 +121,20 @@ const SalesQuotations: React.FC = () => {
 
     const handleSavePDF = async () => {
         try {
+            // Step 1: show the save dialog BEFORE any visual change
+            const pathResult = await (window as any).electronAPI.db.files.getSavePath('Quotation.pdf');
+            if (!pathResult.success) return;
+
+            // Step 2: apply capturing class (brief flash, dialog already gone)
             document.body.classList.add('capturing-pdf');
             await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-            const result = await (window as any).electronAPI.db.files.printToPDF();
+            const result = await (window as any).electronAPI.db.files.captureAndSave(pathResult.filePath);
             if (result.success) {
                 message.success(`Saved to: ${result.filePath}`);
-            } else if (result.error !== 'Save cancelled') {
+            } else {
                 message.error(result.error || 'Failed to save PDF');
             }
-        } catch (error) {
+        } catch {
             message.error('Failed to save PDF');
         } finally {
             document.body.classList.remove('capturing-pdf');
@@ -200,14 +203,24 @@ const SalesQuotations: React.FC = () => {
                 created_by: user?.id,
             };
 
-            // Calculate totals
+            const customerId = values.customer_id;
+            const customer = customers.find((c: any) => c.id === customerId);
+            const defaultTaxRate = customer?.default_tax_rate != null ? Number(customer.default_tax_rate) : 0;
+
             let subtotal = 0;
+            let taxTotal = 0;
             quotationData.items?.forEach((item: any) => {
-                item.line_total = (Number(item.quantity) || 0) * (Number(item.unit_price) || 0);
-                subtotal += item.line_total;
+                const lineTotal = (Number(item.quantity) || 0) * (Number(item.unit_price) || 0);
+                const taxAmount = lineTotal * (defaultTaxRate / 100);
+                item.tax_rate = defaultTaxRate;
+                item.tax_amount = taxAmount;
+                item.line_total = lineTotal + taxAmount;
+                subtotal += lineTotal;
+                taxTotal += taxAmount;
             });
             quotationData.subtotal = subtotal;
-            quotationData.total_amount = subtotal; // Simplified
+            quotationData.tax_amount = taxTotal;
+            quotationData.total_amount = subtotal + taxTotal;
 
             if (editingQuotation) {
                 const result = await (window as any).electronAPI.db.salesQuotations.update(editingQuotation.id, quotationData);
@@ -264,6 +277,20 @@ const SalesQuotations: React.FC = () => {
         { title: 'Customer', dataIndex: 'customer_name', key: 'customer' },
         { title: 'Date', dataIndex: 'quotation_date', key: 'date', render: (d: string) => dayjs(d).format('DD/MM/YYYY') },
         { title: 'Amount', dataIndex: 'total_amount', key: 'amount', render: (a: number) => a?.toLocaleString() },
+        {
+            title: 'DC',
+            key: 'dc',
+            width: 100,
+            align: 'center' as const,
+            render: (_: any, record: any) => {
+                const hasDc = (record.delivery_challan_count ?? 0) > 0;
+                return hasDc ? (
+                    <Tag color="green" icon={<CheckCircleOutlined />}>DC made</Tag>
+                ) : (
+                    <Tag color="default" icon={<MinusCircleOutlined />}>No DC</Tag>
+                );
+            },
+        },
         {
             title: 'Actions',
             key: 'actions',
@@ -329,7 +356,7 @@ const SalesQuotations: React.FC = () => {
                             </Form.Item>
                         </Col>
                         <Col flex="0 0 120px">
-                            <Form.Item name="expiry_date" label="Expiry Date">
+                            <Form.Item name="expiry_date" label="Due Date">
                                 <DatePicker style={{ width: '100%' }} />
                             </Form.Item>
                         </Col>
@@ -415,7 +442,7 @@ const SalesQuotations: React.FC = () => {
                                             <InputNumber placeholder="Price" min={0} />
                                         </Form.Item>
                                         <Form.Item {...restField} name={[name, 'availability']}>
-                                            <Input placeholder="Availability" style={{ width: 150 }} />
+                                            <Input placeholder="Remarks" style={{ width: 150 }} />
                                         </Form.Item>
                                         <Button onClick={() => remove(name)}>Remove</Button>
                                     </Space>
@@ -459,15 +486,17 @@ const SalesQuotations: React.FC = () => {
             <Modal
                 title="Print Preview"
                 open={isPreviewVisible}
-                onCancel={() => setIsPreviewVisible(false)}
-                width={1000}
+                onCancel={() => {
+                    setIsPreviewVisible(false);
+                    setPrintData(null);
+                }}
+                width={900}
                 footer={[
                     <Button key="cancel" onClick={() => setIsPreviewVisible(false)}>Close</Button>,
                     <Button
                         key="pdf"
                         icon={<PrinterOutlined />}
                         onClick={handleSavePDF}
-                        disabled={(printData && (companies || []).find((c: any) => c.id === printData.company_id)?.letterhead_path) && !letterheadReady}
                     >
                         Save as PDF
                     </Button>,
@@ -476,29 +505,29 @@ const SalesQuotations: React.FC = () => {
                 className="print-preview-modal"
             >
                 <div style={{ maxHeight: '70vh', overflowY: 'auto', padding: '20px', background: '#f5f5f5' }}>
-                    <div style={{ background: 'white', padding: '10px', width: '210mm', margin: '0 auto', boxShadow: '0 0 10px rgba(0,0,0,0.1)' }}>
+                    <div className="preview-page-wrapper">
                         {printData && (
                             <PrintTemplate
                                 type="quotation"
                                 data={printData}
                                 company={(companies || []).find((c: any) => c.id === printData.company_id) || currentCompany}
-                                onLetterheadReady={() => setLetterheadReady(true)}
                             />
                         )}
                     </div>
                 </div>
             </Modal>
 
+            {/* Hidden print container — revealed by @media print CSS for PDF/Print capture */}
             <div id="print-container">
                 {printData && (
                     <PrintTemplate
                         type="quotation"
                         data={printData}
                         company={(companies || []).find((c: any) => c.id === printData.company_id) || currentCompany}
-                        onLetterheadReady={() => setLetterheadReady(true)}
                     />
                 )}
             </div>
+
         </div>
     );
 };

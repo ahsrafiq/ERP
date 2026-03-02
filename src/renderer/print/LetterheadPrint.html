@@ -221,6 +221,10 @@
         </div>
       `;
 
+      const greetingHtml = title.toLowerCase().includes('quotation')
+        ? `<div style="margin-bottom: 16px; font-size: 11pt; font-weight: 500;">Thank you for the inquiry, we are pleased to offer:</div>`
+        : '';
+
       return itemChunks.map((chunk, pageIdx) => {
         let startNum = pageIdx * ITEMS_PER_PAGE;
         const rows = chunk.map((it, i) => `
@@ -229,10 +233,10 @@
             <td>${it.name || ''}</td>
             <td>${it.description || ''}</td>
             <td>${it.brand || ''}</td>
-            <td>${it.availability || ''}</td>
             <td class="num">${Number(it.quantity || 0)}</td>
             <td class="num">${Number(it.unit_price || 0).toLocaleString()}</td>
             <td class="num">${Number(it.line_total || 0).toLocaleString()}</td>
+            <td style="font-size: 11pt; font-weight: 600;">${it.availability || ''}</td>
           </tr>
         `).join('');
         const showTotals = pageIdx === itemChunks.length - 1;
@@ -241,8 +245,9 @@
             ${letterheadDataUrl ? `<img class="letterhead-bg" src="${letterheadDataUrl}" alt="">` : ''}
             <div class="content-layer">
               ${pageIdx === 0 ? headerHtml : `<div class="doc-info cont">${title} #${docNumber} — Page ${pageIdx + 1} of ${itemChunks.length}</div>`}
+              ${pageIdx === 0 ? greetingHtml : ''}
               <table class="items-table">
-                <thead><tr><th>#</th><th>Item</th><th>Description</th><th>Brand</th><th>Avail</th><th class="num">Qty</th><th class="num">Price</th><th class="num">Total</th></tr></thead>
+                <thead><tr><th>#</th><th>Item</th><th>Description</th><th>Brand</th><th class="num">Qty</th><th class="num">Price</th><th class="num">Total</th><th>Remarks</th></tr></thead>
                 <tbody>${rows}</tbody>
               </table>
               ${showTotals ? totalsHtml : ''}

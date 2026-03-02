@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Button, Space, Modal, Form, Input, InputNumber, Select, message, Popconfirm } from 'antd';
+import { Table, Button, Space, Modal, Form, Input, InputNumber, Select, AutoComplete, message, Popconfirm } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useApp } from '../../context/AppContext';
 
@@ -82,6 +82,10 @@ const Items: React.FC = () => {
     }
   };
 
+  const locationOptions = Array.from(
+    new Set(items.map((i: any) => i.location).filter(Boolean))
+  ).sort().map((loc) => ({ value: loc as string }));
+
   const columns = [
     {
       title: 'Code',
@@ -98,6 +102,12 @@ const Items: React.FC = () => {
       dataIndex: 'brand_name',
       key: 'brand_name',
       render: (name: string) => name || '—',
+    },
+    {
+      title: 'Location',
+      dataIndex: 'location',
+      key: 'location',
+      render: (loc: string) => loc || '—',
     },
     {
       title: 'Purchase Price',
@@ -117,12 +127,6 @@ const Items: React.FC = () => {
       key: 'quantity',
       render: (q: number) => (q != null ? Number(q) : 0),
     },
-    ...(currentCompany?.is_gst_enabled ? [{
-      title: 'GST Rate',
-      dataIndex: 'gst_rate',
-      key: 'gst_rate',
-      render: (rate: number) => `${rate || 0}%`,
-    }] : []),
     {
       title: 'Actions',
       key: 'actions',
@@ -208,6 +212,20 @@ const Items: React.FC = () => {
           <Form.Item name="description" label="Description">
             <Input.TextArea rows={3} />
           </Form.Item>
+          <Form.Item
+            name="location"
+            label="Location"
+            tooltip="Storage location of this item (e.g. A, B, C, Rack-1). Previously used locations are suggested."
+          >
+            <AutoComplete
+              options={locationOptions}
+              placeholder="e.g. A, B, Rack-1"
+              filterOption={(input, option) =>
+                (option?.value ?? '').toLowerCase().includes(input.toLowerCase())
+              }
+              style={{ width: '100%' }}
+            />
+          </Form.Item>
           <Form.Item name="type" label="Type" initialValue="product">
             <Select>
               <Select.Option value="product">Product</Select.Option>
@@ -221,11 +239,6 @@ const Items: React.FC = () => {
             <InputNumber min={0} style={{ width: '100%' }} />
           </Form.Item>
 
-          {currentCompany?.is_gst_enabled ? (
-            <Form.Item name="gst_rate" label="GST Rate (%)" initialValue={0}>
-              <InputNumber min={0} max={100} style={{ width: '100%' }} />
-            </Form.Item>
-          ) : null}
           <Form.Item name="track_inventory" label="Track Inventory" initialValue={1}>
             <Select>
               <Select.Option value={1}>Yes</Select.Option>

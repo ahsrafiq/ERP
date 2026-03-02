@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Button, Space, Modal, Form, Input, DatePicker, Select, InputNumber, message, Popconfirm } from 'antd';
+import { Table, Button, Space, Modal, Form, Input, DatePicker, Select, InputNumber, message, Popconfirm, Switch } from 'antd';
 import { PlusOutlined, EditOutlined, PrinterOutlined, DeleteOutlined, FileTextOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useNavigate } from 'react-router-dom';
@@ -19,7 +19,41 @@ const DeliveryChallans: React.FC = () => {
     const [form] = Form.useForm();
     const [printData, setPrintData] = useState<any>(null);
     const [isPreviewVisible, setIsPreviewVisible] = useState(false);
-    const [letterheadReady, setLetterheadReady] = useState(false);
+    const [printWithLetterhead, setPrintWithLetterhead] = useState(true);
+
+    const watchedCustomerId = Form.useWatch('customer_id', form);
+
+    // When customer is selected, load their terms and conditions
+    useEffect(() => {
+        if (!modalVisible) return;
+
+        if (watchedCustomerId == null || watchedCustomerId === '') {
+            form.setFieldsValue({ terms_and_conditions: '' });
+            return;
+        }
+
+        const id = Number(watchedCustomerId);
+        if (!id) return;
+
+        const fromList = customers.find((c: any) => c.id === id);
+        if (fromList && fromList.terms_and_conditions != null) {
+            form.setFieldsValue({ terms_and_conditions: String(fromList.terms_and_conditions) });
+            return;
+        }
+
+        let cancelled = false;
+        (async () => {
+            try {
+                const result = await (window as any).electronAPI.db.customers.getById(id);
+                if (cancelled) return;
+                if (result?.success && result?.data) {
+                    const terms = result.data.terms_and_conditions != null ? String(result.data.terms_and_conditions) : '';
+                    form.setFieldsValue({ terms_and_conditions: terms });
+                }
+            } catch (_) { }
+        })();
+        return () => { cancelled = true; };
+    }, [modalVisible, watchedCustomerId, form]);
 
     useEffect(() => {
         if (currentCompany) {
@@ -56,7 +90,6 @@ const DeliveryChallans: React.FC = () => {
 
     const handlePrint = async (record: any) => {
         try {
-            setLetterheadReady(false);
             const result = await (window as any).electronAPI.db.deliveryChallans.getById(record.id);
             if (result.success && result.data) {
                 setPrintData(result.data);
@@ -79,15 +112,20 @@ const DeliveryChallans: React.FC = () => {
 
     const handleSavePDF = async () => {
         try {
+            // Step 1: show the save dialog BEFORE any visual change
+            const pathResult = await (window as any).electronAPI.db.files.getSavePath('DeliveryChallan.pdf');
+            if (!pathResult.success) return;
+
+            // Step 2: apply capturing class (brief flash, dialog already gone)
             document.body.classList.add('capturing-pdf');
             await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-            const result = await (window as any).electronAPI.db.files.printToPDF();
+            const result = await (window as any).electronAPI.db.files.captureAndSave(pathResult.filePath);
             if (result.success) {
                 message.success(`Saved to: ${result.filePath}`);
-            } else if (result.error !== 'Save cancelled') {
+            } else {
                 message.error(result.error || 'Failed to save PDF');
             }
-        } catch (error) {
+        } catch {
             message.error('Failed to save PDF');
         } finally {
             document.body.classList.remove('capturing-pdf');
@@ -304,9 +342,6 @@ const DeliveryChallans: React.FC = () => {
                                             <Form.Item {...restField} name={[name, 'brand']}>
                                                 <Input placeholder="Brand" style={{ width: 120 }} />
                                             </Form.Item>
-                                            <Form.Item {...restField} name={[name, 'availability']}>
-                                                <Input placeholder="Availability" style={{ width: 150 }} />
-                                            </Form.Item>
                                             <Form.Item {...restField} name={[name, 'quantity']} rules={[{ required: true, message: 'Enter qty' }]}>
                                                 <InputNumber placeholder="Qty" min={1} />
                                             </Form.Item>
@@ -325,8 +360,8 @@ const DeliveryChallans: React.FC = () => {
                         )}
                     </Form.List>
 
-                    <Form.Item name="notes" label="Notes" style={{ marginTop: 20 }}>
-                        <Input.TextArea />
+                    <Form.Item name="terms_and_conditions" label="Terms and Conditions" style={{ marginTop: 20 }}>
+                        <Input.TextArea rows={4} placeholder="Select a customer to auto-fill, or enter manually" />
                     </Form.Item>
                 </Form>
             </Modal>
@@ -334,46 +369,58 @@ const DeliveryChallans: React.FC = () => {
             <Modal
                 title="Print Preview"
                 open={isPreviewVisible}
-                onCancel={() => setIsPreviewVisible(false)}
-                width={1000}
-                footer={[
-                    <Button key="cancel" onClick={() => setIsPreviewVisible(false)}>Close</Button>,
-                    <Button
-                        key="pdf"
-                        icon={<PrinterOutlined />}
-                        onClick={handleSavePDF}
-                        disabled={(printData && (companies || []).find((c: any) => c.id === printData.company_id)?.letterhead_path) && !letterheadReady}
-                    >
-                        Save as PDF
-                    </Button>,
-                    <Button key="print" type="primary" onClick={actualPrint}>Print</Button>
-                ]}
+                onCancel={() => {
+                    setIsPreviewVisible(false);
+                    setPrintData(null);
+                }}
+                width={900}
+                footer={
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                            {currentCompany?.letterhead_path && (
+                                <Switch
+                                    checked={printWithLetterhead}
+                                    onChange={setPrintWithLetterhead}
+                                    checkedChildren="With Letterhead"
+                                    unCheckedChildren="Without Letterhead"
+                                />
+                            )}
+                        </div>
+                        <Space>
+                            <Button onClick={() => { setIsPreviewVisible(false); setPrintData(null); }}>Close</Button>
+                            <Button icon={<PrinterOutlined />} onClick={handleSavePDF}>Save as PDF</Button>
+                            <Button type="primary" onClick={actualPrint}>Print</Button>
+                        </Space>
+                    </div>
+                }
                 className="print-preview-modal"
             >
                 <div style={{ maxHeight: '70vh', overflowY: 'auto', padding: '20px', background: '#f5f5f5' }}>
-                    <div style={{ background: 'white', padding: '10px', width: '210mm', margin: '0 auto', boxShadow: '0 0 10px rgba(0,0,0,0.1)' }}>
+                    <div className="preview-page-wrapper">
                         {printData && (
                             <PrintTemplate
                                 type="challan"
                                 data={printData}
                                 company={(companies || []).find((c: any) => c.id === printData.company_id) || currentCompany}
-                                onLetterheadReady={() => setLetterheadReady(true)}
+                                withLetterhead={printWithLetterhead}
                             />
                         )}
                     </div>
                 </div>
             </Modal>
 
+            {/* Hidden print container — revealed by @media print CSS for PDF/Print capture */}
             <div id="print-container">
                 {printData && (
                     <PrintTemplate
                         type="challan"
                         data={printData}
                         company={(companies || []).find((c: any) => c.id === printData.company_id) || currentCompany}
-                        onLetterheadReady={() => setLetterheadReady(true)}
+                        withLetterhead={printWithLetterhead}
                     />
                 )}
             </div>
+
         </div >
     );
 };

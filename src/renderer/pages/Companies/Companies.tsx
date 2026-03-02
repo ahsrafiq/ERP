@@ -250,7 +250,6 @@ const Companies: React.FC = () => {
           <Space>
             <Form.Item name="city" label="City"><Input /></Form.Item>
             <Form.Item name="state" label="State"><Input /></Form.Item>
-            <Form.Item name="tax_number" label="NTN/Tax Number"><Input /></Form.Item>
           </Space>
 
           <Form.Item
@@ -269,13 +268,18 @@ const Companies: React.FC = () => {
           >
             {({ getFieldValue }) =>
               getFieldValue('is_gst_enabled') ? (
-                <Form.Item
-                  name="gst_registration_number"
-                  label="GST Registration Number"
-                  rules={[{ required: true, message: 'Please enter GST registration number' }]}
-                >
-                  <Input placeholder="e.g., 12-345678-9" />
-                </Form.Item>
+                <>
+                  <Form.Item name="tax_number" label="NTN/Tax Number">
+                    <Input />
+                  </Form.Item>
+                  <Form.Item
+                    name="gst_registration_number"
+                    label="GST Registration Number"
+                    rules={[{ required: true, message: 'Please enter GST registration number' }]}
+                  >
+                    <Input placeholder="e.g., 12-345678-9" />
+                  </Form.Item>
+                </>
               ) : null
             }
           </Form.Item>

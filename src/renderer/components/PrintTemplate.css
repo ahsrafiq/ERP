@@ -1,8 +1,11 @@
 /* src/renderer/components/PrintTemplate.css */
+
+/* ══════════════════════════════════════════════════════════════════
+   Base template
+   ══════════════════════════════════════════════════════════════════ */
 .print-template {
     position: relative;
     width: 210mm;
-    min-height: 297mm;
     margin: 0 auto;
     padding: 40px;
     background: white;
@@ -12,23 +15,43 @@
     box-sizing: border-box;
 }
 
-/* Full-page letterhead background - covers entire A4 */
+/* Non-letterhead templates keep A4 min-height for preview */
+.print-template:not(.has-letterhead) {
+    min-height: 297mm;
+}
+
+/* Letterhead mode: no padding on template itself (padding is on .print-content) */
 .print-template.has-letterhead {
     padding: 0;
 }
 
+/* ══════════════════════════════════════════════════════════════════
+   Letterhead strips
+   Each strip is absolutely positioned and shows a cropped region of
+   the single letterhead image using object-fit + object-position.
+   ══════════════════════════════════════════════════════════════════ */
 .letterhead-bg {
     position: absolute !important;
-    top: 0 !important;
     left: 0 !important;
     width: 100% !important;
-    height: 100% !important;
-    min-height: 297mm !important;
-    object-fit: contain !important;
-    object-position: top center !important;
     z-index: 0 !important;
     pointer-events: none !important;
     display: block !important;
+    object-fit: cover !important;
+}
+
+/* Header strip: shows top 65 mm of the letterhead image */
+.letterhead-bg.lh-header {
+    top: 0 !important;
+    height: 65mm !important;
+    object-position: top center !important;
+}
+
+/* Footer strip: shows bottom 55 mm of the letterhead image */
+.letterhead-bg.lh-footer {
+    bottom: 0 !important;
+    height: 55mm !important;
+    object-position: bottom center !important;
 }
 
 .letterhead-error,
@@ -81,6 +104,9 @@
     font-size: 14px;
 }
 
+/* ══════════════════════════════════════════════════════════════════
+   Document title
+   ══════════════════════════════════════════════════════════════════ */
 .document-title {
     text-align: center;
     margin: 20px 0;
@@ -99,6 +125,14 @@
     letter-spacing: 2px;
 }
 
+.document-title-invoice h2 {
+    border-bottom: 3px double #333;
+    padding-bottom: 6px;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   Info section (Quotation / Challan)
+   ══════════════════════════════════════════════════════════════════ */
 .info-section {
     display: flex;
     justify-content: space-between;
@@ -122,17 +156,114 @@
     font-size: 14px;
 }
 
+/* ══════════════════════════════════════════════════════════════════
+   Invoice two-column header
+   ══════════════════════════════════════════════════════════════════ */
+.inv-two-col {
+    display: flex;
+    justify-content: space-between;
+    gap: 24px;
+    margin-bottom: 20px;
+}
+
+.inv-block {
+    flex: 1;
+    padding: 12px 14px;
+    background: #fafafa;
+    border-radius: 6px;
+    border: 1px solid #e8e8e8;
+}
+
+.inv-block-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #666;
+    margin: 0 0 8px 0;
+}
+
+.inv-company-name {
+    font-weight: 700;
+    font-size: 14px;
+    margin: 0 0 6px 0;
+    color: #111;
+}
+
+.inv-address {
+    font-size: 12px;
+    color: #444;
+    margin: 0 0 4px 0;
+    line-height: 1.4;
+}
+
+.inv-tax,
+.inv-po,
+.inv-contact {
+    font-size: 12px;
+    margin: 4px 0 0 0;
+    color: #333;
+}
+
+.inv-details-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px 24px;
+    margin-bottom: 16px;
+    font-size: 12px;
+    color: #333;
+}
+
+.inv-details-row span {
+    white-space: nowrap;
+}
+
+.inv-total-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-weight: 700;
+    font-size: 14px;
+    padding: 10px 0;
+    border-top: 2px solid #333;
+}
+
+.inv-totals-section .totals {
+    width: 100%;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   Items table
+   ══════════════════════════════════════════════════════════════════ */
 .items-table {
     margin-bottom: 30px;
 }
 
-.items-table .ant-table-thead>tr>th {
+.items-table-invoice {
+    width: 100%;
+}
+
+.items-table-invoice .ant-table {
+    table-layout: auto;
+    width: 100% !important;
+}
+
+.items-table-invoice .ant-table-thead > tr > th,
+.items-table-invoice .ant-table-tbody > tr > td {
+    white-space: nowrap;
+    padding: 6px 8px;
+    font-size: 11px;
+}
+
+.items-table .ant-table-thead > tr > th {
     background: #eee !important;
     font-weight: bold;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
 }
 
+/* ══════════════════════════════════════════════════════════════════
+   Totals section
+   ══════════════════════════════════════════════════════════════════ */
 .totals-section {
     display: flex;
     justify-content: space-between;
@@ -165,59 +296,236 @@
     padding: 10px 0;
 }
 
-.footer-section {
-    display: flex;
-    justify-content: space-between;
-    margin-top: 50px;
+/* ══════════════════════════════════════════════════════════════════
+   Bill document styles
+   ══════════════════════════════════════════════════════════════════ */
+.document-title-bill h2 {
+    text-decoration: underline;
+    font-size: 22pt;
+    font-weight: 700;
+    letter-spacing: 1px;
 }
 
-.signature-box {
+.bill-info-section {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 20px;
+    font-size: 12pt;
+}
+
+.bill-to-block {
+    flex: 1;
+}
+
+.bill-to-label {
+    margin: 0 0 2px 0;
+    font-size: 12pt;
+}
+
+.bill-customer-name {
+    font-size: 13pt;
+    font-weight: 700;
+    margin: 0 0 4px 0;
+    text-transform: uppercase;
+}
+
+.bill-customer-address {
+    margin: 0;
+    font-size: 11pt;
+    text-transform: uppercase;
+}
+
+.bill-doc-info {
+    text-align: right;
+    font-size: 11pt;
+    line-height: 1.8;
+}
+
+.bill-doc-info p {
+    margin: 0;
+}
+
+.items-table-bill {
+    width: 100%;
+    margin-bottom: 0;
+}
+
+.items-table-bill .ant-table {
+    table-layout: auto;
+    width: 100% !important;
+}
+
+.items-table-bill .ant-table-thead > tr > th,
+.items-table-bill .ant-table-tbody > tr > td {
+    padding: 6px 10px;
+    font-size: 11pt;
+}
+
+.bill-totals-section {
+    margin-top: 0;
+}
+
+.bill-totals-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 30px;
+}
+
+.bill-totals-table td {
+    padding: 6px 10px;
+    font-size: 12pt;
+    font-weight: 700;
+    border: 1px solid #333;
+}
+
+.bill-total-label {
+    text-align: right;
+    width: 85%;
+}
+
+.bill-total-value {
+    text-align: right;
+    white-space: nowrap;
+}
+
+.bill-terms {
+    margin: 20px 0;
+    font-size: 11pt;
+}
+
+.bill-terms-heading {
+    font-weight: 700;
+    margin: 0 0 4px 0;
+    text-decoration: underline;
+}
+
+.bill-terms-text {
+    margin: 0;
+    white-space: pre-line;
+}
+
+.bill-footer-thanks {
+    margin-top: 30px;
+    font-size: 11pt;
+}
+
+.bill-footer-thanks p {
+    margin: 0;
+}
+
+.bill-footer-company {
+    font-weight: 700;
+    text-decoration: underline;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   Delivery Challan footer (stamp / signature)
+   ══════════════════════════════════════════════════════════════════ */
+.dc-footer {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 200px;
+    padding-top: 24px;
+}
+
+.dc-stamp-box,
+.dc-signature-box {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
     width: 200px;
     text-align: center;
 }
 
-.sig-line {
+.dc-stamp-line {
     border-top: 1px solid #333;
-    margin-bottom: 10px;
+    margin-bottom: 0.5px;
+    min-height: 20px;
 }
 
-/* Global Print Overrides */
-@media print {
-    * {
-        -webkit-print-color-adjust: exact !important;
-        print-color-adjust: exact !important;
-    }
-
-    html,
-    body {
-        margin: 0 !important;
-        padding: 0 !important;
-        height: 100% !important;
-        overflow: hidden !important;
-    }
+.dc-footer p {
+    margin: 0;
+    font-size: 12px;
+    font-weight: bold;
+    color: #333;
 }
 
-/* Print - A4, multi-page */
+/* ══════════════════════════════════════════════════════════════════
+   Content layer — sits between the header and footer strips
+   ══════════════════════════════════════════════════════════════════ */
+.has-letterhead .print-header-fallback {
+    display: none;
+}
+
+.print-content {
+    position: relative;
+    z-index: 1;
+    background: transparent !important;
+    box-sizing: border-box;
+}
+
+/* Letterhead mode: pad top/bottom to clear the strips */
+.print-template.has-letterhead .print-content {
+    padding: 68mm 15mm 58mm 15mm;
+    /* 65 mm header strip + 3 mm gap; 55 mm footer strip + 3 mm gap */
+}
+
+/* No-letterhead mode: normal padding, keep A4 min-height */
+.print-template:not(.has-letterhead) .print-content {
+    padding: 20px;
+    min-height: 257mm;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   In-app preview modal
+   ══════════════════════════════════════════════════════════════════ */
+.print-preview-modal .ant-modal-body > div {
+    display: flex;
+    justify-content: center;
+    background: #f5f5f5;
+    padding: 20px;
+    overflow: auto;
+}
+
+/* The preview wrapper scales the document to 80% so it fits the screen */
+.preview-page-wrapper {
+    background: white;
+    width: 210mm;
+    min-width: 210mm;
+    margin: 0 auto;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    zoom: 0.8;
+}
+
+.print-preview-modal .print-template {
+    width: 210mm;
+    padding: 0;
+    box-shadow: none;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   Print / PDF capture
+   Hide the entire app UI; show only #print-container.
+   #print-container lives inside the React tree but visibility:visible
+   on an element beats visibility:hidden inherited from a parent.
+   ══════════════════════════════════════════════════════════════════ */
 @media print {
     @page {
         size: A4;
         margin: 0;
     }
 
-    html,
-    body {
-        margin: 0 !important;
-        padding: 0 !important;
-        background: white !important;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
+    *, *::before, *::after {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
     }
 
-    /* Hide app UI, show only print container */
+    /* Hide everything … */
     body * {
         visibility: hidden;
     }
 
+    /* … then reveal only the print container and its contents */
     #print-container,
     #print-container * {
         visibility: visible !important;
@@ -256,7 +564,6 @@
         display: block !important;
     }
 
-    /* Multi-page: allow table to break across pages */
     .items-table {
         page-break-inside: auto;
     }
@@ -266,27 +573,7 @@
     }
 }
 
-.has-letterhead .print-header-fallback {
-    display: none;
-}
-
-/* Content layer - transparent, overlaid on letterhead */
-.print-content {
-    position: relative;
-    z-index: 1;
-    background: transparent !important;
-    padding: 65mm 15mm 45mm 15mm;
-    /* Top clears header, bottom clears footer of typical letterhead */
-    box-sizing: border-box;
-    min-height: 297mm;
-}
-
-/* When no letterhead, use normal padding */
-.print-template:not(.has-letterhead) .print-content {
-    padding: 20px;
-    min-height: auto;
-}
-
+/* Hidden in normal view; shown only during print/PDF capture */
 #print-container {
     display: none;
     overflow: hidden;
@@ -296,12 +583,10 @@
 body.capturing-pdf * {
     visibility: hidden !important;
 }
-
 body.capturing-pdf #print-container,
 body.capturing-pdf #print-container * {
     visibility: visible !important;
 }
-
 body.capturing-pdf #print-container {
     display: block !important;
     position: fixed !important;
@@ -314,11 +599,4 @@ body.capturing-pdf #print-container {
     background: white !important;
     overflow: visible !important;
     z-index: 99999 !important;
-}
-
-/* Visible in modal for preview if needed */
-.print-preview-modal .print-template {
-    width: 100%;
-    padding: 10px;
-    box-shadow: none;
 }

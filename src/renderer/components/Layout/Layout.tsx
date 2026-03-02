@@ -90,6 +90,19 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       key: 'reports',
       icon: <BarChartOutlined />,
       label: 'Reports',
+      children: [
+        { key: '/reports', label: 'All Reports' },
+        { key: '/reports/sales', label: 'Sales Report' },
+        { key: '/reports/purchase', label: 'Purchase Report' },
+        { key: '/reports/inventory', label: 'Inventory Report' },
+        { key: '/reports/customer-ledger', label: 'Customer Ledger' },
+        { key: '/reports/vendor-ledger', label: 'Vendor Ledger' },
+        { key: '/reports/tax', label: 'Tax Deduction Report' },
+        { key: '/reports/recovery', label: 'Recovery Report' },
+        { key: '/reports/expenses', label: 'Expense Report' },
+        { key: '/reports/pl', label: 'Profit & Loss' },
+        { key: '/reports/balance', label: 'Balance Sheet' },
+      ],
     },
   ];
 

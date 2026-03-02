@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Card, Row, Col, Button, DatePicker, Select, Space } from 'antd';
 import { FilePdfOutlined, FileExcelOutlined, PrinterOutlined } from '@ant-design/icons';
 import { useApp } from '../../context/AppContext';
+import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
 
 const { RangePicker } = DatePicker;
@@ -9,6 +10,7 @@ const { Option } = Select;
 
 const Reports: React.FC = () => {
   const { currentCompany } = useApp();
+  const navigate = useNavigate();
   const [dateRange, setDateRange] = useState<[any, any]>([
     dayjs().startOf('month'),
     dayjs().endOf('month'),
@@ -17,71 +19,90 @@ const Reports: React.FC = () => {
   const reports = [
     {
       title: 'Sales Report',
-      description: 'View sales invoices, revenue, and customer analysis',
+      description: 'View invoices, revenue, tax, and customer balances',
       icon: <FilePdfOutlined />,
       type: 'sales',
+      route: '/reports/sales',
+      available: true,
     },
     {
       title: 'Purchase Report',
-      description: 'View purchase invoices and vendor analysis',
+      description: 'View purchase invoices, vendor totals, and balance due',
       icon: <FileExcelOutlined />,
       type: 'purchase',
+      route: '/reports/purchase',
+      available: true,
     },
     {
       title: 'Inventory Report',
-      description: 'Stock levels, movements, and valuation',
+      description: 'Stock levels, location, valuation, and low-stock alerts',
       icon: <FilePdfOutlined />,
       type: 'inventory',
+      route: '/reports/inventory',
+      available: true,
     },
     {
       title: 'Profit & Loss',
       description: 'Income statement and financial performance',
       icon: <FilePdfOutlined />,
       type: 'pl',
+      route: '/reports/pl',
+      available: true,
     },
     {
       title: 'Balance Sheet',
       description: 'Assets, liabilities, and equity statement',
       icon: <FilePdfOutlined />,
       type: 'balance',
+      route: '/reports/balance',
+      available: true,
     },
     {
       title: 'Customer Ledger',
-      description: 'Customer transactions and balances',
+      description: 'Individual customer ledger — invoices, payments, and running balance',
       icon: <FileExcelOutlined />,
       type: 'customer_ledger',
+      route: '/reports/customer-ledger',
+      available: true,
     },
     {
       title: 'Vendor Ledger',
-      description: 'Vendor transactions and balances',
+      description: 'Individual vendor ledger — purchases, payments, and running balance',
       icon: <FileExcelOutlined />,
       type: 'vendor_ledger',
+      route: '/reports/vendor-ledger',
+      available: true,
     },
     {
       title: 'Expense Report',
-      description: 'Expense analysis by category',
+      description: 'Expense analysis by category, vendor, and status',
       icon: <FilePdfOutlined />,
       type: 'expenses',
+      route: '/reports/expenses',
+      available: true,
     },
     {
-      title: 'Tax Report',
-      description: 'Tax summary and compliance',
+      title: 'Tax Deduction Report',
+      description: 'GST/Sales Tax collected per invoice — taxable amount, rate, and tax total',
       icon: <FilePdfOutlined />,
       type: 'tax',
+      route: '/reports/tax',
+      available: true,
     },
     {
-      title: 'Aging Report',
-      description: 'Accounts receivable and payable aging',
+      title: 'Recovery Report',
+      description: 'Accounts receivable with aging buckets — current, 1–30, 31–60, 61–90, 90+ days',
       icon: <FilePdfOutlined />,
       type: 'aging',
+      route: '/reports/recovery',
+      available: true,
     },
   ];
 
-  const handleGenerateReport = (type: string) => {
-    // Report generation logic would go here
-    // For now, just show a message
-    console.log(`Generating ${type} report for date range:`, dateRange);
-    // In production, this would call IPC handlers to generate PDF/Excel
+  const handleGenerateReport = (report: any) => {
+    if (report.route) {
+      navigate(report.route);
+    }
   };
 
   return (
@@ -108,30 +129,24 @@ const Reports: React.FC = () => {
         {reports.map((report, index) => (
           <Col xs={24} sm={12} lg={8} key={index}>
             <Card
-              hoverable
-              actions={[
-                <Button
-                  type="link"
-                  icon={<FilePdfOutlined />}
-                  onClick={() => handleGenerateReport(report.type)}
-                >
-                  PDF
-                </Button>,
-                <Button
-                  type="link"
-                  icon={<FileExcelOutlined />}
-                  onClick={() => handleGenerateReport(report.type)}
-                >
-                  Excel
-                </Button>,
-                <Button
-                  type="link"
-                  icon={<PrinterOutlined />}
-                  onClick={() => handleGenerateReport(report.type)}
-                >
-                  Print
-                </Button>,
-              ]}
+              hoverable={report.available}
+              style={{ opacity: report.available ? 1 : 0.55 }}
+              onClick={() => report.available && handleGenerateReport(report)}
+              actions={
+                report.available
+                  ? [
+                      <Button
+                        type="link"
+                        icon={<PrinterOutlined />}
+                        onClick={(e) => { e.stopPropagation(); handleGenerateReport(report); }}
+                      >
+                        Open
+                      </Button>,
+                    ]
+                  : [
+                      <span style={{ color: '#aaa', fontSize: 12 }}>Coming Soon</span>,
+                    ]
+              }
             >
               <Card.Meta
                 title={report.title}

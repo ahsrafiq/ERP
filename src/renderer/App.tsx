@@ -15,6 +15,16 @@ import Expenses from './pages/Expenses/Expenses';
 import ExpenseCategories from './pages/Expenses/ExpenseCategories';
 import Employees from './pages/HR/Employees';
 import Reports from './pages/Reports/Reports';
+import SalesReport from './pages/Reports/SalesReport';
+import InventoryReport from './pages/Reports/InventoryReport';
+import PurchaseReport from './pages/Reports/PurchaseReport';
+import CustomerLedgerReport from './pages/Reports/CustomerLedgerReport';
+import TaxReport from './pages/Reports/TaxReport';
+import RecoveryReport from './pages/Reports/RecoveryReport';
+import ExpenseReport from './pages/Reports/ExpenseReport';
+import VendorLedgerReport from './pages/Reports/VendorLedgerReport';
+import ProfitLossReport from './pages/Reports/ProfitLossReport';
+import BalanceSheetReport from './pages/Reports/BalanceSheetReport';
 import SalesQuotations from './pages/Sales/SalesQuotations';
 import DeliveryChallans from './pages/Sales/DeliveryChallans';
 import { AppProvider } from './context/AppContext';
@@ -54,6 +64,16 @@ const AppContent: React.FC = () => {
         <Route path="/expenses/categories" element={<ExpenseCategories />} />
         <Route path="/hr/employees" element={<Employees />} />
         <Route path="/reports" element={<Reports />} />
+        <Route path="/reports/sales" element={<SalesReport />} />
+        <Route path="/reports/inventory" element={<InventoryReport />} />
+        <Route path="/reports/purchase" element={<PurchaseReport />} />
+        <Route path="/reports/customer-ledger" element={<CustomerLedgerReport />} />
+        <Route path="/reports/tax" element={<TaxReport />} />
+        <Route path="/reports/recovery" element={<RecoveryReport />} />
+        <Route path="/reports/expenses" element={<ExpenseReport />} />
+        <Route path="/reports/vendor-ledger" element={<VendorLedgerReport />} />
+        <Route path="/reports/pl" element={<ProfitLossReport />} />
+        <Route path="/reports/balance" element={<BalanceSheetReport />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </Layout>

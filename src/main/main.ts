@@ -351,6 +351,74 @@ ipcMain.handle('file:printToPDF', async (event) => {
   return { success: false, error: 'Save cancelled' };
 });
 
+// Step 1: Show save dialog and return chosen path (no capturing yet)
+ipcMain.handle('file:getSavePath', async (_event, defaultName: string) => {
+  const { filePath, canceled } = await dialog.showSaveDialog({
+    title: 'Save as PDF',
+    defaultPath: path.join(app.getPath('documents'), defaultName || 'ERP_Document.pdf'),
+    filters: [{ name: 'PDF Files', extensions: ['pdf'] }],
+  });
+  if (canceled || !filePath) return { success: false, error: 'Save cancelled' };
+  return { success: true, filePath };
+});
+
+// Step 2: Capture PDF from current page and write to the already-chosen path.
+// heightMM is optional: when provided the PDF page height is cropped to exactly
+// the content height (no blank trailing page); falls back to A4 (297 mm).
+ipcMain.handle('file:captureAndSave', async (event, filePath: string, heightMM?: number) => {
+  try {
+    const pageSize = heightMM && heightMM > 50
+      ? { width: 210000, height: Math.round(heightMM * 1000) }  // microns
+      : 'A4' as const;
+    const data = await event.sender.printToPDF({
+      printBackground: true,
+      margins: { marginType: 'none' },
+      pageSize,
+    });
+    fs.writeFileSync(filePath, data);
+    return { success: true, filePath };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+});
+
+// Render a complete HTML string in an isolated hidden window and save as PDF.
+// This sidesteps all @media-print / CSS-isolation issues with the main window.
+ipcMain.handle('file:printHtmlToPDF', async (_event, html: string, filePath: string, heightMM: number) => {
+  const tmpPath = path.join(app.getPath('temp'), `erp-print-${Date.now()}.html`);
+  let win: BrowserWindow | null = null;
+  try {
+    fs.writeFileSync(tmpPath, html, 'utf8');
+    win = new BrowserWindow({
+      show: false,
+      width: 794,
+      height: Math.ceil((heightMM || 297) * 3.78) + 50,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+      },
+    });
+    await win.loadFile(tmpPath);
+    // Give images and fonts an extra tick to decode after load
+    await new Promise(r => setTimeout(r, 300));
+    const pageSize: any = heightMM > 50
+      ? { width: 210000, height: Math.round(heightMM * 1000) }
+      : 'A4';
+    const pdfData = await win.webContents.printToPDF({
+      printBackground: true,
+      margins: { marginType: 'none' },
+      pageSize,
+    });
+    fs.writeFileSync(filePath, pdfData);
+    return { success: true, filePath };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  } finally {
+    win?.destroy();
+    try { fs.unlinkSync(tmpPath); } catch { /* ignore */ }
+  }
+});
+
 // IPC Handlers
 ipcMain.handle('file:save', async (event, base64Data: string, fileName: string, subDir: string) => {
   return fileHandlers.saveFile(base64Data, fileName, subDir);
