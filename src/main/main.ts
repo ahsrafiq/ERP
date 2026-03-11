@@ -106,7 +106,7 @@ function createMenu() {
 
             if (filePath) {
               try {
-                const dbPath = path.join(process.cwd(), 'database', 'erp.db');
+                const dbPath = path.join(app.getPath('userData'), 'database', 'erp.db');
                 fs.copyFileSync(dbPath, filePath);
                 dialog.showMessageBox({
                   type: 'info',
@@ -148,7 +148,7 @@ function createMenu() {
 
               if (filePaths && filePaths.length > 0) {
                 try {
-                  const dbPath = path.join(process.cwd(), 'database', 'erp.db');
+                  const dbPath = path.join(app.getPath('userData'), 'database', 'erp.db');
                   // We don't need to close connection here because our handlers open/close per request
                   fs.copyFileSync(filePaths[0], dbPath);
 
@@ -303,7 +303,7 @@ app.whenReady().then(() => {
   try {
     if (isMasterMode()) {
       initializeDatabase();
-      console.log('Database initialized successfully at:', path.join(process.cwd(), 'database', 'erp.db'));
+      console.log('Database initialized successfully at:', path.join(app.getPath('userData'), 'database', 'erp.db'));
       startServer();
     } else {
       console.log('Running in CLIENT mode. Connecting to Master server.');

@@ -45,6 +45,8 @@ const Dashboard: React.FC = () => {
   const [expenseBreakdown, setExpenseBreakdown] = useState<any[]>([]);
   const [monthlyRevenue, setMonthlyRevenue] = useState<any[]>([]);
   const [topCustomers, setTopCustomers] = useState<any[]>([]);
+  const [customers, setCustomers] = useState<any[]>([]);
+  const [items, setItems] = useState<any[]>([]);
 
   const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
 
@@ -99,6 +101,20 @@ const Dashboard: React.FC = () => {
       if (custResult.success) {
         setTopCustomers(custResult.data || []);
       }
+
+      // Load all customers and items for card lists
+      try {
+        const custAllResult = await (window as any).electronAPI.db.customers.getAll(currentCompany.id);
+        if (custAllResult.success && Array.isArray(custAllResult.data)) {
+          setCustomers(custAllResult.data);
+        }
+      } catch (_) {}
+      try {
+        const itemsResult = await (window as any).electronAPI.db.items.getAll(currentCompany.id);
+        if (itemsResult.success && Array.isArray(itemsResult.data)) {
+          setItems(itemsResult.data);
+        }
+      } catch (_) {}
     } catch (error) {
       console.error('Error loading dashboard data:', error);
     } finally {
@@ -122,21 +138,6 @@ const Dashboard: React.FC = () => {
     <div className="dashboard">
       <div className="dashboard-header">
         <h1>Dashboard</h1>
-        <div className="dashboard-filters">
-          <RangePicker
-            value={dateRange}
-            onChange={(dates) => {
-              if (dates && dates[0] && dates[1]) {
-                setDateRange([dates[0], dates[1]]);
-              }
-            }}
-            format="YYYY-MM-DD"
-          />
-          <Radio.Group value={period} onChange={(e) => setPeriod(e.target.value)} style={{ marginLeft: 16 }}>
-            <Radio.Button value="monthly">Monthly</Radio.Button>
-            <Radio.Button value="yearly">Yearly</Radio.Button>
-          </Radio.Group>
-        </div>
       </div>
 
       {loading ? (
@@ -145,162 +146,81 @@ const Dashboard: React.FC = () => {
         </div>
       ) : (
         <>
-          {/* KPI Cards */}
-          <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-            <Col xs={24} sm={12} lg={6}>
+          <Row gutter={[16, 16]}>
+            <Col xs={24} lg={8}>
               <Card>
                 <Statistic
-                  title="Total Sales"
-                  value={kpis.totalSales || 0}
+                  title="Customer Outstanding"
+                  value={kpis.customerOutstanding || 0}
+                  prefix={<DollarOutlined />}
+                  precision={2}
+                  valueStyle={{ color: '#cf1322' }}
+                />
+                <div style={{ marginTop: 12, fontSize: 12, maxHeight: 180, overflowY: 'auto' }}>
+                  <strong>Customers with balance:</strong>
+                  <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+                    {customers.filter((c: any) => (c.balance || 0) > 0).length === 0 ? (
+                      <li key="none">None</li>
+                    ) : (
+                      customers.filter((c: any) => (c.balance || 0) > 0).map((c: any) => (
+                        <li key={c.id}>{c.name} ({Number(c.balance || 0).toLocaleString()})</li>
+                      ))
+                    )}
+                  </ul>
+                </div>
+              </Card>
+            </Col>
+            <Col xs={24} lg={8}>
+              <Card>
+                <Statistic
+                  title="Total Customer Limit"
+                  value={kpis.totalCustomerLimit || 0}
                   prefix={<DollarOutlined />}
                   precision={2}
                   valueStyle={{ color: '#3f8600' }}
                 />
-              </Card>
-            </Col>
-            <Col xs={24} sm={12} lg={6}>
-              <Card>
-                <Statistic
-                  title="Total Purchases"
-                  value={kpis.totalPurchases || 0}
-                  prefix={<ShoppingCartOutlined />}
-                  precision={2}
-                  valueStyle={{ color: '#cf1322' }}
-                />
-              </Card>
-            </Col>
-            <Col xs={24} sm={12} lg={6}>
-              <Card>
-                <Statistic
-                  title="Total Expenses"
-                  value={kpis.totalExpenses || 0}
-                  prefix={<FileTextOutlined />}
-                  precision={2}
-                  valueStyle={{ color: '#cf1322' }}
-                />
-              </Card>
-            </Col>
-            <Col xs={24} sm={12} lg={6}>
-              <Card>
-                <Statistic
-                  title="Net Profit"
-                  value={kpis.netProfit || 0}
-                  prefix={<RiseOutlined />}
-                  precision={2}
-                  valueStyle={{ color: kpis.netProfit >= 0 ? '#3f8600' : '#cf1322' }}
-                />
-              </Card>
-            </Col>
-            <Col xs={24} sm={12} lg={6}>
-              <Card>
-                <Statistic
-                  title="Total Customers"
-                  value={kpis.totalCustomers || 0}
-                  prefix={<UserOutlined />}
-                />
-              </Card>
-            </Col>
-            <Col xs={24} sm={12} lg={6}>
-              <Card>
-                <Statistic
-                  title="Total Vendors"
-                  value={kpis.totalVendors || 0}
-                  prefix={<ShopOutlined />}
-                />
-              </Card>
-            </Col>
-            <Col xs={24} sm={12} lg={6}>
-              <Card>
-                <Statistic
-                  title="Total Items"
-                  value={kpis.totalItems ?? 0}
-                  prefix={<InboxOutlined />}
-                />
-                {(kpis.itemsNeedRestock > 0 || kpis.itemsLowStock > 0) && (
-                  <div style={{ marginTop: 8, color: '#ff4d4f', fontSize: 12 }}>
-                    <WarningOutlined />
-                    {kpis.itemsNeedRestock > 0 && (kpis.itemsNeedRestockNames?.length > 0) && (
-                      <span> Need restock: {(kpis.itemsNeedRestockNames as string[]).slice(0, 5).join(', ')}{(kpis.itemsNeedRestockNames as string[]).length > 5 ? ` +${(kpis.itemsNeedRestockNames as string[]).length - 5} more` : ''}</span>
+                <div style={{ marginTop: 12, fontSize: 12, maxHeight: 180, overflowY: 'auto' }}>
+                  <strong>Customers:</strong>
+                  <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+                    {customers.length === 0 ? (
+                      <li key="none">None</li>
+                    ) : (
+                      customers.map((c: any) => (
+                        <li key={c.id}>{c.name}</li>
+                      ))
                     )}
-                    {kpis.itemsNeedRestock > 0 && (!kpis.itemsNeedRestockNames || (kpis.itemsNeedRestockNames as string[]).length === 0) && (
-                      <span> {kpis.itemsNeedRestock} item{kpis.itemsNeedRestock !== 1 ? 's' : ''} need restock</span>
-                    )}
-                    {kpis.itemsLowStock > 0 && kpis.itemsLowStock !== kpis.itemsNeedRestock && (kpis.itemsLowStockNames?.length > 0) && (
-                      <div style={{ marginTop: 2 }}>
-                        <span>Below 10 in stock: {(kpis.itemsLowStockNames as string[]).slice(0, 5).join(', ')}{(kpis.itemsLowStockNames as string[]).length > 5 ? ` +${(kpis.itemsLowStockNames as string[]).length - 5} more` : ''}</span>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </Card>
-            </Col>
-          </Row>
-
-          {/* Charts */}
-          <Row gutter={[16, 16]}>
-            <Col xs={24} lg={16}>
-              <Card title="Sales vs Purchases" style={{ height: 400 }}>
-                <ResponsiveContainer width="100%" height={300}>
-                  <LineChart data={prepareSalesVsPurchaseData()}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="date" />
-                    <YAxis />
-                    <Tooltip />
-                    <Legend />
-                    <Line type="monotone" dataKey="sales" stroke="#8884d8" name="Sales" />
-                    <Line type="monotone" dataKey="purchases" stroke="#82ca9d" name="Purchases" />
-                  </LineChart>
-                </ResponsiveContainer>
+                  </ul>
+                </div>
               </Card>
             </Col>
             <Col xs={24} lg={8}>
-              <Card title="Expense Breakdown" style={{ height: 400 }}>
-                <ResponsiveContainer width="100%" height={300}>
-                  <PieChart>
-                    <Pie
-                      data={expenseBreakdown}
-                      cx="50%"
-                      cy="50%"
-                      labelLine={false}
-                      label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                      outerRadius={80}
-                      fill="#8884d8"
-                      dataKey="amount"
-                    >
-                      {expenseBreakdown.map((entry: any, index: number) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                  </PieChart>
-                </ResponsiveContainer>
-              </Card>
-            </Col>
-            <Col xs={24} lg={12}>
-              <Card title="Monthly Revenue" style={{ height: 400 }}>
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={monthlyRevenue}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" />
-                    <YAxis />
-                    <Tooltip />
-                    <Legend />
-                    <Bar dataKey="revenue" fill="#8884d8" name="Revenue" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </Card>
-            </Col>
-            <Col xs={24} lg={12}>
-              <Card title="Top 5 Customers" style={{ height: 400 }}>
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={topCustomers} layout="vertical">
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis type="number" />
-                    <YAxis dataKey="name" type="category" width={100} />
-                    <Tooltip />
-                    <Bar dataKey="total" fill="#82ca9d" name="Total Sales" />
-                  </BarChart>
-                </ResponsiveContainer>
+              <Card>
+                <Statistic
+                  title="Items Needing Attention"
+                  value={kpis.itemsNeedRestock || 0}
+                  prefix={<WarningOutlined />}
+                />
+                {kpis.itemsNeedRestock > 0 && (
+                  <div style={{ marginTop: 4, color: '#ff4d4f', fontSize: 12 }}>
+                    Low / zero stock items require purchase.
+                  </div>
+                )}
+                <div style={{ marginTop: 12, fontSize: 12, maxHeight: 180, overflowY: 'auto' }}>
+                  <strong>Items:</strong>
+                  <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+                    {(kpis.itemsNeedRestockNames && kpis.itemsNeedRestockNames.length > 0) ? (
+                      kpis.itemsNeedRestockNames.map((name: string, i: number) => (
+                        <li key={i}>{name}</li>
+                      ))
+                    ) : items.length === 0 ? (
+                      <li key="none">None</li>
+                    ) : (
+                      items.slice(0, 50).map((it: any) => (
+                        <li key={it.id}>{it.name}{it.quantity != null ? ` (qty: ${it.quantity})` : ''}</li>
+                      ))
+                    )}
+                  </ul>
+                </div>
               </Card>
             </Col>
           </Row>

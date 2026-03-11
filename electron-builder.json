@@ -8,6 +8,9 @@
     "dist/**/*",
     "package.json"
   ],
+  "asarUnpack": [
+    "dist/renderer/pdf.worker.min.mjs"
+  ],
   "win": {
     "target": "nsis",
     "icon": "assets/icon.ico"

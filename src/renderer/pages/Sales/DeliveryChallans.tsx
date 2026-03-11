@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Button, Space, Modal, Form, Input, DatePicker, Select, InputNumber, message, Popconfirm, Switch } from 'antd';
-import { PlusOutlined, EditOutlined, PrinterOutlined, DeleteOutlined, FileTextOutlined } from '@ant-design/icons';
+import { Table, Button, Space, Modal, Form, Input, DatePicker, Select, InputNumber, message, Popconfirm, Switch, Tag } from 'antd';
+import { PlusOutlined, EditOutlined, PrinterOutlined, DeleteOutlined, FileTextOutlined, MinusCircleOutlined, LockOutlined, StopOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
@@ -20,6 +20,11 @@ const DeliveryChallans: React.FC = () => {
     const [printData, setPrintData] = useState<any>(null);
     const [isPreviewVisible, setIsPreviewVisible] = useState(false);
     const [printWithLetterhead, setPrintWithLetterhead] = useState(true);
+    const [contentScale, setContentScale] = useState<number>(1);
+    // Admin password delete
+    const [deletePasswordModal, setDeletePasswordModal] = useState(false);
+    const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
+    const [adminPassword, setAdminPassword] = useState('');
 
     const watchedCustomerId = Form.useWatch('customer_id', form);
 
@@ -28,16 +33,25 @@ const DeliveryChallans: React.FC = () => {
         if (!modalVisible) return;
 
         if (watchedCustomerId == null || watchedCustomerId === '') {
-            form.setFieldsValue({ terms_and_conditions: '' });
+            form.setFieldsValue({ terms_and_conditions: [] });
             return;
         }
 
         const id = Number(watchedCustomerId);
         if (!id) return;
 
+        const parseTerms = (raw: any): string[] => {
+            if (Array.isArray(raw)) return raw;
+            if (typeof raw === 'string') {
+                try { const arr = JSON.parse(raw); if (Array.isArray(arr)) return arr; } catch { /* legacy plain text */ }
+                return raw.trim() ? [raw] : [];
+            }
+            return [];
+        };
+
         const fromList = customers.find((c: any) => c.id === id);
         if (fromList && fromList.terms_and_conditions != null) {
-            form.setFieldsValue({ terms_and_conditions: String(fromList.terms_and_conditions) });
+            form.setFieldsValue({ terms_and_conditions: parseTerms(fromList.terms_and_conditions) });
             return;
         }
 
@@ -47,8 +61,7 @@ const DeliveryChallans: React.FC = () => {
                 const result = await (window as any).electronAPI.db.customers.getById(id);
                 if (cancelled) return;
                 if (result?.success && result?.data) {
-                    const terms = result.data.terms_and_conditions != null ? String(result.data.terms_and_conditions) : '';
-                    form.setFieldsValue({ terms_and_conditions: terms });
+                    form.setFieldsValue({ terms_and_conditions: parseTerms(result.data.terms_and_conditions) });
                 }
             } catch (_) { }
         })();
@@ -161,9 +174,13 @@ const DeliveryChallans: React.FC = () => {
         const result = await (window as any).electronAPI.db.deliveryChallans.getById(record.id);
         if (result.success) {
             setEditingChallan(result.data);
+            let terms: string[] = [];
+            const raw = result.data.terms_and_conditions;
+            if (raw) { try { const arr = JSON.parse(raw); terms = Array.isArray(arr) ? arr : [raw]; } catch { terms = [raw]; } }
             form.setFieldsValue({
                 ...result.data,
                 challan_date: dayjs(result.data.challan_date),
+                terms_and_conditions: terms,
             });
             setModalVisible(true);
         } else {
@@ -185,9 +202,21 @@ const DeliveryChallans: React.FC = () => {
         }
     };
 
-    const handleDelete = async (id: number) => {
+    const handleRequestDelete = (id: number) => {
+        setPendingDeleteId(id);
+        setAdminPassword('');
+        setDeletePasswordModal(true);
+    };
+
+    const handleConfirmDelete = async () => {
+        if (adminPassword !== 'admin123') {
+            message.error('Incorrect admin password');
+            setAdminPassword('');
+            return;
+        }
+        if (pendingDeleteId == null) return;
         try {
-            const result = await (window as any).electronAPI.db.deliveryChallans.delete(id);
+            const result = await (window as any).electronAPI.db.deliveryChallans.delete(pendingDeleteId);
             if (result.success) {
                 message.success('Delivery Challan deleted successfully');
                 loadChallans();
@@ -196,6 +225,33 @@ const DeliveryChallans: React.FC = () => {
             }
         } catch (error) {
             message.error('Failed to delete challan');
+        } finally {
+            setDeletePasswordModal(false);
+            setPendingDeleteId(null);
+            setAdminPassword('');
+        }
+    };
+
+    const handleDisable = async (id: number) => {
+        try {
+            const fetched = await (window as any).electronAPI.db.deliveryChallans.getById(id);
+            if (!fetched.success || !fetched.data) {
+                message.error('Failed to load challan');
+                return;
+            }
+            const data = fetched.data;
+            const result = await (window as any).electronAPI.db.deliveryChallans.update(id, {
+                ...data,
+                status: 'cancelled',
+            });
+            if (result.success) {
+                message.success('Delivery Challan disabled');
+                loadChallans();
+            } else {
+                message.error(result.error || 'Failed to disable challan');
+            }
+        } catch (error) {
+            message.error('Failed to disable challan');
         }
     };
 
@@ -209,6 +265,7 @@ const DeliveryChallans: React.FC = () => {
                 fiscal_year: fiscalYear,
                 challan_date: values.challan_date.format('YYYY-MM-DD'),
                 created_by: user?.id,
+                terms_and_conditions: JSON.stringify((values.terms_and_conditions || []).filter((t: string) => t?.trim())),
             };
 
             // Calculate total quantity
@@ -252,21 +309,33 @@ const DeliveryChallans: React.FC = () => {
         { title: 'PO Number', dataIndex: 'po_number', key: 'po_number' },
         { title: 'Total Qty', dataIndex: 'total_quantity', key: 'qty' },
         {
+            title: 'Status',
+            dataIndex: 'status',
+            key: 'status',
+            render: (status: string) => {
+                if (status === 'cancelled') return <Tag color="red">Disabled</Tag>;
+                return <Tag color="default">{status || 'Active'}</Tag>;
+            },
+        },
+        {
             title: 'Actions',
             key: 'actions',
-            render: (_: any, record: any) => (
-                <Space>
-                    <Button icon={<FileTextOutlined />} onClick={() => handleCreateInvoice(record)} title={`Create ${docLabel}`} />
-                    <Button icon={<PrinterOutlined />} onClick={() => handlePrint(record)} title="Print" />
-                    <Button icon={<EditOutlined />} onClick={() => handleEdit(record)} title="Edit" />
-                    <Popconfirm
-                        title="Delete?"
-                        onConfirm={() => handleDelete(record.id)}
-                    >
-                        <Button danger icon={<DeleteOutlined />} title="Delete" />
-                    </Popconfirm>
-                </Space>
-            ),
+            render: (_: any, record: any) => {
+                if (record.status === 'cancelled') {
+                    return <Tag color="red">Disabled</Tag>;
+                }
+                return (
+                    <Space>
+                        <Button icon={<FileTextOutlined />} onClick={() => handleCreateInvoice(record)} title={`Create ${docLabel}`} />
+                        <Button icon={<PrinterOutlined />} onClick={() => handlePrint(record)} title="Print" />
+                        <Button icon={<EditOutlined />} onClick={() => handleEdit(record)} title="Edit" />
+                        <Popconfirm title="Are you sure you want to disable this delivery challan? This cannot be undone." onConfirm={() => handleDisable(record.id)} okText="Yes, Disable" cancelText="Cancel">
+                            <Button icon={<StopOutlined />} title="Disable" />
+                        </Popconfirm>
+                        <Button danger icon={<DeleteOutlined />} title="Delete" onClick={() => handleRequestDelete(record.id)} />
+                    </Space>
+                );
+            },
         },
     ];
 
@@ -330,7 +399,8 @@ const DeliveryChallans: React.FC = () => {
                                                             currentItems[name] = {
                                                                 ...currentItems[name],
                                                                 description: item.description || '',
-                                                                brand: item.brand_name || ''
+                                                                brand: item.brand_name || '',
+                                                                unit_price: item.selling_price ?? 0
                                                             };
                                                             form.setFieldsValue({ items: currentItems });
                                                         }
@@ -341,6 +411,9 @@ const DeliveryChallans: React.FC = () => {
                                             </Form.Item>
                                             <Form.Item {...restField} name={[name, 'brand']}>
                                                 <Input placeholder="Brand" style={{ width: 120 }} />
+                                            </Form.Item>
+                                            <Form.Item {...restField} name={[name, 'unit_price']} label="Price" initialValue={0}>
+                                                <InputNumber placeholder="Price" min={0} style={{ width: 100 }} />
                                             </Form.Item>
                                             <Form.Item {...restField} name={[name, 'quantity']} rules={[{ required: true, message: 'Enter qty' }]}>
                                                 <InputNumber placeholder="Qty" min={1} />
@@ -360,9 +433,24 @@ const DeliveryChallans: React.FC = () => {
                         )}
                     </Form.List>
 
-                    <Form.Item name="terms_and_conditions" label="Terms and Conditions" style={{ marginTop: 20 }}>
-                        <Input.TextArea rows={4} placeholder="Select a customer to auto-fill, or enter manually" />
-                    </Form.Item>
+                    <div style={{ marginTop: 20 }}>
+                        <label style={{ fontWeight: 500 }}>Terms and Conditions</label>
+                        <Form.List name="terms_and_conditions">
+                            {(fields, { add, remove }) => (
+                                <>
+                                    {fields.map((field) => (
+                                        <div key={field.key} style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                                            <Form.Item {...field} style={{ flex: 1, marginBottom: 0 }}>
+                                                <Input placeholder={`Term ${field.name + 1}`} />
+                                            </Form.Item>
+                                            <MinusCircleOutlined onClick={() => remove(field.name)} style={{ marginTop: 8, color: '#ff4d4f' }} />
+                                        </div>
+                                    ))}
+                                    <Button type="dashed" onClick={() => add('')} block icon={<PlusOutlined />} size="small">Add Term</Button>
+                                </>
+                            )}
+                        </Form.List>
+                    </div>
                 </Form>
             </Modal>
 
@@ -376,7 +464,7 @@ const DeliveryChallans: React.FC = () => {
                 width={900}
                 footer={
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
                             {currentCompany?.letterhead_path && (
                                 <Switch
                                     checked={printWithLetterhead}
@@ -385,6 +473,8 @@ const DeliveryChallans: React.FC = () => {
                                     unCheckedChildren="Without Letterhead"
                                 />
                             )}
+                            <span>Scale:</span>
+                            <Select value={contentScale} onChange={v => setContentScale(v)} style={{ width: 100 }} options={[{ value: 0.8, label: '80%' }, { value: 0.9, label: '90%' }, { value: 1, label: '100%' }]} />
                         </div>
                         <Space>
                             <Button onClick={() => { setIsPreviewVisible(false); setPrintData(null); }}>Close</Button>
@@ -403,6 +493,7 @@ const DeliveryChallans: React.FC = () => {
                                 data={printData}
                                 company={(companies || []).find((c: any) => c.id === printData.company_id) || currentCompany}
                                 withLetterhead={printWithLetterhead}
+                                contentScale={contentScale}
                             />
                         )}
                     </div>
@@ -417,9 +508,33 @@ const DeliveryChallans: React.FC = () => {
                         data={printData}
                         company={(companies || []).find((c: any) => c.id === printData.company_id) || currentCompany}
                         withLetterhead={printWithLetterhead}
+                        contentScale={contentScale}
                     />
                 )}
             </div>
+
+            <Modal
+                title="Admin password required"
+                open={deletePasswordModal}
+                onCancel={() => {
+                    setDeletePasswordModal(false);
+                    setPendingDeleteId(null);
+                    setAdminPassword('');
+                }}
+                onOk={handleConfirmDelete}
+                okText="Delete"
+                okButtonProps={{ danger: true }}
+            >
+                <p>Enter admin password to delete this delivery challan:</p>
+                <Input.Password
+                    prefix={<LockOutlined />}
+                    value={adminPassword}
+                    onChange={e => setAdminPassword(e.target.value)}
+                    placeholder="Admin password"
+                    onKeyDown={e => { if (e.key === 'Enter') handleConfirmDelete(); }}
+                    autoFocus
+                />
+            </Modal>
 
         </div >
     );

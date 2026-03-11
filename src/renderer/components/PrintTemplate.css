@@ -20,9 +20,11 @@
     min-height: 297mm;
 }
 
-/* Letterhead mode: no padding on template itself (padding is on .print-content) */
+/* Letterhead mode: full A4 height so footer strip sits at bottom; no padding on template */
 .print-template.has-letterhead {
     padding: 0;
+    min-height: 297mm;
+    height: 297mm;
 }
 
 /* ══════════════════════════════════════════════════════════════════
@@ -115,6 +117,13 @@
     print-color-adjust: exact;
 }
 
+/* Tighter title when using letterhead so data starts right after header */
+.print-template.has-letterhead .print-content .document-title {
+    margin-top: 0;
+    margin-bottom: 8px;
+    padding: 2px 10px;
+}
+
 /* Gray background only when no letterhead */
 .print-template:not(.has-letterhead) .document-title {
     background: #f0f0f0;
@@ -162,16 +171,20 @@
 .inv-two-col {
     display: flex;
     justify-content: space-between;
-    gap: 24px;
-    margin-bottom: 20px;
+    gap: 16px;
+    margin-bottom: 16px;
+    max-width: 100%;
+    min-width: 0;
 }
 
 .inv-block {
     flex: 1;
-    padding: 12px 14px;
+    min-width: 0;
+    padding: 10px 12px;
     background: #fafafa;
     border-radius: 6px;
     border: 1px solid #e8e8e8;
+    overflow: hidden;
 }
 
 .inv-block-label {
@@ -207,14 +220,18 @@
 .inv-details-row {
     display: flex;
     flex-wrap: wrap;
-    gap: 20px 24px;
+    gap: 12px 20px;
     margin-bottom: 16px;
-    font-size: 12px;
+    font-size: 11px;
     color: #333;
+    max-width: 100%;
 }
 
 .inv-details-row span {
     white-space: nowrap;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .inv-total-row {
@@ -240,19 +257,45 @@
 
 .items-table-invoice {
     width: 100%;
+    max-width: 100%;
+    overflow: hidden;
 }
 
 .items-table-invoice .ant-table {
-    table-layout: auto;
+    table-layout: fixed !important;
     width: 100% !important;
+    max-width: 100% !important;
 }
 
 .items-table-invoice .ant-table-thead > tr > th,
 .items-table-invoice .ant-table-tbody > tr > td {
-    white-space: nowrap;
-    padding: 6px 8px;
-    font-size: 11px;
+    padding: 4px 6px;
+    font-size: 10px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    word-break: break-word;
 }
+
+.items-table-invoice .ant-table-thead > tr > th:nth-child(1),
+.items-table-invoice .ant-table-tbody > tr > td:nth-child(1) { width: 3%; min-width: 28px; }
+.items-table-invoice .ant-table-thead > tr > th:nth-child(2),
+.items-table-invoice .ant-table-tbody > tr > td:nth-child(2) { width: 10%; }
+.items-table-invoice .ant-table-thead > tr > th:nth-child(3),
+.items-table-invoice .ant-table-tbody > tr > td:nth-child(3) { width: 14%; }
+.items-table-invoice .ant-table-thead > tr > th:nth-child(4),
+.items-table-invoice .ant-table-tbody > tr > td:nth-child(4) { width: 6%; }
+.items-table-invoice .ant-table-thead > tr > th:nth-child(5),
+.items-table-invoice .ant-table-tbody > tr > td:nth-child(5) { width: 5%; }
+.items-table-invoice .ant-table-thead > tr > th:nth-child(6),
+.items-table-invoice .ant-table-tbody > tr > td:nth-child(6) { width: 8%; }
+.items-table-invoice .ant-table-thead > tr > th:nth-child(7),
+.items-table-invoice .ant-table-tbody > tr > td:nth-child(7) { width: 10%; }
+.items-table-invoice .ant-table-thead > tr > th:nth-child(8),
+.items-table-invoice .ant-table-tbody > tr > td:nth-child(8) { width: 6%; }
+.items-table-invoice .ant-table-thead > tr > th:nth-child(9),
+.items-table-invoice .ant-table-tbody > tr > td:nth-child(9) { width: 8%; }
+.items-table-invoice .ant-table-thead > tr > th:nth-child(10),
+.items-table-invoice .ant-table-tbody > tr > td:nth-child(10) { width: 8%; }
 
 .items-table .ant-table-thead > tr > th {
     background: #eee !important;
@@ -348,18 +391,24 @@
 
 .items-table-bill {
     width: 100%;
+    max-width: 100%;
     margin-bottom: 0;
+    overflow: hidden;
 }
 
 .items-table-bill .ant-table {
-    table-layout: auto;
+    table-layout: fixed !important;
     width: 100% !important;
+    max-width: 100% !important;
 }
 
 .items-table-bill .ant-table-thead > tr > th,
 .items-table-bill .ant-table-tbody > tr > td {
-    padding: 6px 10px;
-    font-size: 11pt;
+    padding: 4px 6px;
+    font-size: 10px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    word-break: break-word;
 }
 
 .bill-totals-section {
@@ -462,18 +511,33 @@
     z-index: 1;
     background: transparent !important;
     box-sizing: border-box;
+    max-width: 100%;
+    overflow-x: hidden;
 }
 
-/* Letterhead mode: pad top/bottom to clear the strips */
+/* Letterhead mode: content starts right after header (minimal gap); footer strip reserved at bottom */
 .print-template.has-letterhead .print-content {
-    padding: 68mm 15mm 58mm 15mm;
-    /* 65 mm header strip + 3 mm gap; 55 mm footer strip + 3 mm gap */
+    padding: 65mm 15mm 58mm 15mm;
+    /* 65 mm header (no gap); 55 mm footer + 3 mm gap */
 }
 
-/* No-letterhead mode: normal padding, keep A4 min-height */
+/* No-letterhead mode: content slightly down, centered, keep A4 min-height */
 .print-template:not(.has-letterhead) .print-content {
     padding: 20px;
+    padding-top: 48px;
     min-height: 257mm;
+    margin-left: auto;
+    margin-right: auto;
+    max-width: 210mm;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+/* Center the scaled content block so it doesn't sit on the left at 80% scale */
+.print-template:not(.has-letterhead) .print-content .print-content-scaled {
+    flex-shrink: 0;
 }
 
 /* ══════════════════════════════════════════════════════════════════
@@ -593,10 +657,17 @@ body.capturing-pdf #print-container {
     left: 0 !important;
     top: 0 !important;
     width: 210mm !important;
+    height: 297mm !important;
     min-height: 297mm !important;
     margin: 0 !important;
     padding: 0 !important;
     background: white !important;
     overflow: visible !important;
     z-index: 99999 !important;
+}
+
+/* Ensure full A4 so letterhead footer stays at extreme bottom in PDF capture */
+body.capturing-pdf #print-container .print-template {
+    min-height: 297mm !important;
+    height: 297mm !important;
 }

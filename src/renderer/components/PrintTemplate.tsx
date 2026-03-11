@@ -9,9 +9,11 @@ interface PrintTemplateProps {
     company: any;
     onLetterheadReady?: () => void;
     withLetterhead?: boolean;  // default true; set false to suppress letterhead even if company has one
+    /** Scale content to fit more on page (e.g. 0.9 = 90% = more rows fit). 1 = 100%. */
+    contentScale?: number;
 }
 
-const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLetterheadReady, withLetterhead = true }) => {
+const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLetterheadReady, withLetterhead = true, contentScale = 1 }) => {
     if (!data || !company) return null;
 
     const formatDate = (dateString: string) => {
@@ -21,7 +23,7 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
     const getTitle = () => {
         switch (type) {
             case 'invoice': return 'SALES INVOICE';
-            case 'bill': return 'BILL';
+            case 'bill': return 'COMMERCIAL INVOICE';
             case 'quotation': return 'QUOTATION';
             case 'challan': return 'DELIVERY CHALLAN';
             default: return 'DOCUMENT';
@@ -31,7 +33,7 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
     const getNumberLabel = () => {
         switch (type) {
             case 'invoice': return 'Invoice No:';
-            case 'bill': return 'Bill No:';
+            case 'bill': return 'Commercial Invoice No:';
             case 'quotation': return 'Quotation No:';
             case 'challan': return 'Challan No:';
             default: return 'No:';
@@ -73,7 +75,7 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
         const loadLetterhead = async () => {
             const lhPath = company?.letterhead_path;
             if (!lhPath) {
-                // No letterhead — nothing to load, signal ready immediately
+                // No letterhead â€” nothing to load, signal ready immediately
                 setLetterheadBase64(null);
                 setLetterheadError(null);
                 onReadyRef.current?.();
@@ -102,7 +104,7 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
                         return result.data;
                     })();
                 } else {
-                    // Unknown type — skip, signal ready
+                    // Unknown type â€” skip, signal ready
                     onReadyRef.current?.();
                     return;
                 }
@@ -135,20 +137,21 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
     const isInvoice = type === 'invoice';
     const isBill    = type === 'bill';
 
-    // GST Invoice columns — with tax columns
+    // GST Invoice columns â€” with tax columns + HS Code
     const invoiceColumns: any[] = isInvoice ? [
         { title: 'Sr.', key: 'index', align: 'center' as const, render: (_: any, __: any, index: number) => index + 1 },
-        { title: 'Item', dataIndex: 'item_name', key: 'item_name', render: (t: string) => <span style={{ fontWeight: 600 }}>{t || '—'}</span> },
-        { title: 'Description', dataIndex: 'description', key: 'description', render: (t: string) => t || '—' },
+        { title: 'Item', dataIndex: 'item_name', key: 'item_name', render: (t: string) => <span style={{ fontWeight: 600 }}>{t || '-'}</span> },
+        { title: 'Description', dataIndex: 'description', key: 'description', render: (t: string) => (t != null && String(t).trim() !== '' ? String(t) : '-') },
+        { title: 'H.S Code', dataIndex: 'hs_code', key: 'hs_code', align: 'center' as const, render: (v: string) => (v != null && String(v).trim() !== '' ? String(v) : '-') },
         { title: 'Quantity', dataIndex: 'quantity', key: 'quantity', align: 'right' as const },
-        { title: 'Unit Price', dataIndex: 'unit_price', key: 'unit_price', align: 'right' as const, render: (v: number) => (v != null && v !== '') ? Number(v).toLocaleString() : '—' },
+        { title: 'Unit Price', dataIndex: 'unit_price', key: 'unit_price', align: 'right' as const, render: (v: number) => (v != null && v !== '') ? Number(v).toLocaleString() : '-' },
         { title: 'Amount (Excl. Tax)', key: 'amount_excl', align: 'right' as const, render: (_: any, row: any) => ((row.quantity || 0) * (row.unit_price || 0)).toLocaleString() },
         { title: 'Sales Tax Rate', dataIndex: 'gst_rate', key: 'gst_rate', align: 'center' as const, render: (_: any, row: any) => (row.gst_rate != null && row.gst_rate !== '') ? `${Number(row.gst_rate)}%` : '0%' },
         { title: 'Sales Tax Payable', dataIndex: 'gst_amount', key: 'gst_amount', align: 'right' as const, render: (_: any, row: any) => (row.gst_amount != null && row.gst_amount !== '') ? Number(row.gst_amount).toLocaleString() : '0' },
-        { title: 'Total Amount', dataIndex: 'line_total', key: 'line_total', align: 'right' as const, render: (_: any, row: any) => (row.line_total != null && row.line_total !== '') ? Number(row.line_total).toLocaleString() : '—' },
+        { title: 'Total Amount', dataIndex: 'line_total', key: 'line_total', align: 'right' as const, render: (_: any, row: any) => (row.line_total != null && row.line_total !== '') ? Number(row.line_total).toLocaleString() : '-' },
     ] : [];
 
-    // Bill columns — simple, no tax
+    // Bill columns â€” simple, no tax, with brand and HS Code
     const billColumns: any[] = isBill ? [
         { title: 'Sr. No.', key: 'index', align: 'center' as const, width: 60, render: (_: any, __: any, index: number) => index + 1 },
         {
@@ -159,9 +162,10 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
                 </span>
             ),
         },
-        { title: 'Brand', dataIndex: 'brand', key: 'brand', align: 'center' as const, render: (v: string) => v || '—' },
+        { title: 'Brand', dataIndex: 'brand', key: 'brand', align: 'center' as const, render: (v: string) => (v != null && String(v).trim() !== '' ? String(v) : '-') },
+        { title: 'H.S Code', dataIndex: 'hs_code', key: 'hs_code', align: 'center' as const, render: (v: string) => (v != null && String(v).trim() !== '' ? String(v) : '-') },
         { title: 'Qty', dataIndex: 'quantity', key: 'quantity', align: 'center' as const },
-        { title: 'Unit Price', dataIndex: 'unit_price', key: 'unit_price', align: 'right' as const, render: (v: number) => (v != null && v !== '') ? Number(v).toLocaleString() : '—' },
+        { title: 'Unit Price', dataIndex: 'unit_price', key: 'unit_price', align: 'right' as const, render: (v: number) => (v != null && v !== '') ? Number(v).toLocaleString() : '-' },
         { title: 'Total Amount', dataIndex: 'line_total', key: 'line_total', align: 'right' as const, render: (_: any, row: any) => (row.line_total != null && row.line_total !== '') ? Number(row.line_total).toLocaleString() : ((row.quantity || 0) * (row.unit_price || 0)).toLocaleString() },
     ] : [];
 
@@ -170,7 +174,7 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
         { title: 'Sr.', dataIndex: 'index', key: 'index', width: 40, render: (_: any, __: any, index: number) => index + 1 },
         { title: 'Item', dataIndex: 'item_name', key: 'item_name', width: 150, render: (text: string) => <div style={{ fontWeight: 'bold' }}>{text}</div> },
         { title: 'Description', dataIndex: 'description', key: 'description', width: 250 },
-        { title: 'Brand', dataIndex: 'brand', key: 'brand', width: 100, render: (text: string) => text || '—' },
+        { title: 'Brand', dataIndex: 'brand', key: 'brand', width: 100, render: (text: string) => (text != null && String(text).trim() !== '' ? text : '-') },
         { title: 'Qty', dataIndex: 'quantity', key: 'quantity', width: 60, align: 'right' as const },
     ];
 
@@ -184,15 +188,270 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
     const tableColumns = isInvoice ? invoiceColumns : isBill ? billColumns : columns;
 
     const showLetterhead = withLetterhead && !!company.letterhead_path;
+    const scale = contentScale > 0 && contentScale <= 1 ? contentScale : 1;
+    const useScale = scale < 1;
+    // Content area (between header and footer strips): 210 - 30 padding = 180mm wide; 297 - 65 - 58 = 174mm tall
+    const contentAreaW = 180;
+    const contentAreaH = 297 - 65 - 58;
 
-    return (
+    const documentContent = (
+        <>
+            <div className={`document-title ${isInvoice ? 'document-title-invoice' : ''} ${isBill ? 'document-title-bill' : ''}`}>
+                <h2>{getTitle()}</h2>
+            </div>
+            {/* Content block - same in scaled and non-scaled render */}
+            {isInvoice && (
+                <>
+                    <div className="inv-two-col">
+                        <div className="inv-block inv-bill-to">
+                            <div className="inv-block-label">Bill to</div>
+                            <p className="inv-company-name">{data.customer_name}</p>
+                            {data.customer_address != null && String(data.customer_address).trim() !== '' && <p className="inv-address">{data.customer_address}</p>}
+                            {data.customer_tax_number != null && String(data.customer_tax_number).trim() !== '' && <p className="inv-tax"><strong>NTN #:</strong> {data.customer_tax_number}</p>}
+                            {data.attention_person != null && String(data.attention_person).trim() !== '' && <p className="inv-contact"><strong>Contact Person:</strong> {data.attention_person}</p>}
+                        </div>
+                        <div className="inv-block inv-company-info">
+                            <p className="inv-company-name">{company.name}</p>
+                            {company.address != null && String(company.address).trim() !== '' && <p className="inv-address">{company.address}</p>}
+                            {company.phone != null && String(company.phone).trim() !== '' && <p className="inv-contact"><strong>Contact:</strong> {company.phone}</p>}
+                            {company.tax_number != null && String(company.tax_number).trim() !== '' && <p className="inv-tax"><strong>NTN #:</strong> {company.tax_number}</p>}
+                            {company.gst_registration_number != null && String(company.gst_registration_number).trim() !== '' && <p className="inv-tax"><strong>STN #:</strong> {company.gst_registration_number}</p>}
+                        </div>
+                    </div>
+                    <div className="inv-details-row">
+                        <span><strong>Invoice Date:</strong> {formatDate(getDate())}</span>
+                        <span><strong>Invoice Number:</strong> {getNumber()}</span>
+                        {data.person_name != null && String(data.person_name).trim() !== '' && <span><strong>Person Name:</strong> {data.person_name}</span>}
+                        {data.delivery_challan_number && <span><strong>DC No.:</strong> {data.delivery_challan_number}</span>}
+                    </div>
+                </>
+            )}
+            {isBill && (
+                <div className="bill-info-section">
+                    <div className="bill-to-block">
+                        <p className="bill-to-label">To,</p>
+                        <p className="bill-customer-name">{data.customer_name}</p>
+                        {data.customer_address != null && String(data.customer_address).trim() !== '' && (
+                            <p className="bill-customer-address">{data.customer_address}</p>
+                        )}
+                    </div>
+                    <div className="bill-doc-info">
+                        <p><strong>Commercial Invoice #</strong> {getNumber()}</p>
+                        <p><strong>Date:</strong>  {formatDate(getDate())}</p>
+                        {data.person_name != null && String(data.person_name).trim() !== '' && (
+                            <p><strong>Ref:</strong>  {data.person_name}</p>
+                        )}
+                        {data.delivery_challan_number && <p><strong>DC No:</strong> {data.delivery_challan_number}</p>}
+                    </div>
+                </div>
+            )}
+            {!isInvoice && !isBill && (
+                <div className="info-section">
+                    <div className="bill-to">
+                        <strong>To:</strong>
+                        <p className="customer-name">{data.customer_name}</p>
+                        <p className="customer-details">{data.customer_address || 'Address not provided'}</p>
+                        <p className="customer-contact">{data.customer_phone}</p>
+                        {(data.customer_attention_person || data.attention_person) && (
+                            <p className="attention-person"><strong>Attention:</strong> {data.customer_attention_person || data.attention_person}</p>
+                        )}
+                        {data.customer_gst_number && <p><strong>GST No:</strong> {data.customer_gst_number}</p>}
+                        {data.customer_ntn_number && <p><strong>NTN:</strong> {data.customer_ntn_number}</p>}
+                        {data.customer_pr_number && <p className="customer-pr"><strong>Customer PR No:</strong> {data.customer_pr_number}</p>}
+                    </div>
+                    <div className="doc-info">
+                        <p><strong>{getNumberLabel()}</strong> {getNumber()}</p>
+                        <p><strong>Date:</strong> {formatDate(getDate())}</p>
+                        {(type === 'invoice' || type === 'bill') && data.delivery_challan_number && (
+                            <p><strong>DC No:</strong> {data.delivery_challan_number}</p>
+                        )}
+                        {data.po_number && <p><strong>PO No:</strong> {data.po_number}</p>}
+                        {data.customer_pr_number && type === 'quotation' && (
+                            <p><strong>PR No:</strong> {data.customer_pr_number}</p>
+                        )}
+                        {data.expiry_date && <p><strong>Valid Until:</strong> {formatDate(data.expiry_date)}</p>}
+                        {data.customer_salesperson_name && (
+                            <p><strong>Sales Person:</strong> {data.customer_salesperson_name}</p>
+                        )}
+                    </div>
+                </div>
+            )}
+            {type === 'quotation' && (
+                <div style={{ marginBottom: 16, fontSize: '11pt', fontWeight: 500 }}>
+                    Thank you for the inquiry, we are pleased to offer:
+                </div>
+            )}
+            <div className={`items-table ${isInvoice ? 'items-table-invoice' : ''} ${isBill ? 'items-table-bill' : ''}`}>
+                <Table
+                    dataSource={data.items}
+                    columns={tableColumns}
+                    pagination={false}
+                    rowKey="id"
+                    size="small"
+                    bordered
+                    tableLayout="auto"
+                />
+            </div>
+            {isInvoice && (
+                <div className="totals-section inv-totals-section">
+                    <div className="totals">
+                        <div className="inv-total-row">
+                            <span>Total Invoice for Payment</span>
+                            <span>{company.currency || 'PKR'} {data.total_amount?.toLocaleString()}</span>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {isBill && (
+                <div className="bill-totals-section">
+                    <table className="bill-totals-table">
+                        <tbody>
+                            <tr>
+                                <td className="bill-total-label">Total Rs.</td>
+                                <td className="bill-total-value">{Number(data.total_amount || 0).toLocaleString()}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    {data.terms_and_conditions != null && String(data.terms_and_conditions).trim() !== '' && (() => {
+                        let terms: string[] = [];
+                        try { const arr = JSON.parse(data.terms_and_conditions); terms = Array.isArray(arr) ? arr : []; } catch { terms = [String(data.terms_and_conditions)]; }
+                        terms = terms.filter((t: string) => t?.trim());
+                        if (!terms.length) return null;
+                        return (
+                            <div className="bill-terms">
+                                <p className="bill-terms-heading">Terms &amp; Conditions:</p>
+                                <ul style={{ margin: '4px 0 0 18px', padding: 0, fontSize: '11pt', listStyleType: 'disc' }}>
+                                    {terms.map((t: string, i: number) => {
+                                        const isBold = t.startsWith('**') && t.endsWith('**');
+                                        const text = isBold ? t.slice(2, -2) : t;
+                                        return <li key={i} style={isBold ? { fontWeight: 700 } : undefined}>{text}</li>;
+                                    })}
+                                </ul>
+                            </div>
+                        );
+                    })()}
+                    <div className="bill-footer-thanks">
+                        <p>Thanks for your business</p>
+                        <p className="bill-footer-company">{company.name}</p>
+                        {company.phone && <p>{company.phone}</p>}
+                    </div>
+                </div>
+            )}
+            {!isInvoice && !isBill && type !== 'challan' && (
+                <div className="totals-section">
+                    <div className="notes">
+                        {type === 'quotation' ? (
+                            <>
+                                {data.quotation_validity && (
+                                    <p><strong>Quotation Validity:</strong> {data.quotation_validity}</p>
+                                )}
+                                <strong>Terms and Conditions:</strong>
+                                {(() => {
+                                    let terms: string[] = [];
+                                    try { const arr = JSON.parse(data.terms_and_conditions); terms = Array.isArray(arr) ? arr : []; } catch { terms = data.terms_and_conditions ? [String(data.terms_and_conditions)] : []; }
+                                    terms = terms.filter((t: string) => t?.trim());
+                                    return terms.length ? (
+                                        <ul style={{ margin: '4px 0 0 18px', padding: 0, listStyleType: 'disc' }}>
+                                            {terms.map((t: string, i: number) => {
+                                                const isBold = t.startsWith('**') && t.endsWith('**');
+                                                const text = isBold ? t.slice(2, -2) : t;
+                                                return <li key={i} style={isBold ? { fontWeight: 700 } : undefined}>{text}</li>;
+                                            })}
+                                        </ul>
+                                    ) : <p>-</p>;
+                                })()}
+                            </>
+                        ) : (
+                            <>
+                                <strong>Notes:</strong>
+                                <p>{data.notes || 'Thank you for your business!'}</p>
+                            </>
+                        )}
+                    </div>
+                    <div className="totals">
+                        <div className="total-row">
+                            <span>Subtotal:</span>
+                            <span>{data.subtotal?.toLocaleString()}</span>
+                        </div>
+                        <div className="total-row grand-total">
+                            <span>Grand Total:</span>
+                            <span>{data.total_amount?.toLocaleString()} ({company.currency})</span>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {type === 'quotation' && (
+                <>
+                    <div style={{ marginTop: 20, textAlign: 'left', fontSize: '11pt' }}>
+                        <p style={{ fontWeight: 700 }}>From: {company.name}</p>
+                    </div>
+                    {showLetterhead ? (
+                        <>
+                            <div className="dc-footer" style={{ marginTop: 40 }}>
+                                <div className="dc-stamp-box">
+                                    <div className="dc-stamp-line" />
+                                    <p>Company Stamp / Signature</p>
+                                </div>
+                                <div className="dc-signature-box">
+                                    <div className="dc-stamp-line" />
+                                    <p>Customer Signature</p>
+                                </div>
+                            </div>
+                        </>
+                    ) : (
+                        <div className="dc-footer" style={{ marginTop: 60 }}>
+                            <div className="dc-stamp-box">
+                                <div className="dc-stamp-line" />
+                                <p>Authorized Signature</p>
+                                <p style={{ fontSize: '10pt', color: '#666', marginTop: 4 }}>Date: _______________</p>
+                            </div>
+                            <div className="dc-signature-box">
+                                <div className="dc-stamp-line" />
+                                <p>Customer Signature</p>
+                                <p style={{ fontSize: '10pt', color: '#666', marginTop: 4 }}>Date: _______________</p>
+                            </div>
+                        </div>
+                    )}
+                </>
+            )}
+            {type === 'challan' && (
+                <>
+                    <div className="totals-section">
+                        <div className="totals">
+                            <div className="total-row grand-total">
+                                <span>Total Quantity:</span>
+                                <span>{data.total_quantity}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="dc-footer">
+                        <div className="dc-stamp-box">
+                            <div className="dc-stamp-line" />
+                            <p>Stamp</p>
+                        </div>
+                        <div className="dc-signature-box">
+                            <div className="dc-stamp-line" />
+                            <p>Authorized Signature</p>
+                        </div>
+                    </div>
+                </>
+            )}
+            {showLetterhead && (
+                <p style={{ marginTop: 24, textAlign: 'center', fontSize: '9pt', color: '#888', fontStyle: 'italic' }}>
+                    This is a computer-generated quotation and is valid without a physical signature.
+                </p>
+            )}
+        </>
+    );
+
+    const template = (
         <div className={`print-template ${showLetterhead ? 'has-letterhead' : ''}`}>
-            {/* Letterhead: header strip (top) + footer strip (bottom) */}
+            {/* Letterhead: header strip (top) + footer strip (bottom) â€” never scaled; footer stays at extreme bottom */}
             {showLetterhead && (
                 <>
                     {letterheadBase64 ? (
                         <>
-                            {/* Top strip — shows only the header portion of the letterhead */}
+                            {/* Top strip â€” shows only the header portion of the letterhead */}
                             <img
                                 className="letterhead-bg lh-header"
                                 src={letterheadBase64}
@@ -204,7 +463,7 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
                                     onReadyRef.current?.();
                                 }}
                             />
-                            {/* Bottom strip — shows only the footer portion of the letterhead */}
+                            {/* Bottom strip â€” shows only the footer portion of the letterhead */}
                             <img
                                 className="letterhead-bg lh-footer"
                                 src={letterheadBase64}
@@ -212,15 +471,17 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
                             />
                         </>
                     ) : letterheadError ? (
-                        <div className="letterhead-error">⚠️ {letterheadError}</div>
+                        <div className="letterhead-error">âš ï¸ {letterheadError}</div>
                     ) : (
-                        <div className="letterhead-loading">⏳ Loading letterhead...</div>
+                        <div className="letterhead-loading">â³ Loading letterhead...</div>
                     )}
                 </>
             )}
 
-            {/* No letterhead fallback — shown when no letterhead set OR user chose without */}
-            {!showLetterhead && (
+            {/* No letterhead fallback â€” shown when no letterhead set OR user chose without */}
+            {/* For quotations without letterhead: skip company details, only show doc content */}
+            {/* Company details only for quotation when without letterhead; never for invoice, bill, or DC (challan) */}
+            {!showLetterhead && type === 'quotation' && (
                 <div className="company-info-plain print-header-fallback">
                     <div className="company-text">
                         <h1 className="company-name">{company.name}</h1>
@@ -231,207 +492,49 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
                 </div>
             )}
 
-            {/* Document content - overlaid on top of letterhead */}
+            {/* Document content - overlaid between header and footer; only this part is scaled so footer stays at bottom */}
             <div className="print-content">
-
-                <div className={`document-title ${isInvoice ? 'document-title-invoice' : ''} ${isBill ? 'document-title-bill' : ''}`}>
-                    <h2>{getTitle()}</h2>
-                </div>
-
-                {/* ── GST Invoice layout ── */}
-                {isInvoice && (
-                    <>
-                        <div className="inv-two-col">
-                            <div className="inv-block inv-bill-to">
-                                <div className="inv-block-label">Bill to</div>
-                                <p className="inv-company-name">{data.customer_name}</p>
-                                {data.customer_address != null && String(data.customer_address).trim() !== '' && <p className="inv-address">{data.customer_address}</p>}
-                                {data.customer_tax_number != null && String(data.customer_tax_number).trim() !== '' && <p className="inv-tax"><strong>NTN #:</strong> {data.customer_tax_number}</p>}
-                                {data.po_number != null && String(data.po_number).trim() !== '' && <p className="inv-po"><strong>PO #:</strong> {data.po_number}</p>}
-                                {data.attention_person != null && String(data.attention_person).trim() !== '' && <p className="inv-contact"><strong>Contact Person:</strong> {data.attention_person}</p>}
-                            </div>
-                            <div className="inv-block inv-company-info">
-                                <p className="inv-company-name">{company.name}</p>
-                                {company.address != null && String(company.address).trim() !== '' && <p className="inv-address">{company.address}</p>}
-                                {company.phone != null && String(company.phone).trim() !== '' && <p className="inv-contact"><strong>Contact:</strong> {company.phone}</p>}
-                                {company.tax_number != null && String(company.tax_number).trim() !== '' && <p className="inv-tax"><strong>NTN #:</strong> {company.tax_number}</p>}
-                                {company.gst_registration_number != null && String(company.gst_registration_number).trim() !== '' && <p className="inv-tax"><strong>STN #:</strong> {company.gst_registration_number}</p>}
-                            </div>
+                {useScale ? (
+                    showLetterhead ? (
+                        <div
+                            className="print-content-scaled"
+                            style={{
+                                transform: `scale(${scale})`,
+                                transformOrigin: 'top left',
+                                width: `${contentAreaW / scale}mm`,
+                                minHeight: `${contentAreaH / scale}mm`,
+                            }}
+                        >
+                            {documentContent}
                         </div>
-                        <div className="inv-details-row">
-                            <span><strong>Invoice Date:</strong> {formatDate(getDate())}</span>
-                            <span><strong>Invoice Number:</strong> {getNumber()}</span>
-                            {data.person_name != null && String(data.person_name).trim() !== '' && <span><strong>Person Name:</strong> {data.person_name}</span>}
-                            {data.delivery_challan_number && <span><strong>DC No.:</strong> {data.delivery_challan_number}</span>}
-                            {data.po_number && <span><strong>PO No:</strong> {data.po_number}</span>}
-                        </div>
-                    </>
-                )}
-
-                {/* ── Bill layout (no GST) ── */}
-                {isBill && (
-                    <div className="bill-info-section">
-                        <div className="bill-to-block">
-                            <p className="bill-to-label">To,</p>
-                            <p className="bill-customer-name">{data.customer_name}</p>
-                            {data.customer_address != null && String(data.customer_address).trim() !== '' && (
-                                <p className="bill-customer-address">{data.customer_address}</p>
-                            )}
-                        </div>
-                        <div className="bill-doc-info">
-                            <p><strong>Bill #</strong> {getNumber()}</p>
-                            <p><strong>Date:</strong>  {formatDate(getDate())}</p>
-                            {data.person_name != null && String(data.person_name).trim() !== '' && (
-                                <p><strong>Ref:</strong>  {data.person_name}</p>
-                            )}
-                            {data.delivery_challan_number && <p><strong>DC No:</strong> {data.delivery_challan_number}</p>}
-                            {data.po_number != null && String(data.po_number).trim() !== '' && (
-                                <p><strong>PO:</strong>  {data.po_number}</p>
-                            )}
-                        </div>
-                    </div>
-                )}
-
-                {/* ── Quotation / Challan layout ── */}
-                {!isInvoice && !isBill && (
-                    <div className="info-section">
-                        <div className="bill-to">
-                            <strong>To:</strong>
-                            <p className="customer-name">{data.customer_name}</p>
-                            <p className="customer-details">{data.customer_address || 'Address not provided'}</p>
-                            <p className="customer-contact">{data.customer_phone}</p>
-                            {data.attention_person && <p className="attention-person"><strong>Attention:</strong> {data.attention_person}</p>}
-                            {data.customer_pr_number && <p className="customer-pr"><strong>Customer PR No:</strong> {data.customer_pr_number}</p>}
-                        </div>
-                        <div className="doc-info">
-                            <p><strong>{getNumberLabel()}</strong> {getNumber()}</p>
-                            <p><strong>Date:</strong> {formatDate(getDate())}</p>
-                            {(type === 'invoice' || type === 'bill') && data.delivery_challan_number && (
-                                <p><strong>DC No:</strong> {data.delivery_challan_number}</p>
-                            )}
-                            {data.po_number && <p><strong>PO No:</strong> {data.po_number}</p>}
-                            {data.expiry_date && <p><strong>Due Date:</strong> {formatDate(data.expiry_date)}</p>}
-                        </div>
-                    </div>
-                )}
-
-                {type === 'quotation' && (
-                    <div style={{ marginBottom: 16, fontSize: '11pt', fontWeight: 500 }}>
-                        Thank you for the inquiry, we are pleased to offer:
-                    </div>
-                )}
-
-                <div className={`items-table ${isInvoice ? 'items-table-invoice' : ''} ${isBill ? 'items-table-bill' : ''}`}>
-                    <Table
-                        dataSource={data.items}
-                        columns={tableColumns}
-                        pagination={false}
-                        rowKey="id"
-                        size="small"
-                        bordered
-                        tableLayout="auto"
-                    />
-                </div>
-
-                {/* ── GST Invoice totals ── */}
-                {isInvoice && (
-                    <div className="totals-section inv-totals-section">
-                        <div className="totals">
-                            <div className="inv-total-row">
-                                <span>Total Invoice for Payment</span>
-                                <span>{company.currency || 'PKR'} {data.total_amount?.toLocaleString()}</span>
+                    ) : (
+                        <div
+                            className="print-content-scaled-wrapper"
+                            style={{
+                                width: `${contentAreaW}mm`,
+                                overflow: 'hidden',
+                            }}
+                        >
+                            <div
+                                className="print-content-scaled"
+                                style={{
+                                    transform: `scale(${scale})`,
+                                    transformOrigin: 'top center',
+                                    width: `${contentAreaW / scale}mm`,
+                                    minHeight: `${contentAreaH / scale}mm`,
+                                    marginLeft: `${-(contentAreaW / scale - contentAreaW) / 2}mm`,
+                                }}
+                            >
+                                {documentContent}
                             </div>
                         </div>
-                    </div>
-                )}
-
-                {/* ── Bill totals — simple "Total Rs." row ── */}
-                {isBill && (
-                    <div className="bill-totals-section">
-                        <table className="bill-totals-table">
-                            <tbody>
-                                <tr>
-                                    <td className="bill-total-label">Total Rs.</td>
-                                    <td className="bill-total-value">{Number(data.total_amount || 0).toLocaleString()}</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                        {data.terms_and_conditions != null && String(data.terms_and_conditions).trim() !== '' && (
-                            <div className="bill-terms">
-                                <p className="bill-terms-heading">Terms &amp; Conditions:</p>
-                                <p className="bill-terms-text">{data.terms_and_conditions}</p>
-                            </div>
-                        )}
-                        <div className="bill-footer-thanks">
-                            <p>Thanks for your business</p>
-                            <p className="bill-footer-company">{company.name}</p>
-                            {company.phone && <p>{company.phone}</p>}
-                        </div>
-                    </div>
-                )}
-
-                {/* ── Quotation / Challan totals ── */}
-                {!isInvoice && !isBill && type !== 'challan' && (
-                    <div className="totals-section">
-                        <div className="notes">
-                            {type === 'quotation' ? (
-                                <>
-                                    {(data.quotation_validity || data.payment_terms) && (
-                                        <p>
-                                            {data.quotation_validity && <><strong>Quotation Validity:</strong> {data.quotation_validity}</>}
-                                            {data.quotation_validity && data.payment_terms && ' · '}
-                                            {data.payment_terms && <><strong>Payment Terms:</strong> {data.payment_terms}</>}
-                                        </p>
-                                    )}
-                                    <strong>Terms and Conditions:</strong>
-                                    <p>{data.terms_and_conditions || '—'}</p>
-                                </>
-                            ) : (
-                                <>
-                                    <strong>Notes:</strong>
-                                    <p>{data.notes || 'Thank you for your business!'}</p>
-                                </>
-                            )}
-                        </div>
-                        <div className="totals">
-                            <div className="total-row">
-                                <span>Subtotal:</span>
-                                <span>{data.subtotal?.toLocaleString()}</span>
-                            </div>
-                            <div className="total-row grand-total">
-                                <span>Grand Total:</span>
-                                <span>{data.total_amount?.toLocaleString()} ({company.currency})</span>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {type === 'challan' && (
-                    <>
-                        <div className="totals-section">
-                            <div className="totals">
-                                <div className="total-row grand-total">
-                                    <span>Total Quantity:</span>
-                                    <span>{data.total_quantity}</span>
-                                </div>
-                            </div>
-                        </div>
-                        <div className="dc-footer">
-                            <div className="dc-stamp-box">
-                                <div className="dc-stamp-line" />
-                                <p>Stamp</p>
-                            </div>
-                            <div className="dc-signature-box">
-                                <div className="dc-stamp-line" />
-                                <p>Authorized Signature</p>
-                            </div>
-                        </div>
-                    </>
-                )}
-
-            </div> {/* Close print-content wrapper */}
+                    )
+                ) : documentContent}
+            </div>
         </div>
     );
+
+    return template;
 };
 
 export default PrintTemplate;

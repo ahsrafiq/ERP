@@ -21,10 +21,11 @@ async function getPdfJs() {
   const mod = await import('pdfjs-dist/legacy/build/pdf.mjs');
   pdfjsLib = mod;
 
-  // Set workerSrc to the local public URL to satisfy the validation check.
-  // This file is served from src/renderer/public/pdf.worker.min.mjs
-  const origin = window.location.origin || 'http://127.0.0.1:5173';
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `${origin}/pdf.worker.min.mjs`;
+  // Resolve the worker path relative to index.html's location so it works
+  // in both dev (http://127.0.0.1:5173/) and production (file:///...dist/renderer/index.html).
+  // Using window.location.origin alone gives "file://" in packaged Electron,
+  // which produces file:///pdf.worker.min.mjs (filesystem root) — wrong.
+  pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('pdf.worker.min.mjs', window.location.href).href;
 
   return pdfjsLib;
 }

@@ -1,10 +1,38 @@
-import React, { useState, useEffect } from 'react';
-import { Table, Button, Space, Modal, Form, Input, DatePicker, Select, InputNumber, message, Popconfirm, Row, Col, Tag } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, PrinterOutlined, FileTextOutlined, CheckCircleOutlined, MinusCircleOutlined } from '@ant-design/icons';
+import React, { useState, useEffect, useRef } from 'react';
+import { Table, Button, Space, Modal, Form, Input, DatePicker, Select, InputNumber, message, Popconfirm, Row, Col, Tag, AutoComplete, Checkbox } from 'antd';
+import { PlusOutlined, EditOutlined, DeleteOutlined, PrinterOutlined, FileTextOutlined, CheckCircleOutlined, MinusCircleOutlined, LockOutlined, StopOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import PrintTemplate from '../../components/PrintTemplate';
+
+const VALIDITY_STORAGE_KEY = 'erp_validity_suggestions';
+const REMARKS_STORAGE_KEY = 'erp_remarks_suggestions';
+
+const DEFAULT_REMARKS = ['Ready Stock', 'Not Available', 'Convey later'];
+
+function loadSuggestions(key: string, defaults: string[] = []): string[] {
+    try {
+        const raw = localStorage.getItem(key);
+        if (raw) {
+            const arr = JSON.parse(raw);
+            if (Array.isArray(arr)) {
+                const merged = [...new Set([...defaults, ...arr])];
+                return merged;
+            }
+        }
+    } catch { /* ignore */ }
+    return defaults;
+}
+
+function saveSuggestion(key: string, value: string, defaults: string[] = []) {
+    if (!value?.trim()) return;
+    const existing = loadSuggestions(key, defaults);
+    if (!existing.includes(value.trim())) {
+        existing.push(value.trim());
+        localStorage.setItem(key, JSON.stringify(existing));
+    }
+}
 
 const SalesQuotations: React.FC = () => {
     const { currentCompany, companies, user, fiscalYear } = useApp();
@@ -12,41 +40,68 @@ const SalesQuotations: React.FC = () => {
     const [quotations, setQuotations] = useState<any[]>([]);
     const [customers, setCustomers] = useState<any[]>([]);
     const [items, setItems] = useState<any[]>([]);
+    const [brands, setBrands] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
     const [modalVisible, setModalVisible] = useState(false);
     const [editingQuotation, setEditingQuotation] = useState<any>(null);
     const [form] = Form.useForm();
     const [printData, setPrintData] = useState<any>(null);
     const [isPreviewVisible, setIsPreviewVisible] = useState(false);
-    const [attentionPerson, setAttentionPerson] = useState('');
-    const [attentionModalVisible, setAttentionModalVisible] = useState(false);
-    const [currentPrintRecord, setCurrentPrintRecord] = useState<any>(null);
+    const [contentScale, setContentScale] = useState<number>(1);
+
+    // Admin password delete
+    const [deletePasswordModal, setDeletePasswordModal] = useState(false);
+    const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
+    const [adminPassword, setAdminPassword] = useState('');
+
+    // DC from quotation - item selection
+    const [dcSelectionModal, setDcSelectionModal] = useState(false);
+    const [dcSourceQuotation, setDcSourceQuotation] = useState<any>(null);
+    const [dcSelectedItems, setDcSelectedItems] = useState<number[]>([]);
+
+    // Autocomplete suggestions
+    const [validitySuggestions, setValiditySuggestions] = useState<string[]>([]);
+    const [remarksSuggestions, setRemarksSuggestions] = useState<string[]>([]);
 
     const watchedCustomerId = Form.useWatch('customer_id', form);
+
+    useEffect(() => {
+        setValiditySuggestions(loadSuggestions(VALIDITY_STORAGE_KEY));
+        setRemarksSuggestions(loadSuggestions(REMARKS_STORAGE_KEY, DEFAULT_REMARKS));
+    }, []);
 
     useEffect(() => {
         if (currentCompany) {
             loadQuotations();
             loadCustomers();
             loadItems();
+            loadBrands();
         }
     }, [currentCompany]);
 
-    // When customer is selected in quotation form, load their terms and conditions into the field
     useEffect(() => {
         if (!modalVisible) return;
 
         if (watchedCustomerId == null || watchedCustomerId === '') {
-            form.setFieldsValue({ terms_and_conditions: '' });
+            form.setFieldsValue({ terms_and_conditions: [] });
             return;
         }
 
         const id = Number(watchedCustomerId);
         if (!id) return;
 
+        const parseTerms = (raw: any): string[] => {
+            if (Array.isArray(raw)) return raw;
+            if (typeof raw === 'string') {
+                try { const arr = JSON.parse(raw); if (Array.isArray(arr)) return arr; } catch { /* legacy */ }
+                return raw.trim() ? [raw] : [];
+            }
+            return [];
+        };
+
         const fromList = customers.find((c: any) => c.id === id);
         if (fromList && fromList.terms_and_conditions != null) {
-            form.setFieldsValue({ terms_and_conditions: String(fromList.terms_and_conditions) });
+            form.setFieldsValue({ terms_and_conditions: parseTerms(fromList.terms_and_conditions) });
             return;
         }
 
@@ -56,8 +111,7 @@ const SalesQuotations: React.FC = () => {
                 const result = await (window as any).electronAPI.db.customers.getById(id);
                 if (cancelled) return;
                 if (result?.success && result?.data) {
-                    const terms = result.data.terms_and_conditions != null ? String(result.data.terms_and_conditions) : '';
-                    form.setFieldsValue({ terms_and_conditions: terms });
+                    form.setFieldsValue({ terms_and_conditions: parseTerms(result.data.terms_and_conditions) });
                 }
             } catch (_) { }
         })();
@@ -89,19 +143,16 @@ const SalesQuotations: React.FC = () => {
         if (result.success) setItems(result.data || []);
     };
 
-    const handlePrint = async (record: any) => {
-        setCurrentPrintRecord(record);
-        setAttentionPerson(''); // Reset
-        setAttentionModalVisible(true);
+    const loadBrands = async () => {
+        const result = await (window as any).electronAPI.db.brands.getAll();
+        if (result.success) setBrands(result.data || []);
     };
 
-    const proceedToPrint = async () => {
-        if (!currentPrintRecord) return;
-        setAttentionModalVisible(false);
+    const handlePrint = async (record: any) => {
         try {
-            const result = await (window as any).electronAPI.db.salesQuotations.getById(currentPrintRecord.id);
+            const result = await (window as any).electronAPI.db.salesQuotations.getById(record.id);
             if (result.success && result.data) {
-                setPrintData({ ...result.data, attention_person: attentionPerson });
+                setPrintData(result.data);
                 setIsPreviewVisible(true);
             }
         } catch (error) {
@@ -121,11 +172,8 @@ const SalesQuotations: React.FC = () => {
 
     const handleSavePDF = async () => {
         try {
-            // Step 1: show the save dialog BEFORE any visual change
             const pathResult = await (window as any).electronAPI.db.files.getSavePath('Quotation.pdf');
             if (!pathResult.success) return;
-
-            // Step 2: apply capturing class (brief flash, dialog already gone)
             document.body.classList.add('capturing-pdf');
             await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
             const result = await (window as any).electronAPI.db.files.captureAndSave(pathResult.filePath);
@@ -151,10 +199,13 @@ const SalesQuotations: React.FC = () => {
         const result = await (window as any).electronAPI.db.salesQuotations.getById(record.id);
         if (result.success) {
             setEditingQuotation(result.data);
+            let terms: string[] = [];
+            const raw = result.data.terms_and_conditions;
+            if (raw) { try { const arr = JSON.parse(raw); terms = Array.isArray(arr) ? arr : [raw]; } catch { terms = [raw]; } }
             form.setFieldsValue({
                 ...result.data,
                 quotation_date: dayjs(result.data.quotation_date),
-                expiry_date: result.data.expiry_date ? dayjs(result.data.expiry_date) : null,
+                terms_and_conditions: terms,
             });
             setModalVisible(true);
         } else {
@@ -163,10 +214,50 @@ const SalesQuotations: React.FC = () => {
     };
 
     const handleCreateChallan = async (record: any) => {
+        const hasExistingDc = (record.delivery_challan_count ?? 0) > 0;
+
+        const proceed = async () => {
+            try {
+                const result = await (window as any).electronAPI.db.salesQuotations.getById(record.id);
+                if (result.success && result.data && result.data.items?.length) {
+                    setDcSourceQuotation(result.data);
+                    setDcSelectedItems(result.data.items.map((_: any, i: number) => i));
+                    setDcSelectionModal(true);
+                } else {
+                    message.error('Quotation has no items');
+                }
+            } catch {
+                message.error('Failed to load quotation');
+            }
+        };
+
+        if (hasExistingDc) {
+            Modal.confirm({
+                title: 'Delivery challan already exists',
+                content: 'A delivery challan already exists for this quotation. Do you want to create another one as a duplicate?',
+                okText: 'Create Duplicate DC',
+                cancelText: 'Cancel',
+                onOk: proceed,
+            });
+        } else {
+            proceed();
+        }
+    };
+
+    const confirmCreateDC = async () => {
+        if (!dcSourceQuotation || dcSelectedItems.length === 0) {
+            message.warning('Select at least one item');
+            return;
+        }
         try {
-            const result = await (window as any).electronAPI.db.deliveryChallans.createFromQuotation(record.id, user?.id);
+            const selectedItems = dcSelectedItems.map(i => dcSourceQuotation.items[i]);
+            const result = await (window as any).electronAPI.db.deliveryChallans.createFromQuotation(
+                dcSourceQuotation.id, user?.id, selectedItems.map((it: any) => it.item_id)
+            );
             if (result.success && result.data) {
-                message.success(`Delivery Challan ${result.data.challan_number} created from quotation`);
+                message.success(`Delivery Challan ${result.data.challan_number} created`);
+                setDcSelectionModal(false);
+                setDcSourceQuotation(null);
                 navigate('/sales/delivery-challans');
             } else {
                 message.error(result.error || 'Failed to create delivery challan');
@@ -176,51 +267,104 @@ const SalesQuotations: React.FC = () => {
         }
     };
 
-    const handleDelete = async (id: number) => {
+    const handleRequestDelete = (id: number) => {
+        setPendingDeleteId(id);
+        setAdminPassword('');
+        setDeletePasswordModal(true);
+    };
+
+    const handleConfirmDelete = async () => {
+        if (adminPassword !== 'admin123') {
+            message.error('Incorrect admin password');
+            setAdminPassword('');
+            return;
+        }
+        if (pendingDeleteId == null) return;
         try {
-            const result = await (window as any).electronAPI.db.salesQuotations.delete(id);
+            const result = await (window as any).electronAPI.db.salesQuotations.delete(pendingDeleteId);
             if (result.success) {
-                message.success('Quotation deleted successfully');
+                message.success('Quotation deleted');
                 loadQuotations();
             } else {
-                message.error(result.error || 'Failed to delete quotation');
+                message.error(result.error || 'Failed to delete');
             }
-        } catch (error) {
-            message.error('Failed to delete quotation');
+        } catch {
+            message.error('Failed to delete');
+        } finally {
+            setDeletePasswordModal(false);
+            setPendingDeleteId(null);
+            setAdminPassword('');
+        }
+    };
+
+    const handleDisable = async (id: number) => {
+        try {
+            // Fetch the full quotation first, then update with status changed
+            const fetched = await (window as any).electronAPI.db.salesQuotations.getById(id);
+            if (!fetched.success || !fetched.data) {
+                message.error('Failed to load quotation');
+                return;
+            }
+            const data = fetched.data;
+            const result = await (window as any).electronAPI.db.salesQuotations.update(id, {
+                ...data,
+                quotation_number: data.quotation_number,
+                status: 'cancelled',
+            });
+            if (result.success) {
+                message.success('Quotation disabled');
+                loadQuotations();
+            } else {
+                message.error(result.error || 'Failed to disable');
+            }
+        } catch {
+            message.error('Failed to disable');
         }
     };
 
     const handleSave = async (values: any) => {
         if (!currentCompany) return;
         try {
+            // Save validity suggestion
+            if (values.quotation_validity?.trim()) {
+                saveSuggestion(VALIDITY_STORAGE_KEY, values.quotation_validity);
+                setValiditySuggestions(loadSuggestions(VALIDITY_STORAGE_KEY));
+            }
+
+            // Save any new remarks suggestions
+            values.items?.forEach((item: any) => {
+                if (item.availability?.trim()) {
+                    saveSuggestion(REMARKS_STORAGE_KEY, item.availability, DEFAULT_REMARKS);
+                }
+            });
+            setRemarksSuggestions(loadSuggestions(REMARKS_STORAGE_KEY, DEFAULT_REMARKS));
+
             const quotationData = {
                 ...values,
                 company_id: currentCompany.id,
                 quotation_number: values.quotation_number?.trim?.() || undefined,
                 fiscal_year: fiscalYear,
                 quotation_date: values.quotation_date.format('YYYY-MM-DD'),
-                expiry_date: values.expiry_date?.format('YYYY-MM-DD'),
+                expiry_date: values.quotation_date && values.quotation_validity
+                    ? computeExpiryDate(values.quotation_date, values.quotation_validity)
+                    : undefined,
                 created_by: user?.id,
+                terms_and_conditions: JSON.stringify((values.terms_and_conditions || []).filter((t: string) => t?.trim())),
             };
 
-            const customerId = values.customer_id;
-            const customer = customers.find((c: any) => c.id === customerId);
-            const defaultTaxRate = customer?.default_tax_rate != null ? Number(customer.default_tax_rate) : 0;
+            delete quotationData.payment_terms;
 
             let subtotal = 0;
-            let taxTotal = 0;
             quotationData.items?.forEach((item: any) => {
                 const lineTotal = (Number(item.quantity) || 0) * (Number(item.unit_price) || 0);
-                const taxAmount = lineTotal * (defaultTaxRate / 100);
-                item.tax_rate = defaultTaxRate;
-                item.tax_amount = taxAmount;
-                item.line_total = lineTotal + taxAmount;
+                item.tax_rate = 0;
+                item.tax_amount = 0;
+                item.line_total = lineTotal;
                 subtotal += lineTotal;
-                taxTotal += taxAmount;
             });
             quotationData.subtotal = subtotal;
-            quotationData.tax_amount = taxTotal;
-            quotationData.total_amount = subtotal + taxTotal;
+            quotationData.tax_amount = 0;
+            quotationData.total_amount = subtotal;
 
             if (editingQuotation) {
                 const result = await (window as any).electronAPI.db.salesQuotations.update(editingQuotation.id, quotationData);
@@ -249,27 +393,18 @@ const SalesQuotations: React.FC = () => {
         }
     };
 
-    const handleFormChange = (changedValues: any, allValues: any) => {
-        if (changedValues.items) {
-            const changedItems = changedValues.items;
-            const updatedItems = [...allValues.items];
-
-            changedItems.forEach((item: any, index: number) => {
-                if (item && item.item_id) {
-                    const selectedItem = items.find(i => i.id === item.item_id);
-                    if (selectedItem) {
-                        updatedItems[index] = {
-                            ...updatedItems[index],
-                            brand_name: selectedItem.brand_name || '—',
-                            description: selectedItem.description || '',
-                            unit_price: selectedItem.selling_price || 0,
-                        };
-                    }
-                }
-            });
-
-            form.setFieldsValue({ items: updatedItems });
+    const computeExpiryDate = (quoDate: any, validity: string): string | undefined => {
+        if (!quoDate || !validity) return undefined;
+        const match = validity.match(/^(\d+)\s*days?$/i);
+        if (match) {
+            return dayjs(quoDate).add(Number(match[1]), 'day').format('YYYY-MM-DD');
         }
+        return undefined;
+    };
+
+    const getItemsForBrand = (brandId: number | undefined) => {
+        if (!brandId) return items;
+        return items.filter(i => i.brand_id === brandId);
     };
 
     const columns = [
@@ -294,19 +429,22 @@ const SalesQuotations: React.FC = () => {
         {
             title: 'Actions',
             key: 'actions',
-            render: (_: any, record: any) => (
-                <Space>
-                    <Button icon={<FileTextOutlined />} onClick={() => handleCreateChallan(record)} title="Create Delivery Challan" />
-                    <Button icon={<PrinterOutlined />} onClick={() => handlePrint(record)} title="Print" />
-                    <Button icon={<EditOutlined />} onClick={() => handleEdit(record)} title="Edit" />
-                    <Popconfirm
-                        title="Delete?"
-                        onConfirm={() => handleDelete(record.id)}
-                    >
-                        <Button danger icon={<DeleteOutlined />} title="Delete" />
-                    </Popconfirm>
-                </Space>
-            ),
+            render: (_: any, record: any) => {
+                const isDisabled = record.status === 'cancelled';
+                return isDisabled ? (
+                    <Tag color="red">Disabled</Tag>
+                ) : (
+                    <Space>
+                        <Button icon={<FileTextOutlined />} onClick={() => handleCreateChallan(record)} title="Create Delivery Challan" />
+                        <Button icon={<PrinterOutlined />} onClick={() => handlePrint(record)} title="Print" />
+                        <Button icon={<EditOutlined />} onClick={() => handleEdit(record)} title="Edit" />
+                        <Popconfirm title="Are you sure you want to disable this quotation? This cannot be undone." onConfirm={() => handleDisable(record.id)} okText="Yes, Disable" cancelText="Cancel">
+                            <Button icon={<StopOutlined />} title="Disable" />
+                        </Popconfirm>
+                        <Button danger icon={<DeleteOutlined />} onClick={() => handleRequestDelete(record.id)} title="Delete (Admin)" />
+                    </Space>
+                );
+            },
         },
     ];
 
@@ -331,123 +469,151 @@ const SalesQuotations: React.FC = () => {
                     form={form}
                     layout="vertical"
                     onFinish={handleSave}
-                    onValuesChange={handleFormChange}
                 >
-                    <Row gutter={16} style={{ marginBottom: 0 }}>
-                        <Col flex="0 0 160px">
+                    <Row gutter={16}>
+                        <Col span={4}>
                             <Form.Item name="quotation_number" label="Quotation #" rules={[{ required: true, message: 'Required' }]}>
                                 <Input placeholder="e.g. QUO-0001/26" />
                             </Form.Item>
                         </Col>
-                        <Col flex="0 0 240px">
+                        <Col span={6}>
                             <Form.Item name="customer_id" label="Customer" rules={[{ required: true }]}>
                                 <Select
                                     showSearch
-                                    optionFilterProp="children"
-                                    placeholder="Select customer"
+                                    filterOption={(input, option) =>
+                                        (option?.children as unknown as string)?.toLowerCase().includes(input.toLowerCase())
+                                    }
+                                    placeholder="Type to search customer..."
                                 >
                                     {customers.map(c => <Select.Option key={c.id} value={c.id}>{c.name}</Select.Option>)}
                                 </Select>
                             </Form.Item>
                         </Col>
-                        <Col flex="0 0 120px">
+                        <Col span={4}>
                             <Form.Item name="quotation_date" label="Date" rules={[{ required: true }]} initialValue={dayjs()}>
                                 <DatePicker style={{ width: '100%' }} />
                             </Form.Item>
                         </Col>
-                        <Col flex="0 0 120px">
-                            <Form.Item name="expiry_date" label="Due Date">
-                                <DatePicker style={{ width: '100%' }} />
-                            </Form.Item>
-                        </Col>
-                        <Col flex="0 0 180px">
-                            <Form.Item name="quotation_validity" label="Quotation Validity" rules={[{ required: true, message: 'Please select quotation validity' }]}>
-                                <Select placeholder="e.g. 30 days" style={{ width: '100%' }}>
-                                    <Select.Option value="7 days">7 days</Select.Option>
-                                    <Select.Option value="15 days">15 days</Select.Option>
-                                    <Select.Option value="30 days">30 days</Select.Option>
-                                    <Select.Option value="60 days">60 days</Select.Option>
-                                    <Select.Option value="90 days">90 days</Select.Option>
-                                    <Select.Option value="Until expiry date">Until expiry date</Select.Option>
-                                </Select>
-                            </Form.Item>
-                        </Col>
-                        <Col flex="0 0 200px">
-                            <Form.Item name="payment_terms" label="Payment Terms" rules={[{ required: true, message: 'Please select payment terms' }]}>
-                                <Select placeholder="e.g. Net 30" style={{ width: '100%' }}>
-                                    <Select.Option value="Due on receipt">Due on receipt</Select.Option>
-                                    <Select.Option value="Net 7">Net 7</Select.Option>
-                                    <Select.Option value="Net 15">Net 15</Select.Option>
-                                    <Select.Option value="Net 30">Net 30</Select.Option>
-                                    <Select.Option value="Net 60">Net 60</Select.Option>
-                                    <Select.Option value="50% advance, 50% on delivery">50% advance, 50% on delivery</Select.Option>
-                                    <Select.Option value="100% advance">100% advance</Select.Option>
-                                    <Select.Option value="100% on delivery">100% on delivery</Select.Option>
-                                </Select>
+                        <Col span={6}>
+                            <Form.Item name="quotation_validity" label="Quotation Validity" rules={[{ required: true, message: 'Enter validity' }]}>
+                                <AutoComplete
+                                    options={validitySuggestions.filter(s => s).map(s => ({ value: s }))}
+                                    filterOption={(input, option) =>
+                                        (option?.value as string)?.toLowerCase().includes(input.toLowerCase())
+                                    }
+                                    placeholder="e.g. 30 days"
+                                />
                             </Form.Item>
                         </Col>
                     </Row>
 
                     <Form.List
                         name="items"
-                        rules={[
-                            {
-                                validator: async (_, names) => {
-                                    if (!names || names.length < 1) {
-                                        return Promise.reject(new Error('At least one item is required'));
-                                    }
-                                },
-                            },
-                        ]}
+                        rules={[{ validator: async (_, names) => { if (!names || names.length < 1) return Promise.reject(new Error('At least one item is required')); } }]}
                     >
                         {(fields, { add, remove }, { errors }) => (
                             <>
-                                {fields.map(({ key, name, ...restField }) => (
-                                    <Space key={key} style={{ display: 'flex', marginBottom: 8 }} align="baseline">
-                                        <Form.Item {...restField} name={[name, 'item_id']} rules={[{ required: true, message: 'Select item' }]}>
-                                            <Select
-                                                placeholder="Item"
-                                                style={{ width: 250 }}
-                                                showSearch
-                                                filterOption={(input, option) =>
-                                                    (option?.children as unknown as string).toLowerCase().includes(input.toLowerCase())
-                                                }
-                                                onChange={(itemId) => {
-                                                    const item = items.find(i => i.id === itemId);
-                                                    if (item) {
-                                                        const currentItems = form.getFieldValue('items') || [];
-                                                        currentItems[name] = {
-                                                            ...currentItems[name],
-                                                            description: item.description || '',
-                                                            brand: item.brand_name || '',
-                                                            unit_price: item.selling_price || 0
-                                                        };
-                                                        form.setFieldsValue({ items: currentItems });
-                                                    }
-                                                }}
-                                            >
-                                                {items.map(i => <Select.Option key={i.id} value={i.id}>{i.name}</Select.Option>)}
-                                            </Select>
-                                        </Form.Item>
-                                        <Form.Item {...restField} name={[name, 'description']}>
-                                            <Input placeholder="Description" style={{ width: 300 }} />
-                                        </Form.Item>
-                                        <Form.Item {...restField} name={[name, 'brand']}>
-                                            <Input placeholder="Brand" style={{ width: 120 }} />
-                                        </Form.Item>
-                                        <Form.Item {...restField} name={[name, 'quantity']} rules={[{ required: true, message: 'Enter qty' }]}>
-                                            <InputNumber placeholder="Qty" min={1} />
-                                        </Form.Item>
-                                        <Form.Item {...restField} name={[name, 'unit_price']} rules={[{ required: true, message: 'Enter price' }]}>
-                                            <InputNumber placeholder="Price" min={0} />
-                                        </Form.Item>
-                                        <Form.Item {...restField} name={[name, 'availability']}>
-                                            <Input placeholder="Remarks" style={{ width: 150 }} />
-                                        </Form.Item>
-                                        <Button onClick={() => remove(name)}>Remove</Button>
-                                    </Space>
-                                ))}
-                                <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />}>Add Item</Button>
+                                <div style={{ overflowX: 'auto' }}>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                        <thead>
+                                            <tr style={{ background: '#fafafa', borderBottom: '1px solid #d9d9d9' }}>
+                                                <th style={{ padding: '8px', textAlign: 'left', width: 140 }}>Brand</th>
+                                                <th style={{ padding: '8px', textAlign: 'left', width: 200 }}>Item</th>
+                                                <th style={{ padding: '8px', textAlign: 'left', width: 220 }}>Description</th>
+                                                <th style={{ padding: '8px', textAlign: 'center', width: 70 }}>Qty</th>
+                                                <th style={{ padding: '8px', textAlign: 'center', width: 100 }}>Price</th>
+                                                <th style={{ padding: '8px', textAlign: 'left', width: 150 }}>Remarks</th>
+                                                <th style={{ padding: '8px', width: 40 }}></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {fields.map(({ key, name, ...restField }) => {
+                                                const currentBrandId = form.getFieldValue(['items', name, 'brand_id']);
+                                                const filteredItems = getItemsForBrand(currentBrandId);
+                                                return (
+                                                    <tr key={key} style={{ borderBottom: '1px solid #f0f0f0' }}>
+                                                        <td style={{ padding: '4px 8px' }}>
+                                                            <Form.Item {...restField} name={[name, 'brand_id']} style={{ marginBottom: 0 }}>
+                                                                <Select
+                                                                    placeholder="Brand"
+                                                                    allowClear
+                                                                    showSearch
+                                                                    optionFilterProp="children"
+                                                                    style={{ width: '100%' }}
+                                                                    onChange={(brandId) => {
+                                                                        const currentItems = form.getFieldValue('items') || [];
+                                                                        currentItems[name] = { ...currentItems[name], brand_id: brandId, item_id: undefined, description: '', unit_price: undefined, brand: brands.find(b => b.id === brandId)?.name || '' };
+                                                                        form.setFieldsValue({ items: [...currentItems] });
+                                                                    }}
+                                                                >
+                                                                    {brands.map(b => <Select.Option key={b.id} value={b.id}>{b.name}</Select.Option>)}
+                                                                </Select>
+                                                            </Form.Item>
+                                                        </td>
+                                                        <td style={{ padding: '4px 8px' }}>
+                                                            <Form.Item {...restField} name={[name, 'item_id']} rules={[{ required: true, message: 'Required' }]} style={{ marginBottom: 0 }}>
+                                                                <Select
+                                                                    placeholder="Item"
+                                                                    showSearch
+                                                                    optionFilterProp="children"
+                                                                    style={{ width: '100%' }}
+                                                                    onChange={(itemId) => {
+                                                                        const item = items.find(i => i.id === itemId);
+                                                                        if (item) {
+                                                                            const currentItems = form.getFieldValue('items') || [];
+                                                                            currentItems[name] = {
+                                                                                ...currentItems[name],
+                                                                                item_id: itemId,
+                                                                                description: item.description || '',
+                                                                                brand: item.brand_name || '',
+                                                                                brand_id: item.brand_id || currentItems[name]?.brand_id,
+                                                                                unit_price: item.selling_price || 0,
+                                                                            };
+                                                                            form.setFieldsValue({ items: [...currentItems] });
+                                                                        }
+                                                                    }}
+                                                                >
+                                                                    {filteredItems.map(i => <Select.Option key={i.id} value={i.id}>{i.name}</Select.Option>)}
+                                                                </Select>
+                                                            </Form.Item>
+                                                        </td>
+                                                        <td style={{ padding: '4px 8px' }}>
+                                                            <Form.Item {...restField} name={[name, 'description']} style={{ marginBottom: 0 }}>
+                                                                <Input placeholder="Description" />
+                                                            </Form.Item>
+                                                        </td>
+                                                        <td style={{ padding: '4px 8px' }}>
+                                                            <Form.Item {...restField} name={[name, 'quantity']} rules={[{ required: true, message: 'Qty' }]} style={{ marginBottom: 0 }}>
+                                                                <InputNumber placeholder="Qty" min={1} style={{ width: '100%' }} />
+                                                            </Form.Item>
+                                                        </td>
+                                                        <td style={{ padding: '4px 8px' }}>
+                                                            <Form.Item {...restField} name={[name, 'unit_price']} rules={[{ required: true, message: 'Price' }]} style={{ marginBottom: 0 }}>
+                                                                <InputNumber placeholder="Price" min={0} style={{ width: '100%' }} />
+                                                            </Form.Item>
+                                                        </td>
+                                                        <td style={{ padding: '4px 8px' }}>
+                                                            <Form.Item {...restField} name={[name, 'availability']} style={{ marginBottom: 0 }}>
+                                                                <AutoComplete
+                                                                    options={remarksSuggestions.map(s => ({ value: s }))}
+                                                                    filterOption={(input, option) =>
+                                                                        (option?.value as string)?.toLowerCase().includes(input.toLowerCase())
+                                                                    }
+                                                                    placeholder="Remarks"
+                                                                    style={{ width: '100%' }}
+                                                                />
+                                                            </Form.Item>
+                                                        </td>
+                                                        <td style={{ padding: '4px 8px' }}>
+                                                            <MinusCircleOutlined onClick={() => remove(name)} style={{ color: '#ff4d4f', fontSize: 16 }} />
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />} style={{ marginTop: 8 }}>Add Item</Button>
                                 <div style={{ color: '#ff4d4f', marginTop: 8 }}>
                                     <Form.ErrorList errors={errors} />
                                 </div>
@@ -455,32 +621,75 @@ const SalesQuotations: React.FC = () => {
                         )}
                     </Form.List>
 
-                    <Form.Item name="terms_and_conditions" label="Terms and Conditions" rules={[{ required: true, message: 'Please enter terms and conditions' }]} style={{ marginTop: 20 }}>
-                        <Input.TextArea rows={4} placeholder="Select a customer to auto-fill, or enter manually" />
-                    </Form.Item>
+                    <div style={{ marginTop: 20 }}>
+                        <label style={{ fontWeight: 500 }}>Terms and Conditions</label>
+                        <Form.List name="terms_and_conditions" rules={[{ validator: async (_, list) => { if (!list || list.filter((t: string) => t?.trim()).length === 0) throw new Error('Add at least one term'); } }]}>
+                            {(fields, { add, remove }, { errors }) => (
+                                <>
+                                    {fields.map((field) => (
+                                        <div key={field.key} style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                                            <Form.Item {...field} style={{ flex: 1, marginBottom: 0 }} rules={[{ required: true, whitespace: true, message: 'Enter a term or remove this row' }]}>
+                                                <Input placeholder={`Term ${field.name + 1}`} />
+                                            </Form.Item>
+                                            <MinusCircleOutlined onClick={() => remove(field.name)} style={{ marginTop: 8, color: '#ff4d4f' }} />
+                                        </div>
+                                    ))}
+                                    <Button type="dashed" onClick={() => add('')} block icon={<PlusOutlined />} size="small">Add Term</Button>
+                                    <Form.ErrorList errors={errors} />
+                                </>
+                            )}
+                        </Form.List>
+                    </div>
                 </Form>
             </Modal>
 
+            {/* Admin password for delete */}
             <Modal
-                title="Print Details"
-                open={attentionModalVisible}
-                onCancel={() => setAttentionModalVisible(false)}
-                onOk={proceedToPrint}
-                okText="Proceed to Print"
+                title="Admin Authorization Required"
+                open={deletePasswordModal}
+                onCancel={() => { setDeletePasswordModal(false); setPendingDeleteId(null); }}
+                onOk={handleConfirmDelete}
+                okText="Delete"
+                okButtonProps={{ danger: true }}
             >
-                <Form layout="vertical">
-                    <Form.Item label="Attention Person Name">
-                        <Input
-                            value={attentionPerson}
-                            onChange={(e) => setAttentionPerson(e.target.value)}
-                            placeholder="Enter contact person name"
-                            autoFocus
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter') proceedToPrint();
-                            }}
-                        />
-                    </Form.Item>
-                </Form>
+                <p>Enter admin password to delete this quotation:</p>
+                <Input.Password
+                    prefix={<LockOutlined />}
+                    value={adminPassword}
+                    onChange={e => setAdminPassword(e.target.value)}
+                    placeholder="Admin password"
+                    onKeyDown={e => { if (e.key === 'Enter') handleConfirmDelete(); }}
+                    autoFocus
+                />
+            </Modal>
+
+            {/* DC item selection modal */}
+            <Modal
+                title="Create Delivery Challan — Select Items"
+                open={dcSelectionModal}
+                onCancel={() => { setDcSelectionModal(false); setDcSourceQuotation(null); }}
+                onOk={confirmCreateDC}
+                okText="Create DC"
+                width={700}
+            >
+                {dcSourceQuotation?.items && (
+                    <Table
+                        dataSource={dcSourceQuotation.items.map((it: any, i: number) => ({ ...it, _idx: i }))}
+                        rowKey="_idx"
+                        pagination={false}
+                        size="small"
+                        rowSelection={{
+                            selectedRowKeys: dcSelectedItems,
+                            onChange: (keys) => setDcSelectedItems(keys as number[]),
+                        }}
+                        columns={[
+                            { title: 'Item', dataIndex: 'item_name', key: 'item_name' },
+                            { title: 'Description', dataIndex: 'description', key: 'description' },
+                            { title: 'Qty', dataIndex: 'quantity', key: 'quantity', align: 'right' as const },
+                            { title: 'Brand', dataIndex: 'brand', key: 'brand' },
+                        ]}
+                    />
+                )}
             </Modal>
 
             <Modal
@@ -493,17 +702,15 @@ const SalesQuotations: React.FC = () => {
                 width={900}
                 footer={[
                     <Button key="cancel" onClick={() => setIsPreviewVisible(false)}>Close</Button>,
-                    <Button
-                        key="pdf"
-                        icon={<PrinterOutlined />}
-                        onClick={handleSavePDF}
-                    >
-                        Save as PDF
-                    </Button>,
+                    <Button key="pdf" icon={<PrinterOutlined />} onClick={handleSavePDF}>Save as PDF</Button>,
                     <Button key="print" type="primary" onClick={actualPrint}>Print</Button>
                 ]}
                 className="print-preview-modal"
             >
+                <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span>Scale:</span>
+                    <Select value={contentScale} onChange={v => setContentScale(v)} style={{ width: 100 }} options={[{ value: 0.8, label: '80% (more rows)' }, { value: 0.9, label: '90%' }, { value: 1, label: '100%' }]} />
+                </div>
                 <div style={{ maxHeight: '70vh', overflowY: 'auto', padding: '20px', background: '#f5f5f5' }}>
                     <div className="preview-page-wrapper">
                         {printData && (
@@ -511,19 +718,20 @@ const SalesQuotations: React.FC = () => {
                                 type="quotation"
                                 data={printData}
                                 company={(companies || []).find((c: any) => c.id === printData.company_id) || currentCompany}
+                                contentScale={contentScale}
                             />
                         )}
                     </div>
                 </div>
             </Modal>
 
-            {/* Hidden print container — revealed by @media print CSS for PDF/Print capture */}
             <div id="print-container">
                 {printData && (
                     <PrintTemplate
                         type="quotation"
                         data={printData}
                         company={(companies || []).find((c: any) => c.id === printData.company_id) || currentCompany}
+                        contentScale={contentScale}
                     />
                 )}
             </div>

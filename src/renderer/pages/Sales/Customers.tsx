@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { Table, Button, Space, Modal, Form, Input, InputNumber, Select, DatePicker, message, Popconfirm, Tag, Tooltip } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, DollarOutlined, WarningOutlined } from '@ant-design/icons';
+import React, { useState, useEffect, useRef } from 'react';
+import { Table, Button, Space, Modal, Form, Input, InputNumber, Select, DatePicker, message, Popconfirm, Tag, Tooltip, Alert } from 'antd';
+import { PlusOutlined, EditOutlined, DeleteOutlined, DollarOutlined, WarningOutlined, MinusCircleOutlined, BoldOutlined, UploadOutlined } from '@ant-design/icons';
 import { useApp } from '../../context/AppContext';
 import dayjs from 'dayjs';
+import { parseExcelToRows, getCol, getColNum } from '../../utils/excelImport';
 
 const Customers: React.FC = () => {
   const { currentCompany, user } = useApp();
@@ -17,6 +18,9 @@ const Customers: React.FC = () => {
   const [advanceCustomer, setAdvanceCustomer] = useState<any>(null);
   const [advanceForm] = Form.useForm();
   const [advanceSaving, setAdvanceSaving] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importFormatModal, setImportFormatModal] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (currentCompany) loadCustomers();
@@ -35,12 +39,16 @@ const Customers: React.FC = () => {
   const handleSave = async (values: any) => {
     if (!currentCompany) { message.error('Please add a company first'); return; }
     try {
+      const payload = {
+        ...values,
+        terms_and_conditions: JSON.stringify((values.terms_and_conditions || []).filter((t: string) => t?.trim())),
+      };
       if (editingCustomer) {
-        const result = await (window as any).electronAPI.db.customers.update(editingCustomer.id, values);
+        const result = await (window as any).electronAPI.db.customers.update(editingCustomer.id, payload);
         if (result.success) message.success('Customer updated successfully');
         else message.error(result.error || 'Failed to update customer');
       } else {
-        const result = await (window as any).electronAPI.db.customers.create({ ...values, company_id: currentCompany.id });
+        const result = await (window as any).electronAPI.db.customers.create({ ...payload, company_id: currentCompany.id });
         if (result.success) message.success('Customer created successfully');
         else message.error(result.error || 'Failed to create customer');
       }
@@ -57,6 +65,65 @@ const Customers: React.FC = () => {
       if (result.success) { message.success('Customer deleted successfully'); loadCustomers(); }
       else message.error(result.error || 'Failed to delete customer');
     } catch { message.error('Failed to delete customer'); }
+  };
+
+  const handleImportExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!currentCompany) { message.error('Please select a company first'); return; }
+    if (!file.name.match(/\.(xlsx|xls)$/i)) {
+      message.error('Please select an Excel file (.xlsx or .xls)');
+      return;
+    }
+    setImporting(true);
+    try {
+      const rows = await parseExcelToRows(file);
+      if (rows.length === 0) {
+        message.warning('No rows found in the Excel file');
+        setImporting(false);
+        return;
+      }
+      let created = 0;
+      let failed = 0;
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        const name = getCol(row, 'Name', 'name');
+        const code = getCol(row, 'Code', 'code', 'Customer Code');
+        if (!name || !code) { failed++; continue; }
+        const payload = {
+          company_id: currentCompany.id,
+          name,
+          code: code.replace(/\D/g, '') || code,
+          email: getCol(row, 'Email', 'email'),
+          phone: getCol(row, 'Phone', 'phone'),
+          address: getCol(row, 'Address', 'address'),
+          city: getCol(row, 'City', 'city'),
+          state: getCol(row, 'State', 'state'),
+          country: getCol(row, 'Country', 'country'),
+          postal_code: getCol(row, 'Postal Code', 'postal_code'),
+          tax_number: getCol(row, 'Tax Number', 'NTN Number', 'tax_number'),
+          credit_limit: getColNum(row, 'Credit Limit', 'credit_limit'),
+          attention_person: getCol(row, 'Attention Person', 'attention_person'),
+          salesperson_name: getCol(row, 'Sales Person', 'Salesperson Name', 'salesperson_name'),
+          gst_number: getCol(row, 'GST Number', 'gst_number'),
+          pr_number: getCol(row, 'PR Number', 'pr_number'),
+        };
+        try {
+          const result = await (window as any).electronAPI.db.customers.create(payload);
+          if (result?.id != null) created++;
+          else failed++;
+        } catch (_) {
+          failed++;
+        }
+      }
+      message.success(`Import complete: ${created} created, ${failed} failed or skipped.`);
+      loadCustomers();
+    } catch (err: any) {
+      message.error(err?.message || 'Failed to import Excel');
+    } finally {
+      setImporting(false);
+    }
   };
 
   const openAdvanceModal = (record: any) => {
@@ -142,7 +209,9 @@ const Customers: React.FC = () => {
             icon={<EditOutlined />}
             onClick={() => {
               setEditingCustomer(record);
-              form.setFieldsValue(record);
+              let terms: string[] = [];
+              try { terms = JSON.parse(record.terms_and_conditions || '[]'); } catch { terms = record.terms_and_conditions ? [record.terms_and_conditions] : []; }
+              form.setFieldsValue({ ...record, terms_and_conditions: terms });
               setModalVisible(true);
             }}
           />
@@ -163,11 +232,16 @@ const Customers: React.FC = () => {
 
   return (
     <div>
-      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
-        <h1>Customers</h1>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingCustomer(null); form.resetFields(); setModalVisible(true); }}>
-          Add Customer
-        </Button>
+      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+        <h1 style={{ margin: 0 }}>Customers</h1>
+        <Space>
+          <Button icon={<UploadOutlined />} onClick={() => setImportFormatModal(true)}>Excel format</Button>
+          <input ref={fileInputRef} type="file" accept=".xlsx,.xls" style={{ display: 'none' }} onChange={handleImportExcel} />
+          <Button icon={<UploadOutlined />} loading={importing} onClick={() => fileInputRef.current?.click()}>Import from Excel</Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingCustomer(null); form.resetFields(); setModalVisible(true); }}>
+            Add Customer
+          </Button>
+        </Space>
       </div>
 
       <Table columns={columns} dataSource={customers} loading={loading} rowKey="id" pagination={{ pageSize: 10 }} />
@@ -187,26 +261,70 @@ const Customers: React.FC = () => {
           <Form.Item name="credit_limit" label="Credit Limit (assigned at account opening)" rules={[{ required: true, message: 'Please set credit limit at customer opening' }]}>
             <InputNumber min={0} style={{ width: '100%' }} precision={2} placeholder="e.g. 50000" />
           </Form.Item>
-          <Form.Item name="name" label="Name" rules={[{ required: true }]}><Input /></Form.Item>
-          <Form.Item name="email" label="Email" rules={[{ type: 'email' }]}><Input /></Form.Item>
-          <Form.Item name="phone" label="Phone"><Input /></Form.Item>
-          <Form.Item name="address" label="Address"><Input.TextArea rows={2} /></Form.Item>
-          <Form.Item name="city" label="City"><Input /></Form.Item>
-          <Form.Item name="state" label="State"><Input /></Form.Item>
-          <Form.Item name="country" label="Country"><Input /></Form.Item>
-          <Form.Item name="postal_code" label="Postal Code"><Input /></Form.Item>
-          {!!currentCompany?.is_gst_enabled && (
-            <>
-              <Form.Item name="tax_number" label="Tax Number (NTN)"><Input /></Form.Item>
-              <Form.Item name="default_tax_rate" label="Default Tax % (GST / Sales Tax)" rules={[{ required: true, message: 'Please enter default tax %' }]} tooltip="Tax rate applied to sales for this customer (quotations, invoices).">
-                <InputNumber min={0} max={100} step={0.5} style={{ width: '100%' }} placeholder="e.g. 18" />
-              </Form.Item>
-            </>
-          )}
-          <Form.Item name="pr_number" label="PR Number"><Input /></Form.Item>
-          <Form.Item name="terms_and_conditions" label="Terms and Conditions" rules={[{ required: true, message: 'Please enter terms and conditions' }]}>
-            <Input.TextArea rows={4} placeholder="Standard terms and conditions for this customer" />
+          <Form.Item name="name" label="Name" rules={[{ required: true, message: 'Please enter name' }]}><Input /></Form.Item>
+          <Form.Item name="attention_person" label="Attention Person" rules={[{ required: true, message: 'Please enter attention person' }]} tooltip="This name will appear automatically on quotations for this customer.">
+            <Input placeholder="e.g., Mr. Ali Khan" />
           </Form.Item>
+          <Form.Item name="salesperson_name" label="Sales Person" rules={[{ required: true, message: 'Please enter sales person' }]} tooltip="Sales representative for this customer — shown on quotations.">
+            <Input placeholder="e.g., Ahmed Raza" />
+          </Form.Item>
+          <Form.Item name="email" label="Email" rules={[{ required: true, message: 'Please enter email' }, { type: 'email' }]}><Input /></Form.Item>
+          <Form.Item name="phone" label="Phone" rules={[{ required: true, message: 'Please enter phone' }]}><Input /></Form.Item>
+          <Form.Item name="address" label="Address" rules={[{ required: true, message: 'Please enter address' }]}><Input.TextArea rows={2} /></Form.Item>
+          <Form.Item name="city" label="City" rules={[{ required: true, message: 'Please enter city' }]}><Input /></Form.Item>
+          <Form.Item name="state" label="State" rules={[{ required: true, message: 'Please enter state' }]}><Input /></Form.Item>
+          <Form.Item name="country" label="Country" rules={[{ required: true, message: 'Please enter country' }]}><Input /></Form.Item>
+          <Form.Item name="postal_code" label="Postal Code" rules={[{ required: true, message: 'Please enter postal code' }]}><Input /></Form.Item>
+          <Form.Item name="tax_number" label="NTN Number" rules={[{ required: true, message: 'Please enter NTN number' }]}>
+            <Input placeholder="e.g., 1234567-8" />
+          </Form.Item>
+          {!!currentCompany?.is_gst_enabled && (
+            <Form.Item name="gst_number" label="GST Number" rules={[{ required: true, message: 'Please enter GST number' }]}>
+              <Input placeholder="e.g., 1234567-8" />
+            </Form.Item>
+          )}
+          <Form.Item name="pr_number" label="PR Number" rules={[{ required: true, message: 'Please enter PR number' }]}><Input /></Form.Item>
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ fontWeight: 500 }}>Terms and Conditions</label>
+            <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>Wrap text with ** to make it bold (e.g. **This is bold**)</div>
+            <Form.List name="terms_and_conditions" rules={[{ validator: async (_, list) => { if (!list || list.filter((t: string) => t?.trim()).length === 0) throw new Error('Add at least one term'); } }]}>
+              {(fields, { add, remove }, { errors }) => (
+                <>
+                  {fields.map((field) => {
+                    const val = form.getFieldValue(['terms_and_conditions', field.name]) || '';
+                    const isBold = typeof val === 'string' && val.startsWith('**') && val.endsWith('**') && val.length > 4;
+                    return (
+                      <div key={field.key} style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                        <Form.Item {...field} style={{ flex: 1, marginBottom: 0 }} rules={[{ required: true, whitespace: true, message: 'Enter a term or remove this row' }]}>
+                          <Input placeholder={`Term ${field.name + 1}`} style={isBold ? { fontWeight: 700 } : undefined} />
+                        </Form.Item>
+                        <Button
+                          type={isBold ? 'primary' : 'default'}
+                          icon={<BoldOutlined />}
+                          size="small"
+                          style={{ marginTop: 4 }}
+                          title="Toggle bold"
+                          onClick={() => {
+                            const terms = form.getFieldValue('terms_and_conditions') || [];
+                            const current = terms[field.name] || '';
+                            if (isBold) {
+                              terms[field.name] = current.slice(2, -2);
+                            } else {
+                              terms[field.name] = `**${current}**`;
+                            }
+                            form.setFieldsValue({ terms_and_conditions: [...terms] });
+                          }}
+                        />
+                        <MinusCircleOutlined onClick={() => remove(field.name)} style={{ marginTop: 8, color: '#ff4d4f' }} />
+                      </div>
+                    );
+                  })}
+                  <Button type="dashed" onClick={() => add('')} block icon={<PlusOutlined />}>Add Term</Button>
+                  <Form.ErrorList errors={errors} />
+                </>
+              )}
+            </Form.List>
+          </div>
         </Form>
       </Modal>
 
@@ -239,6 +357,30 @@ const Customers: React.FC = () => {
             <Input.TextArea rows={2} placeholder="Cheque number, reference, etc." />
           </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal
+        title="Customers – Excel import format"
+        open={importFormatModal}
+        onCancel={() => setImportFormatModal(false)}
+        footer={[
+          <Button key="close" onClick={() => setImportFormatModal(false)}>Close</Button>,
+          <Button key="import" type="primary" onClick={() => { setImportFormatModal(false); fileInputRef.current?.click(); }}>Choose file to import</Button>,
+        ]}
+        width={560}
+      >
+        <Alert type="info" style={{ marginBottom: 16 }} message="First row must be headers. Use the column names below (case-insensitive)." />
+        <p><strong>Required columns:</strong></p>
+        <ul style={{ marginBottom: 12, paddingLeft: 20 }}>
+          <li><strong>Name</strong> – Customer name</li>
+          <li><strong>Code</strong> – Customer code (numbers only; non-digits will be stripped)</li>
+          <li><strong>Credit Limit</strong> – Numeric</li>
+        </ul>
+        <p><strong>Optional columns:</strong></p>
+        <ul style={{ marginBottom: 0, paddingLeft: 20 }}>
+          <li>Email, Phone, Address, City, State, Country, Postal Code</li>
+          <li>Tax Number (NTN), Attention Person, Sales Person, GST Number, PR Number</li>
+        </ul>
       </Modal>
     </div>
   );

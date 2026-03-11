@@ -27,6 +27,8 @@ import ProfitLossReport from './pages/Reports/ProfitLossReport';
 import BalanceSheetReport from './pages/Reports/BalanceSheetReport';
 import SalesQuotations from './pages/Sales/SalesQuotations';
 import DeliveryChallans from './pages/Sales/DeliveryChallans';
+import Receivables from './pages/Receivables/Receivables';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { AppProvider } from './context/AppContext';
 
 import Login from './pages/Login/Login';
@@ -56,6 +58,7 @@ const AppContent: React.FC = () => {
         <Route path="/sales/quotations" element={<SalesQuotations />} />
         <Route path="/sales/invoices" element={<SalesInvoices />} />
         <Route path="/sales/delivery-challans" element={<DeliveryChallans />} />
+        <Route path="/receivables" element={<ErrorBoundary><Receivables /></ErrorBoundary>} />
         <Route path="/purchase/vendors" element={<Vendors />} />
         <Route path="/purchase/invoices" element={<PurchaseInvoices />} />
         <Route path="/inventory/items" element={<Items />} />

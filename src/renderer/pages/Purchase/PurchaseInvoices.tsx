@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Button, Space, Modal, Form, Input, InputNumber, Select, DatePicker, message, Popconfirm } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, PrinterOutlined } from '@ant-design/icons';
+import { Table, Button, Space, Modal, Form, Input, InputNumber, Select, DatePicker, message, Tag, Popconfirm } from 'antd';
+import { PlusOutlined, EditOutlined, DeleteOutlined, PrinterOutlined, LockOutlined, StopOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useApp } from '../../context/AppContext';
 
@@ -9,11 +9,16 @@ const PurchaseInvoices: React.FC = () => {
   const [invoices, setInvoices] = useState<any[]>([]);
   const [vendors, setVendors] = useState<any[]>([]);
   const [items, setItems] = useState<any[]>([]);
+  const [brands, setBrands] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
   const [editingInvoice, setEditingInvoice] = useState<any>(null);
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
+  // Admin password delete
+  const [deletePasswordModal, setDeletePasswordModal] = useState(false);
+  const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
+  const [adminPassword, setAdminPassword] = useState('');
   const [form] = Form.useForm();
   const [paymentForm] = Form.useForm();
 
@@ -22,8 +27,21 @@ const PurchaseInvoices: React.FC = () => {
       loadInvoices();
       loadVendors();
       loadItems();
+      loadBrands();
     }
   }, [currentCompany]);
+
+  const loadBrands = async () => {
+    try {
+      const result = await (window as any).electronAPI.db.brands.getAll();
+      if (result?.success && Array.isArray(result.data)) setBrands(result.data);
+    } catch (_) {}
+  };
+
+  const getItemsForBrand = (brandId: number | undefined) => {
+    if (!brandId) return items;
+    return items.filter((i: any) => i.brand_id === brandId);
+  };
 
   const loadInvoices = async () => {
     if (!currentCompany) return;
@@ -71,7 +89,6 @@ const PurchaseInvoices: React.FC = () => {
         ...values,
         company_id: currentCompany.id,
         invoice_date: values.invoice_date.format('YYYY-MM-DD'),
-        due_date: values.due_date?.format('YYYY-MM-DD'),
         items: values.items || [],
         created_by: user?.id,
       };
@@ -83,11 +100,9 @@ const PurchaseInvoices: React.FC = () => {
         const lineTotal = item.quantity * item.unit_price;
         subtotal += lineTotal;
 
-        let gstAmount = 0;
-        if (currentCompany?.is_gst_enabled) {
-          gstAmount = lineTotal * (item.gst_rate / 100);
-        }
-
+        // Purchase invoices: do not use per-line GST rate field anymore
+        const gstAmount = 0;
+        item.gst_rate = 0;
         gstTotal += gstAmount;
         item.gst_amount = gstAmount;
         item.line_total = lineTotal + gstAmount;
@@ -149,9 +164,21 @@ const PurchaseInvoices: React.FC = () => {
     }
   };
 
-  const handleDelete = async (id: number) => {
+  const handleRequestDelete = (id: number) => {
+    setPendingDeleteId(id);
+    setAdminPassword('');
+    setDeletePasswordModal(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (adminPassword !== 'admin123') {
+      message.error('Incorrect admin password');
+      setAdminPassword('');
+      return;
+    }
+    if (pendingDeleteId == null) return;
     try {
-      const result = await (window as any).electronAPI.db.purchaseInvoices.delete(id);
+      const result = await (window as any).electronAPI.db.purchaseInvoices.delete(pendingDeleteId);
       if (result.success) {
         message.success('Invoice deleted successfully');
         loadInvoices();
@@ -160,6 +187,33 @@ const PurchaseInvoices: React.FC = () => {
       }
     } catch (error) {
       message.error('Failed to delete invoice');
+    } finally {
+      setDeletePasswordModal(false);
+      setPendingDeleteId(null);
+      setAdminPassword('');
+    }
+  };
+
+  const handleDisableInvoice = async (id: number) => {
+    try {
+      const fetched = await (window as any).electronAPI.db.purchaseInvoices.getById(id);
+      if (!fetched.success || !fetched.data) {
+        message.error('Failed to load invoice');
+        return;
+      }
+      const data = fetched.data;
+      const result = await (window as any).electronAPI.db.purchaseInvoices.update(id, {
+        ...data,
+        status: 'cancelled',
+      });
+      if (result.success) {
+        message.success('Invoice disabled');
+        loadInvoices();
+      } else {
+        message.error(result.error || 'Failed to disable invoice');
+      }
+    } catch (error) {
+      message.error('Failed to disable invoice');
     }
   };
 
@@ -199,62 +253,57 @@ const PurchaseInvoices: React.FC = () => {
       title: 'Status',
       dataIndex: 'status',
       key: 'status',
+      render: (status: string) => {
+        if (status === 'cancelled') return <Tag color="red">Disabled</Tag>;
+        return <Tag color="default">{status || 'Active'}</Tag>;
+      },
     },
     {
       title: 'Actions',
       key: 'actions',
-      render: (_: any, record: any) => (
-        <Space>
-          <Button
-            title="Record Payment"
-            type="primary"
-            size="small"
-            disabled={record.balance <= 0}
-            onClick={() => {
-              setSelectedInvoice(record);
-              paymentForm.setFieldsValue({
-                amount: record.balance,
-                payment_date: dayjs(),
-              });
-              setPaymentModalVisible(true);
-            }}
-          >
-            Pay
-          </Button>
-          <Button icon={<PrinterOutlined />} />
-          <Button
-            icon={<EditOutlined />}
-            onClick={async () => {
-              const hide = message.loading('Fetching invoice details...', 0);
-              try {
-                const result = await (window as any).electronAPI.db.purchaseInvoices.getById(record.id);
-                if (result.success && result.data) {
-                  const detailedInvoice = result.data;
-                  setEditingInvoice(detailedInvoice);
-                  form.setFieldsValue({
-                    ...detailedInvoice,
-                    invoice_date: dayjs(detailedInvoice.invoice_date),
-                    due_date: detailedInvoice.due_date ? dayjs(detailedInvoice.due_date) : null,
-                  });
-                  setModalVisible(true);
-                } else {
+      render: (_: any, record: any) => {
+        if (record.status === 'cancelled') {
+          return <Tag color="red">Disabled</Tag>;
+        }
+        return (
+          <Space>
+            <Button
+              icon={<EditOutlined />}
+              onClick={async () => {
+                const hide = message.loading('Fetching invoice details...', 0);
+                try {
+                  const result = await (window as any).electronAPI.db.purchaseInvoices.getById(record.id);
+                  if (result.success && result.data) {
+                    const detailedInvoice = result.data;
+                    setEditingInvoice(detailedInvoice);
+                    const itemsWithBrand = (detailedInvoice.items || []).map((line: any) => ({
+                      ...line,
+                      brand_id: items.find((i: any) => i.id === line.item_id)?.brand_id,
+                    }));
+                    form.setFieldsValue({
+                      ...detailedInvoice,
+                      invoice_date: dayjs(detailedInvoice.invoice_date),
+                      due_date: detailedInvoice.due_date ? dayjs(detailedInvoice.due_date) : null,
+                      items: itemsWithBrand,
+                    });
+                    setModalVisible(true);
+                  } else {
+                    message.error('Failed to fetch invoice details');
+                  }
+                } catch (error) {
                   message.error('Failed to fetch invoice details');
+                } finally {
+                  hide();
                 }
-              } catch (error) {
-                message.error('Failed to fetch invoice details');
-              } finally {
-                hide();
-              }
-            }}
-          />
-          <Popconfirm
-            title="Are you sure you want to delete this invoice?"
-            onConfirm={() => handleDelete(record.id)}
-          >
-            <Button danger icon={<DeleteOutlined />} />
-          </Popconfirm>
-        </Space>
-      ),
+              }}
+            />
+            <Popconfirm title="Are you sure you want to disable this invoice? This cannot be undone." onConfirm={() => handleDisableInvoice(record.id)} okText="Yes, Disable" cancelText="Cancel">
+              <Button icon={<StopOutlined />} title="Disable" />
+            </Popconfirm>
+            <Button danger icon={<DeleteOutlined />} onClick={() => handleRequestDelete(record.id)} />
+          </Space>
+        );
+      },
     },
   ];
 
@@ -308,15 +357,6 @@ const PurchaseInvoices: React.FC = () => {
             <Form.Item name="invoice_date" label="Invoice Date" rules={[{ required: true }]}>
               <DatePicker />
             </Form.Item>
-            <Form.Item name="due_date" label="Due Date">
-              <DatePicker />
-            </Form.Item>
-            <Form.Item name="status" label="Status" initialValue="draft">
-              <Select>
-                <Select.Option value="draft">Draft</Select.Option>
-                <Select.Option value="finalized">Finalized</Select.Option>
-              </Select>
-            </Form.Item>
           </Space>
           <Form.List
             name="items"
@@ -332,8 +372,36 @@ const PurchaseInvoices: React.FC = () => {
           >
             {(fields, { add, remove }, { errors }) => (
               <>
-                {fields.map(({ key, name, ...restField }) => (
+                {fields.map(({ key, name, ...restField }) => {
+                  const currentBrandId = form.getFieldValue(['items', name, 'brand_id']);
+                  const filteredItems = getItemsForBrand(currentBrandId);
+                  return (
                   <Space key={key} style={{ display: 'flex', marginBottom: 8 }} align="baseline">
+                    <Form.Item {...restField} name={[name, 'brand_id']} rules={[{ required: true, message: 'Brand' }]}>
+                      <Select
+                        placeholder="Brand"
+                        style={{ width: 140 }}
+                        showSearch
+                        optionFilterProp="children"
+                        filterOption={(input, option) => {
+                          const label = (option?.children ?? '') as string;
+                          const search = (input || '').trim().toLowerCase();
+                          if (!search) return true;
+                          if (label.toLowerCase().includes(search)) return true;
+                          const initials = label.split(/\s+/).map((w: string) => (w[0] || '').toLowerCase()).join('');
+                          return initials.startsWith(search) || initials.includes(search);
+                        }}
+                        onChange={(brandId) => {
+                          const currentItems = form.getFieldValue('items') || [];
+                          currentItems[name] = { ...currentItems[name], brand_id: brandId, item_id: undefined, unit_price: undefined, gst_rate: 0 };
+                          form.setFieldsValue({ items: currentItems });
+                        }}
+                      >
+                        {(brands || []).filter((b: any) => b?.id != null).map((b: any) => (
+                          <Select.Option key={b.id} value={b.id}>{b.name ?? ''}</Select.Option>
+                        ))}
+                      </Select>
+                    </Form.Item>
                     <Form.Item
                       {...restField}
                       name={[name, 'item_id']}
@@ -342,10 +410,18 @@ const PurchaseInvoices: React.FC = () => {
                       <Select
                         placeholder="Item"
                         style={{ width: 220 }}
+                        showSearch
+                        optionFilterProp="children"
+                        filterOption={(input, option) => {
+                          const label = (option?.children ?? '') as string;
+                          const search = (input || '').trim().toLowerCase();
+                          if (!search) return true;
+                          return label.toLowerCase().includes(search);
+                        }}
                         onChange={(value) => {
-                          const item = items.find(i => i.id === value);
+                          const item = items.find((i: any) => i.id === value);
                           if (item) {
-                            const currentItems = form.getFieldValue('items');
+                            const currentItems = form.getFieldValue('items') || [];
                             currentItems[name] = {
                               ...currentItems[name],
                               unit_price: item.purchase_price,
@@ -355,7 +431,7 @@ const PurchaseInvoices: React.FC = () => {
                           }
                         }}
                       >
-                        {items.map(item => (
+                        {filteredItems.map((item: any) => (
                           <Select.Option key={item.id} value={item.id}>
                             {item.name} ({item.code})
                           </Select.Option>
@@ -376,16 +452,10 @@ const PurchaseInvoices: React.FC = () => {
                     >
                       <InputNumber placeholder="Price" min={0} />
                     </Form.Item>
-
-                    {currentCompany?.is_gst_enabled && (
-                      <Form.Item {...restField} name={[name, 'gst_rate']} initialValue={0}>
-                        <InputNumber placeholder="GST %" min={0} max={100} />
-                      </Form.Item>
-                    )}
-
                     <Button onClick={() => remove(name)}>Remove</Button>
                   </Space>
-                ))}
+                );
+                })}
                 <Form.Item>
                   <Button type="dashed" onClick={() => add()} block>
                     Add Item
@@ -441,6 +511,29 @@ const PurchaseInvoices: React.FC = () => {
             <Input.TextArea rows={2} />
           </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal
+        title="Admin password required"
+        open={deletePasswordModal}
+        onCancel={() => {
+          setDeletePasswordModal(false);
+          setPendingDeleteId(null);
+          setAdminPassword('');
+        }}
+        onOk={handleConfirmDelete}
+        okText="Delete"
+        okButtonProps={{ danger: true }}
+      >
+        <p>Enter admin password to delete this purchase invoice:</p>
+        <Input.Password
+          prefix={<LockOutlined />}
+          value={adminPassword}
+          onChange={e => setAdminPassword(e.target.value)}
+          placeholder="Admin password"
+          onKeyDown={e => { if (e.key === 'Enter') handleConfirmDelete(); }}
+          autoFocus
+        />
       </Modal>
     </div>
   );

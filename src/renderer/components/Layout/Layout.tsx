@@ -60,6 +60,11 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       ],
     },
     {
+      key: '/receivables',
+      icon: <DollarOutlined />,
+      label: 'Receivables',
+    },
+    {
       key: 'purchase',
       icon: <ShoppingOutlined />,
       label: 'Purchase',

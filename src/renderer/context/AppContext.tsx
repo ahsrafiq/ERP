@@ -44,7 +44,7 @@ interface AppContextType {
   logout: () => void;
 }
 
-const AppContext = createContext<AppContextType | undefined>(undefined);
+export const AppContext = createContext<AppContextType | undefined>(undefined);
 
 const FISCAL_YEAR_KEY = 'erp_fiscal_year';
 

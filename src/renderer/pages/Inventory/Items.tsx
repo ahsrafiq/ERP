@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { Table, Button, Space, Modal, Form, Input, InputNumber, Select, AutoComplete, message, Popconfirm } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import React, { useState, useEffect, useRef } from 'react';
+import { Table, Button, Space, Modal, Form, Input, InputNumber, Select, AutoComplete, message, Popconfirm, Alert } from 'antd';
+import { PlusOutlined, EditOutlined, DeleteOutlined, UploadOutlined } from '@ant-design/icons';
 import { useApp } from '../../context/AppContext';
+import { parseExcelToRows, getCol, getColNum } from '../../utils/excelImport';
 
 const Items: React.FC = () => {
   const { currentCompany } = useApp();
@@ -11,21 +12,30 @@ const Items: React.FC = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [editingItem, setEditingItem] = useState<any>(null);
   const [form] = Form.useForm();
+  const [importing, setImporting] = useState(false);
+  const [importFormatModal, setImportFormatModal] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    loadBrands();
+  }, []);
 
   useEffect(() => {
     loadItems();
-    loadBrands();
-  }, []);
+  }, [currentCompany?.id]);
 
   const loadItems = async () => {
     setLoading(true);
     try {
       const result = await (window as any).electronAPI.db.items.getAll(currentCompany?.id);
-      if (result.success) {
-        setItems(result.data || []);
+      if (result && result.success && Array.isArray(result.data)) {
+        setItems(result.data);
+      } else {
+        setItems([]);
       }
     } catch (error) {
       message.error('Failed to load items');
+      setItems([]);
     } finally {
       setLoading(false);
     }
@@ -34,25 +44,29 @@ const Items: React.FC = () => {
   const loadBrands = async () => {
     try {
       const result = await (window as any).electronAPI.db.brands.getAll();
-      if (result.success) {
-        setBrands(result.data || []);
+      if (result && result.success && Array.isArray(result.data)) {
+        setBrands(result.data);
+      } else {
+        setBrands([]);
       }
     } catch (error) {
       console.error('Failed to load brands');
+      setBrands([]);
     }
   };
 
   const handleSave = async (values: any) => {
     try {
       if (editingItem) {
-        const result = await (window as any).electronAPI.db.items.update(editingItem.id, values);
+        const { quantity: _q, purchase_price: _pp, selling_price: _sp, ...rest } = values;
+        const result = await (window as any).electronAPI.db.items.update(editingItem.id, rest);
         if (result.success) {
           message.success('Item updated successfully');
         } else {
           message.error(result.error || 'Failed to update item');
         }
       } else {
-        const result = await (window as any).electronAPI.db.items.create(values);
+        const result = await (window as any).electronAPI.db.items.create({ ...values, quantity: 0, purchase_price: 0, selling_price: 0 });
         if (result.success) {
           message.success('Item created successfully. It will appear for all companies.');
         } else {
@@ -65,6 +79,86 @@ const Items: React.FC = () => {
       loadItems();
     } catch (error) {
       message.error('Operation failed');
+    }
+  };
+
+  const handleImportExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!file.name.match(/\.(xlsx|xls)$/i)) {
+      message.error('Please select an Excel file (.xlsx or .xls)');
+      return;
+    }
+    setImporting(true);
+    try {
+      const rows = await parseExcelToRows(file);
+      if (rows.length === 0) {
+        message.warning('No rows found in the Excel file');
+        setImporting(false);
+        return;
+      }
+      let created = 0;
+      let failed = 0;
+      const brandNameToId = new Map<string, number>();
+      (brands || []).forEach((b: any) => { if (b?.name != null) brandNameToId.set(String(b.name).trim().toLowerCase(), b.id); });
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        const name = getCol(row, 'Name', 'name');
+        const code = getCol(row, 'Code', 'code', 'Item Code');
+        if (!name || !code) {
+          failed++;
+          continue;
+        }
+        let brandId: number | null = null;
+        const brandName = getCol(row, 'Brand', 'brand');
+        if (brandName) {
+          const key = brandName.trim().toLowerCase();
+          if (brandNameToId.has(key)) {
+            brandId = brandNameToId.get(key)!;
+          } else {
+            try {
+              const cr = await (window as any).electronAPI.db.brands.create({ name: brandName.trim() });
+              if (cr?.id != null) {
+                brandId = cr.id;
+                brandNameToId.set(key, brandId);
+                loadBrands();
+              }
+            } catch (_) {}
+          }
+        }
+        if (brandId == null && (brands?.length ?? 0) > 0) {
+          failed++;
+          continue;
+        }
+        const payload = {
+          name,
+          code: code.replace(/\D/g, '') || code,
+          sku: getCol(row, 'SKU', 'sku'),
+          description: getCol(row, 'Description', 'description'),
+          brand_id: brandId,
+          type: (getCol(row, 'Type', 'type') || 'product').toLowerCase().startsWith('service') ? 'service' : 'product',
+          purchase_price: getColNum(row, 'Purchase Price', 'purchase_price'),
+          selling_price: getColNum(row, 'Selling Price', 'selling_price'),
+          gst_rate: getColNum(row, 'GST Rate', 'gst_rate'),
+          reorder_level: getColNum(row, 'Reorder Level', 'reorder_level'),
+          location: getCol(row, 'Location', 'location'),
+          hs_code: getCol(row, 'H.S Code', 'HS Code', 'hs_code'),
+        };
+        try {
+          const result = await (window as any).electronAPI.db.items.create(payload);
+          if (result?.id != null) created++;
+          else failed++;
+        } catch (_) {
+          failed++;
+        }
+      }
+      message.success(`Import complete: ${created} created, ${failed} failed or skipped.`);
+      loadItems();
+    } catch (err: any) {
+      message.error(err?.message || 'Failed to import Excel');
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -83,7 +177,7 @@ const Items: React.FC = () => {
   };
 
   const locationOptions = Array.from(
-    new Set(items.map((i: any) => i.location).filter(Boolean))
+    new Set((Array.isArray(items) ? items : []).map((i: any) => (i && i.location != null ? String(i.location) : '')).filter(Boolean))
   ).sort().map((loc) => ({ value: loc as string }));
 
   const columns = [
@@ -91,41 +185,43 @@ const Items: React.FC = () => {
       title: 'Code',
       dataIndex: 'code',
       key: 'code',
+      render: (v: unknown) => (v != null ? String(v) : '—'),
     },
     {
       title: 'Name',
       dataIndex: 'name',
       key: 'name',
+      render: (v: unknown) => (v != null ? String(v) : '—'),
     },
     {
       title: 'Brand',
       dataIndex: 'brand_name',
       key: 'brand_name',
-      render: (name: string) => name || '—',
+      render: (name: string) => (name != null ? String(name) : '—'),
     },
     {
       title: 'Location',
       dataIndex: 'location',
       key: 'location',
-      render: (loc: string) => loc || '—',
+      render: (loc: unknown) => (loc != null && loc !== '' ? String(loc) : '—'),
     },
     {
       title: 'Purchase Price',
       dataIndex: 'purchase_price',
       key: 'purchase_price',
-      render: (price: number) => price?.toFixed(2) || '0.00',
+      render: (price: number) => (price != null && !Number.isNaN(Number(price)) ? Number(price).toFixed(2) : '0.00'),
     },
     {
       title: 'Selling Price',
       dataIndex: 'selling_price',
       key: 'selling_price',
-      render: (price: number) => price.toFixed(2),
+      render: (price: number) => (price != null && !Number.isNaN(Number(price)) ? Number(price).toFixed(2) : '0.00'),
     },
     {
       title: 'Quantity',
       dataIndex: 'quantity',
       key: 'quantity',
-      render: (q: number) => (q != null ? Number(q) : 0),
+      render: (q: number) => (q != null && !Number.isNaN(Number(q)) ? Number(q) : 0),
     },
     {
       title: 'Actions',
@@ -136,7 +232,8 @@ const Items: React.FC = () => {
             icon={<EditOutlined />}
             onClick={() => {
               setEditingItem(record);
-              form.setFieldsValue(record);
+              const { quantity: _q, purchase_price: _pp, selling_price: _sp, ...values } = record;
+              form.setFieldsValue(values);
               setModalVisible(true);
             }}
           />
@@ -153,27 +250,49 @@ const Items: React.FC = () => {
 
   return (
     <div>
-      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
-        <h1>Items</h1>
+      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+        <h1 style={{ margin: 0 }}>Items</h1>
         <span style={{ color: '#666', fontSize: 12 }}>Items are shared across all companies</span>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={() => {
-            setEditingItem(null);
-            form.resetFields();
-            setModalVisible(true);
-          }}
-        >
-          Add Item
-        </Button>
+        <Space>
+          <Button
+            icon={<UploadOutlined />}
+            onClick={() => setImportFormatModal(true)}
+          >
+            Excel format
+          </Button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".xlsx,.xls"
+            style={{ display: 'none' }}
+            onChange={handleImportExcel}
+          />
+          <Button
+            icon={<UploadOutlined />}
+            loading={importing}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            Import from Excel
+          </Button>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => {
+              setEditingItem(null);
+              form.resetFields();
+              setModalVisible(true);
+            }}
+          >
+            Add Item
+          </Button>
+        </Space>
       </div>
 
       <Table
         columns={columns}
-        dataSource={items}
+        dataSource={Array.isArray(items) ? items : []}
         loading={loading}
-        rowKey="id"
+        rowKey={(r) => (r?.id != null ? String(r.id) : String(Math.random()))}
         pagination={{ pageSize: 10 }}
       />
 
@@ -203,9 +322,21 @@ const Items: React.FC = () => {
             <Input />
           </Form.Item>
           <Form.Item name="brand_id" label="Brand" rules={[{ required: true, message: 'Please select a brand' }]}>
-            <Select placeholder="Select brand">
-              {brands.map((b) => (
-                <Select.Option key={b.id} value={b.id}>{b.name}</Select.Option>
+            <Select
+              placeholder="Type to search brand"
+              showSearch
+              optionFilterProp="children"
+              filterOption={(input, option) => {
+                const label = (option?.children ?? '') as string;
+                const search = (input || '').trim().toLowerCase();
+                if (!search) return true;
+                if (label.toLowerCase().includes(search)) return true;
+                const initials = label.split(/\s+/).map((w) => (w[0] || '').toLowerCase()).join('');
+                return initials.startsWith(search) || initials.includes(search);
+              }}
+            >
+              {(Array.isArray(brands) ? brands : []).filter((b) => b != null && b.id != null).map((b) => (
+                <Select.Option key={b.id} value={b.id}>{b.name ?? ''}</Select.Option>
               ))}
             </Select>
           </Form.Item>
@@ -226,17 +357,14 @@ const Items: React.FC = () => {
               style={{ width: '100%' }}
             />
           </Form.Item>
+          <Form.Item name="hs_code" label="H.S Code">
+            <Input placeholder="e.g. 8504.40" />
+          </Form.Item>
           <Form.Item name="type" label="Type" initialValue="product">
             <Select>
               <Select.Option value="product">Product</Select.Option>
               <Select.Option value="service">Service</Select.Option>
             </Select>
-          </Form.Item>
-          <Form.Item name="purchase_price" label="Purchase Price" initialValue={0}>
-            <InputNumber min={0} style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item name="selling_price" label="Selling Price" initialValue={0}>
-            <InputNumber min={0} style={{ width: '100%' }} />
           </Form.Item>
 
           <Form.Item name="track_inventory" label="Track Inventory" initialValue={1}>
@@ -248,10 +376,31 @@ const Items: React.FC = () => {
           <Form.Item name="reorder_level" label="Reorder Level" initialValue={0}>
             <InputNumber min={0} style={{ width: '100%' }} />
           </Form.Item>
-          <Form.Item name="quantity" label="Quantity" initialValue={0}>
-            <InputNumber min={0} style={{ width: '100%' }} />
-          </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal
+        title="Items – Excel import format"
+        open={importFormatModal}
+        onCancel={() => setImportFormatModal(false)}
+        footer={[
+          <Button key="close" onClick={() => setImportFormatModal(false)}>Close</Button>,
+          <Button key="import" type="primary" onClick={() => { setImportFormatModal(false); fileInputRef.current?.click(); }}>Choose file to import</Button>,
+        ]}
+        width={560}
+      >
+        <Alert type="info" style={{ marginBottom: 16 }} message="First row of the Excel file must be headers. Use the column names below (case-insensitive)." />
+        <p><strong>Required columns:</strong></p>
+        <ul style={{ marginBottom: 12, paddingLeft: 20 }}>
+          <li><strong>Name</strong> – Item name</li>
+          <li><strong>Code</strong> – Item code (numbers only; non-digits will be stripped)</li>
+          <li><strong>Brand</strong> – Brand name (will be created if it does not exist)</li>
+        </ul>
+        <p><strong>Optional columns:</strong></p>
+        <ul style={{ marginBottom: 0, paddingLeft: 20 }}>
+          <li>SKU, Description, Type (product/service), Purchase Price, Selling Price, GST Rate</li>
+          <li>Reorder Level, Location, H.S Code</li>
+        </ul>
       </Modal>
     </div>
   );

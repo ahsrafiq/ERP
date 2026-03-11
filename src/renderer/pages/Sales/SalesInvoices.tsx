@@ -1,24 +1,23 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Button, Space, Modal, Form, Input, InputNumber, Select, DatePicker, message, Popconfirm, Alert, Progress, Tag, Switch } from 'antd';
-import { EditOutlined, DeleteOutlined, PrinterOutlined, CarryOutOutlined, WarningOutlined, FileTextOutlined } from '@ant-design/icons';
+import { Table, Button, Space, Modal, Form, Input, InputNumber, Select, DatePicker, message, Alert, Progress, Tag, Switch, Popconfirm } from 'antd';
+import { EditOutlined, DeleteOutlined, PrinterOutlined, WarningOutlined, LockOutlined, StopOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import PrintTemplate from '../../components/PrintTemplate';
 
 const SalesInvoices: React.FC = () => {
   const { currentCompany, companies, user, fiscalYear } = useApp();
-  const navigate = useNavigate();
   const [invoices, setInvoices] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
-  const [paymentModalVisible, setPaymentModalVisible] = useState(false);
   const [editingInvoice, setEditingInvoice] = useState<any>(null);
-  const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
+  // Admin password delete
+  const [deletePasswordModal, setDeletePasswordModal] = useState(false);
+  const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
+  const [adminPassword, setAdminPassword] = useState('');
   const [form] = Form.useForm();
-  const [paymentForm] = Form.useForm();
   const [printData, setPrintData] = useState<any>(null);
 
   useEffect(() => {
@@ -71,32 +70,24 @@ const SalesInvoices: React.FC = () => {
   const [selectedCustomerInfo, setSelectedCustomerInfo] = useState<any>(null);
 
   const [isPreviewVisible, setIsPreviewVisible] = useState(false);
-  const [attentionModalVisible, setAttentionModalVisible] = useState(false);
-  const [personName, setPersonName] = useState('');
-  const [currentPrintRecord, setCurrentPrintRecord] = useState<any>(null);
+  const [contentScale, setContentScale] = useState<number>(1);
   const [printWithLetterhead, setPrintWithLetterhead] = useState(true);
 
-  const handlePrint = (record: any) => {
-    setCurrentPrintRecord(record);
-    setPersonName('');
-    setAttentionModalVisible(true);
-  };
-
-  const proceedToPrint = async () => {
-    if (!currentPrintRecord) return;
-    if (!personName || !String(personName).trim()) {
-      message.error('Please enter Person Name (prepared by)');
-      return;
-    }
-    setAttentionModalVisible(false);
+  const handlePrint = async (record: any) => {
     try {
-      const result = await (window as any).electronAPI.db.salesInvoices.getById(currentPrintRecord.id);
+      const result = await (window as any).electronAPI.db.salesInvoices.getById(record.id);
       if (result.success && result.data) {
+        const data = result.data as any;
+        const personName = data.customer_attention_person != null && String(data.customer_attention_person).trim() !== ''
+          ? String(data.customer_attention_person).trim()
+          : (data.attention_person != null && String(data.attention_person).trim() !== '' ? String(data.attention_person).trim() : '');
         setPrintData({
-          ...result.data,
-          person_name: personName.trim(),
+          ...data,
+          person_name: personName,
         });
         setIsPreviewVisible(true);
+      } else {
+        message.error('Failed to load invoice for print');
       }
     } catch (error) {
       message.error('Failed to prepare print');
@@ -161,7 +152,9 @@ const SalesInvoices: React.FC = () => {
     invoiceData.items.forEach((item: any) => {
       const lineTotal = item.quantity * item.unit_price;
       subtotal += lineTotal;
-      const gstAmount = isGst ? lineTotal * ((item.gst_rate || 0) / 100) : 0;
+      const rate = isGst ? (item.gst_rate != null && item.gst_rate !== '' ? Number(item.gst_rate) : 18) : 0;
+      if (isGst && (item.gst_rate == null || item.gst_rate === '')) item.gst_rate = 18;
+      const gstAmount = lineTotal * (rate / 100);
       gstTotal += gstAmount;
       item.gst_amount = gstAmount;
       item.line_total = lineTotal + gstAmount;
@@ -238,37 +231,21 @@ const SalesInvoices: React.FC = () => {
     }
   };
 
-  const handleRecordPayment = async (values: any) => {
-    if (!currentCompany || !selectedInvoice) return;
-    try {
-      const paymentData = {
-        ...values,
-        company_id: currentCompany.id,
-        payment_date: values.payment_date.format('YYYY-MM-DD'),
-        payment_type: 'in',
-        reference_type: 'sales_invoice',
-        reference_id: selectedInvoice.id,
-        customer_id: selectedInvoice.customer_id,
-        created_by: user?.id,
-      };
-
-      const result = await (window as any).electronAPI.db.payments.create(paymentData);
-      if (result.success) {
-        message.success('Payment recorded successfully');
-        setPaymentModalVisible(false);
-        paymentForm.resetFields();
-        loadInvoices();
-      } else {
-        message.error(result.error || 'Failed to record payment');
-      }
-    } catch (error) {
-      message.error('Operation failed');
-    }
+  const handleRequestDelete = (id: number) => {
+    setPendingDeleteId(id);
+    setAdminPassword('');
+    setDeletePasswordModal(true);
   };
 
-  const handleDelete = async (id: number) => {
+  const handleConfirmDelete = async () => {
+    if (adminPassword !== 'admin123') {
+      message.error('Incorrect admin password');
+      setAdminPassword('');
+      return;
+    }
+    if (pendingDeleteId == null) return;
     try {
-      const result = await (window as any).electronAPI.db.salesInvoices.delete(id);
+      const result = await (window as any).electronAPI.db.salesInvoices.delete(pendingDeleteId);
       if (result.success) {
         message.success('Invoice deleted successfully');
         loadInvoices();
@@ -277,20 +254,33 @@ const SalesInvoices: React.FC = () => {
       }
     } catch (error) {
       message.error('Failed to delete invoice');
+    } finally {
+      setDeletePasswordModal(false);
+      setPendingDeleteId(null);
+      setAdminPassword('');
     }
   };
 
-  const handleCreateDC = async (record: any) => {
+  const handleDisableInvoice = async (id: number) => {
     try {
-      const result = await (window as any).electronAPI.db.deliveryChallans.createFromInvoice(record.id, user?.id);
-      if (result.success && result.data) {
-        message.success(`Delivery Challan ${result.data.challan_number} created from ${docLabel.toLowerCase()}`);
-        navigate('/sales/delivery-challans');
-      } else {
-        message.error(result.error || 'Failed to create delivery challan');
+      const fetched = await (window as any).electronAPI.db.salesInvoices.getById(id);
+      if (!fetched.success || !fetched.data) {
+        message.error('Failed to load invoice');
+        return;
       }
-    } catch (error: any) {
-      message.error(error.message || 'Failed to create delivery challan');
+      const data = fetched.data;
+      const result = await (window as any).electronAPI.db.salesInvoices.update(id, {
+        ...data,
+        status: 'cancelled',
+      });
+      if (result.success) {
+        message.success('Invoice disabled');
+        loadInvoices();
+      } else {
+        message.error(result.error || 'Failed to disable invoice');
+      }
+    } catch (error) {
+      message.error('Failed to disable invoice');
     }
   };
 
@@ -309,11 +299,6 @@ const SalesInvoices: React.FC = () => {
       title: 'Date',
       dataIndex: 'invoice_date',
       key: 'invoice_date',
-    },
-    {
-      title: 'PO Number',
-      dataIndex: 'po_number',
-      key: 'po_number',
     },
     {
       title: 'Total Amount',
@@ -335,73 +320,65 @@ const SalesInvoices: React.FC = () => {
       title: 'Status',
       dataIndex: 'status',
       key: 'status',
+      render: (status: string) => {
+        if (status === 'cancelled') return <Tag color="red">Disabled</Tag>;
+        if (status === 'finalized') return <Tag color="green">Finalized</Tag>;
+        return <Tag color="default">{status || 'Draft'}</Tag>;
+      },
     },
     {
       title: 'Actions',
       key: 'actions',
-      render: (_: any, record: any) => (
-        <Space>
-          <Button
-            title="Record Payment"
-            type="primary"
-            size="small"
-            disabled={record.balance <= 0}
-            onClick={() => {
-              setSelectedInvoice(record);
-              paymentForm.setFieldsValue({
-                amount: record.balance,
-                payment_date: dayjs(),
-              });
-              setPaymentModalVisible(true);
-            }}
-          >
-            Pay
-          </Button>
-          <Button
-            icon={<CarryOutOutlined />}
-            onClick={() => handleCreateDC(record)}
-            title="Create Delivery Challan"
-          />
-          <Button
-            icon={<PrinterOutlined />}
-            onClick={() => handlePrint(record)}
-            title={`Print ${docLabel}`}
-          />
-          <Button
-            icon={<EditOutlined />}
-            onClick={async () => {
-              const hide = message.loading('Fetching invoice details...', 0);
-              try {
-                const result = await (window as any).electronAPI.db.salesInvoices.getById(record.id);
-                if (result.success && result.data) {
-                  const detailedInvoice = result.data;
-                  setEditingInvoice(detailedInvoice);
-                  setSelectedCustomerInfo(customers.find((c: any) => c.id === detailedInvoice.customer_id) || null);
-                  form.setFieldsValue({
-                    ...detailedInvoice,
-                    invoice_number: detailedInvoice.invoice_number,
-                    invoice_date: dayjs(detailedInvoice.invoice_date),
-                    due_date: detailedInvoice.due_date ? dayjs(detailedInvoice.due_date) : null,
-                  });
-                  setModalVisible(true);
-                } else {
+      render: (_: any, record: any) => {
+        if (record.status === 'cancelled') {
+          return <Tag color="red">Disabled</Tag>;
+        }
+        return (
+          <Space>
+            <Button
+              icon={<PrinterOutlined />}
+              onClick={() => handlePrint(record)}
+              title={`Print ${docLabel}`}
+            />
+            <Button
+              icon={<EditOutlined />}
+              onClick={async () => {
+                const hide = message.loading('Fetching invoice details...', 0);
+                try {
+                  const result = await (window as any).electronAPI.db.salesInvoices.getById(record.id);
+                  if (result.success && result.data) {
+                    const detailedInvoice = result.data;
+                    setEditingInvoice(detailedInvoice);
+                    setSelectedCustomerInfo(customers.find((c: any) => c.id === detailedInvoice.customer_id) || null);
+                    form.setFieldsValue({
+                      ...detailedInvoice,
+                      invoice_number: detailedInvoice.invoice_number,
+                      invoice_date: dayjs(detailedInvoice.invoice_date),
+                      due_date: detailedInvoice.due_date ? dayjs(detailedInvoice.due_date) : null,
+                    });
+                    setModalVisible(true);
+                  } else {
+                    message.error('Failed to fetch invoice details');
+                  }
+                } catch (error) {
                   message.error('Failed to fetch invoice details');
+                } finally {
+                  hide();
                 }
-              } catch (error) {
-                message.error('Failed to fetch invoice details');
-              } finally {
-                hide();
-              }
-            }}
-          />
-          <Popconfirm
-            title={`Are you sure you want to delete this ${docLabel.toLowerCase()}?`}
-            onConfirm={() => handleDelete(record.id)}
-          >
-            <Button danger icon={<DeleteOutlined />} />
-          </Popconfirm>
-        </Space>
-      ),
+              }}
+            />
+            <Popconfirm title={`Are you sure you want to disable this ${docLabel.toLowerCase()}? This cannot be undone.`} onConfirm={() => handleDisableInvoice(record.id)} okText="Yes, Disable" cancelText="Cancel">
+              <Button icon={<StopOutlined />} title="Disable" />
+            </Popconfirm>
+            <Button
+              danger
+              icon={<DeleteOutlined />}
+              onClick={() => handleRequestDelete(record.id)}
+              title={`Delete ${docLabel}`}
+            />
+          </Space>
+        );
+      },
     },
   ];
 
@@ -532,7 +509,12 @@ const SalesInvoices: React.FC = () => {
                           const item = items.find(i => i.id === value);
                           const customerId = form.getFieldValue('customer_id');
                           const customer = customers.find((c: any) => c.id === customerId);
-                          const defaultTaxRate = customer?.default_tax_rate != null ? Number(customer.default_tax_rate) : 0;
+                          // When GST enabled: use customer default_tax_rate if set, else 18%; else 0
+                          const defaultTaxRate = isGst
+                            ? (customer?.default_tax_rate != null ? Number(customer.default_tax_rate) : 18)
+                            : 0;
+                          const itemTaxRate = (item?.gst_rate != null && item.gst_rate !== '') ? Number(item.gst_rate) : null;
+                          const gstRate = isGst ? (itemTaxRate ?? defaultTaxRate) : 0;
                           if (item) {
                             const currentItems = form.getFieldValue('items');
                             currentItems[name] = {
@@ -540,7 +522,7 @@ const SalesInvoices: React.FC = () => {
                               description: item.description || '',
                               brand: item.brand_name || '',
                               unit_price: item.selling_price,
-                              gst_rate: defaultTaxRate,
+                              gst_rate: gstRate,
                             };
                             form.setFieldsValue({ items: currentItems });
                           }
@@ -595,87 +577,27 @@ const SalesInvoices: React.FC = () => {
         </Form>
       </Modal>
 
-      {/* Payment Modal */}
       <Modal
-        title="Record Payment"
-        open={paymentModalVisible}
+        title="Admin password required"
+        open={deletePasswordModal}
         onCancel={() => {
-          setPaymentModalVisible(false);
-          paymentForm.resetFields();
+          setDeletePasswordModal(false);
+          setPendingDeleteId(null);
+          setAdminPassword('');
         }}
-        onOk={() => paymentForm.submit()}
+        onOk={handleConfirmDelete}
+        okText="Delete"
+        okButtonProps={{ danger: true }}
       >
-        <Form form={paymentForm} layout="vertical" onFinish={handleRecordPayment}>
-          <div style={{ marginBottom: 16 }}>
-            <strong>{docLabel}: </strong> {selectedInvoice?.invoice_number} <br />
-            <strong>Pending Balance: </strong> {selectedInvoice?.balance.toFixed(2)}
-          </div>
-          <Form.Item
-            name="amount"
-            label="Payment Amount"
-            rules={[
-              { required: true, message: 'Please enter amount' },
-              { type: 'number', max: selectedInvoice?.balance, message: 'Amount exceeds balance' }
-            ]}
-          >
-            <InputNumber style={{ width: '100%' }} min={0.01} />
-          </Form.Item>
-          <Form.Item name="payment_date" label="Payment Date" rules={[{ required: true }]}>
-            <DatePicker style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item name="payment_method" label="Payment Method" initialValue="cash">
-            <Select>
-              <Select.Option value="cash">Cash</Select.Option>
-              <Select.Option value="bank">Bank Transfer</Select.Option>
-              <Select.Option value="cheque">Cheque</Select.Option>
-              <Select.Option value="online">Online Payment</Select.Option>
-            </Select>
-          </Form.Item>
-          <Form.Item name="notes" label="Notes">
-            <Input.TextArea rows={2} />
-          </Form.Item>
-        </Form>
-      </Modal>
-
-      <Modal
-        title="Print options"
-        open={attentionModalVisible}
-        onCancel={() => {
-          setAttentionModalVisible(false);
-          setCurrentPrintRecord(null);
-        }}
-        onOk={proceedToPrint}
-        okText="Print"
-      >
-        <Form layout="vertical" style={{ marginTop: 16 }} onFinish={proceedToPrint}>
-          <Form.Item label="Person Name (prepared by / our side)" required>
-            <Input
-              value={personName}
-              onChange={(e) => setPersonName(e.target.value)}
-              onPressEnter={(e) => {
-                e.preventDefault();
-                proceedToPrint();
-              }}
-            />
-          </Form.Item>
-          {currentCompany?.letterhead_path && (
-            <Form.Item label="Letterhead">
-              <Space>
-                <Switch
-                  checked={printWithLetterhead}
-                  onChange={setPrintWithLetterhead}
-                  checkedChildren="With Letterhead"
-                  unCheckedChildren="Without Letterhead"
-                />
-                {!printWithLetterhead && (
-                  <span style={{ color: '#888', fontSize: 12 }}>
-                    <FileTextOutlined /> Plain document — company header will be printed instead
-                  </span>
-                )}
-              </Space>
-            </Form.Item>
-          )}
-        </Form>
+        <p>Enter admin password to delete this {docLabel.toLowerCase()}:</p>
+        <Input.Password
+          prefix={<LockOutlined />}
+          value={adminPassword}
+          onChange={e => setAdminPassword(e.target.value)}
+          placeholder="Admin password"
+          onKeyDown={e => { if (e.key === 'Enter') handleConfirmDelete(); }}
+          autoFocus
+        />
       </Modal>
 
       <Modal
@@ -703,6 +625,21 @@ const SalesInvoices: React.FC = () => {
         ]}
         className="print-preview-modal"
       >
+        <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+          <span>Scale:</span>
+          <Select value={contentScale} onChange={v => setContentScale(v)} style={{ width: 100 }} options={[{ value: 0.8, label: '80% (more rows)' }, { value: 0.9, label: '90%' }, { value: 1, label: '100%' }]} />
+          {currentCompany?.letterhead_path && (
+            <>
+              <span>Letterhead:</span>
+              <Switch
+                checked={printWithLetterhead}
+                onChange={setPrintWithLetterhead}
+                checkedChildren="With"
+                unCheckedChildren="Without"
+              />
+            </>
+          )}
+        </div>
         <div style={{ maxHeight: '70vh', overflowY: 'auto', padding: '20px', background: '#f5f5f5' }}>
           <div className="preview-page-wrapper">
             {printData && (
@@ -711,6 +648,7 @@ const SalesInvoices: React.FC = () => {
                 data={printData}
                 company={(companies || []).find((c: any) => c.id === printData.company_id) || currentCompany}
                 withLetterhead={printWithLetterhead}
+                contentScale={contentScale}
               />
             )}
           </div>
@@ -725,6 +663,7 @@ const SalesInvoices: React.FC = () => {
             data={printData}
             company={(companies || []).find((c: any) => c.id === printData.company_id) || currentCompany}
             withLetterhead={printWithLetterhead}
+            contentScale={contentScale}
           />
         )}
       </div>
