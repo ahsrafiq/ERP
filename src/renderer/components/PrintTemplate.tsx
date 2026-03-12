@@ -271,10 +271,13 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
                         {(type === 'invoice' || type === 'bill') && data.delivery_challan_number && (
                             <p><strong>DC No:</strong> {data.delivery_challan_number}</p>
                         )}
-                        {(data.customer_pr_number ?? data.po_number) && <p><strong>PR No:</strong> {data.customer_pr_number || data.po_number}</p>}
-                        {data.customer_pr_number && type === 'quotation' && (
-                            <p><strong>PR No:</strong> {data.customer_pr_number}</p>
-                        )}
+                        {type === 'quotation'
+                            ? (data.customer_pr_number && (
+                                <p><strong>PR No:</strong> {data.customer_pr_number}</p>
+                              ))
+                            : ((data.customer_pr_number ?? data.po_number) && (
+                                <p><strong>PR No:</strong> {data.customer_pr_number || data.po_number}</p>
+                              ))}
                         {data.expiry_date && <p><strong>Valid Until:</strong> {formatDate(data.expiry_date)}</p>}
                         {data.customer_salesperson_name && (
                             <p><strong>Sales Person:</strong> {data.customer_salesperson_name}</p>
@@ -329,18 +332,20 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
             )}
             {!isInvoice && !isBill && type !== 'challan' && (
                 <div className="totals-section">
-                        <div className="totals">
+                    <div className="totals" style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                        <div style={{ minWidth: 50, textAlign: 'right' }}>
                             <div className="total-row">
-                                <span>Subtotal:</span>
+                                <span style={{ marginRight: 12 }}>Subtotal:</span>
                                 <span>{data.subtotal?.toLocaleString()}</span>
                             </div>
                             <div className="total-row grand-total">
-                                <span>Grand Total:</span>
+                                <span style={{ marginRight: 12 }}>Grand Total:</span>
                                 <span>{data.total_amount?.toLocaleString()} ({company.currency})</span>
                             </div>
                         </div>
                     </div>
-                )}
+                </div>
+            )}
                 {type === 'challan' && (
                     <div className="totals-section">
                         <div className="totals">
@@ -386,7 +391,10 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
             )}
             {!isInvoice && !isBill && type !== 'challan' && (
                 <div className="totals-section">
-                    <div className="notes">
+                    <div
+                        className="notes"
+                        style={type === 'quotation' ? { fontSize: '7pt', lineHeight: 1.25 } : undefined}
+                    >
                         {type === 'quotation' ? (
                             <>
                                 {data.quotation_validity && (
@@ -419,36 +427,19 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
             )}
             {type === 'quotation' && (
                 <>
-                    <div style={{ marginTop: 20, textAlign: 'left', fontSize: '11pt' }}>
-                        <p style={{ fontWeight: 700 }}>From: {company.name}</p>
+                    <div style={{ marginTop: 12, textAlign: 'left', fontSize: '9pt' }}>
+                        <p style={{ fontWeight: 700, marginBottom: 4 }}>From: {company.name}</p>
                     </div>
-                    {showLetterhead ? (
-                        <>
-                            <div className="dc-footer" style={{ marginTop: 40 }}>
-                                <div className="dc-stamp-box">
-                                    <div className="dc-stamp-line" />
-                                    <p>Company Stamp / Signature</p>
-                                </div>
-                                <div className="dc-signature-box">
-                                    <div className="dc-stamp-line" />
-                                    <p>Customer Signature</p>
-                                </div>
-                            </div>
-                        </>
-                    ) : (
-                        <div className="dc-footer" style={{ marginTop: 60 }}>
-                            <div className="dc-stamp-box">
-                                <div className="dc-stamp-line" />
-                                <p>Authorized Signature</p>
-                                <p style={{ fontSize: '10pt', color: '#666', marginTop: 4 }}>Date: _______________</p>
-                            </div>
-                            <div className="dc-signature-box">
-                                <div className="dc-stamp-line" />
-                        <p>Customer Signature</p>
-                                <p style={{ fontSize: '10pt', color: '#666', marginTop: 4 }}>Date: _______________</p>
-                            </div>
+                    <div className="dc-footer" style={{ marginTop: showLetterhead ? 14 : 24 }}>
+                        <div className="dc-stamp-box">
+                            <div className="dc-stamp-line" />
+                            <p>Company Stamp / Signature</p>
                         </div>
-                    )}
+                        <div className="dc-signature-box">
+                            <div className="dc-stamp-line" />
+                            <p>Customer Signature</p>
+                        </div>
+                    </div>
                 </>
             )}
             {type === 'challan' && (
@@ -466,7 +457,7 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
                 </>
             )}
             {showLetterhead && (
-                <p style={{ marginTop: 24, textAlign: 'center', fontSize: '9pt', color: '#888', fontStyle: 'italic' }}>
+                <p style={{ marginTop: 12, textAlign: 'center', fontSize: '8pt', color: '#888', fontStyle: 'italic' }}>
                     This is a computer-generated quotation and is valid without a physical signature.
                 </p>
             )}
@@ -529,18 +520,6 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
 
             {/* No letterhead fallback â€” shown when no letterhead set OR user chose without */}
             {/* For quotations without letterhead: skip company details, only show doc content */}
-            {/* Company details only for quotation when without letterhead; never for invoice, bill, or DC (challan) */}
-            {!showLetterhead && type === 'quotation' && (
-                <div className="company-info-plain print-header-fallback">
-                    <div className="company-text">
-                        <h1 className="company-name">{company.name}</h1>
-                        <p className="company-address">{company.address}</p>
-                        <p className="company-contact">Phone: {company.phone} | Email: {company.email}</p>
-                        {company.gst_registration_number && <p className="company-gst">GST No: {company.gst_registration_number}</p>}
-                    </div>
-                </div>
-            )}
-
             {/* Document content: details above/below table stay fixed; only the table is scaled when scale < 100% */}
             <div className="print-content">
                 {showLetterhead ? (

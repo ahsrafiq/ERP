@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Table, Button, Space, Modal, Form, Input, DatePicker, Select, InputNumber, message, Popconfirm, Row, Col, Tag, AutoComplete, Checkbox } from 'antd';
+import { Table, Button, Space, Modal, Form, Input, DatePicker, Select, InputNumber, message, Popconfirm, Row, Col, Tag, AutoComplete, Checkbox, Switch } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, PrinterOutlined, FileTextOutlined, CheckCircleOutlined, MinusCircleOutlined, LockOutlined, StopOutlined, EyeOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useNavigate } from 'react-router-dom';
@@ -48,6 +48,7 @@ const SalesQuotations: React.FC = () => {
     const [printData, setPrintData] = useState<any>(null);
     const [isPreviewVisible, setIsPreviewVisible] = useState(false);
     const [contentScale, setContentScale] = useState<number>(1);
+    const [printWithLetterhead, setPrintWithLetterhead] = useState(true);
 
     // Admin password delete
     const [deletePasswordModal, setDeletePasswordModal] = useState(false);
@@ -732,9 +733,16 @@ const SalesQuotations: React.FC = () => {
                 ]}
                 className="print-preview-modal"
             >
-                <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                     <span>Scale:</span>
                     <Select value={contentScale} onChange={v => setContentScale(v)} style={{ width: 90 }} options={[{ value: 0.5, label: '50%' }, { value: 0.6, label: '60%' }, { value: 0.7, label: '70%' }, { value: 0.8, label: '80%' }, { value: 0.9, label: '90%' }, { value: 1, label: '100%' }]} />
+                    <span>Letterhead:</span>
+                    <Switch
+                        checked={printWithLetterhead}
+                        onChange={setPrintWithLetterhead}
+                        checkedChildren="With"
+                        unCheckedChildren="Without"
+                    />
                 </div>
                 <div style={{ maxHeight: '70vh', overflowY: 'auto', padding: '20px', background: '#f5f5f5' }}>
                     <div className="preview-page-wrapper">
@@ -743,6 +751,7 @@ const SalesQuotations: React.FC = () => {
                                 type="quotation"
                                 data={printData}
                                 company={(companies || []).find((c: any) => c.id === printData.company_id) || currentCompany}
+                                withLetterhead={printWithLetterhead}
                                 contentScale={contentScale}
                             />
                         )}
@@ -756,6 +765,7 @@ const SalesQuotations: React.FC = () => {
                         type="quotation"
                         data={printData}
                         company={(companies || []).find((c: any) => c.id === printData.company_id) || currentCompany}
+                        withLetterhead={printWithLetterhead}
                         contentScale={contentScale}
                     />
                 )}
