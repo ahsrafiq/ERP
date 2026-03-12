@@ -5,7 +5,7 @@ import { useApp } from '../../context/AppContext';
 import { parseExcelToRows, getCol, getColNum } from '../../utils/excelImport';
 
 const Items: React.FC = () => {
-  const { currentCompany } = useApp();
+  const { currentCompany, user } = useApp();
   const [items, setItems] = useState<any[]>([]);
   const [brands, setBrands] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -15,6 +15,13 @@ const Items: React.FC = () => {
   const [importing, setImporting] = useState(false);
   const [importFormatModal, setImportFormatModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Section permissions (Inventory)
+  const isAdminUser = user?.role_id === 1 || (user as any)?.role === 'admin' || user?.username === 'admin';
+  const sectionPerms = (user as any)?.section_permissions || {};
+  const inventoryPerm: string = isAdminUser ? 'all' : (sectionPerms.inventory || 'read');
+  const canEditOrDelete = isAdminUser || inventoryPerm === 'edit' || inventoryPerm === 'all' || inventoryPerm === 'write';
+  const isReadOnlySection = !isAdminUser && inventoryPerm === 'read';
 
   useEffect(() => {
     loadBrands();
@@ -100,42 +107,50 @@ const Items: React.FC = () => {
       }
       let created = 0;
       let failed = 0;
-      const brandNameToId = new Map<string, number>();
-      (brands || []).forEach((b: any) => { if (b?.name != null) brandNameToId.set(String(b.name).trim().toLowerCase(), b.id); });
+
+      // Determine next auto code based on existing item codes (numeric part).
+      const existingCodes = (Array.isArray(items) ? items : [])
+        .map((it: any) => {
+          const raw = it && it.code != null ? String(it.code) : '';
+          const numeric = raw.replace(/\D/g, '');
+          return numeric ? Number(numeric) : NaN;
+        })
+        .filter((n) => !Number.isNaN(n));
+      let nextCode = existingCodes.length > 0 ? Math.max(...existingCodes) + 1 : 1;
+
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
         const name = getCol(row, 'Name', 'name');
-        const code = getCol(row, 'Code', 'code', 'Item Code');
-        if (!name || !code) {
+        const description = getCol(row, 'Description', 'description');
+        const brandName = getCol(row, 'Brand', 'brand');
+        if (!name || !brandName || !description) {
           failed++;
           continue;
         }
+        // For each row, ensure a brand exists with this name.
+        // brandHandlers.create makes names unique (normalized), so calling it
+        // per row is safe and always gives the correct brand id for that name.
         let brandId: number | null = null;
-        const brandName = getCol(row, 'Brand', 'brand');
-        if (brandName) {
-          const key = brandName.trim().toLowerCase();
-          if (brandNameToId.has(key)) {
-            brandId = brandNameToId.get(key)!;
-          } else {
-            try {
-              const cr = await (window as any).electronAPI.db.brands.create({ name: brandName.trim() });
-              if (cr?.id != null) {
-                brandId = cr.id;
-                brandNameToId.set(key, brandId);
-                loadBrands();
-              }
-            } catch (_) {}
+        try {
+          const cr = await (window as any).electronAPI.db.brands.create({ name: brandName.trim() });
+          const brandData = (cr && typeof cr === 'object' && 'data' in cr) ? (cr as any).data : cr;
+          if (brandData?.id != null) {
+            brandId = brandData.id;
+          } else if ((cr as any)?.id != null) {
+            brandId = (cr as any).id;
           }
+        } catch {
+          brandId = null;
         }
-        if (brandId == null && (brands?.length ?? 0) > 0) {
+        if (brandId == null) {
           failed++;
           continue;
         }
         const payload = {
           name,
-          code: code.replace(/\D/g, '') || code,
+          code: String(nextCode++),
           sku: getCol(row, 'SKU', 'sku'),
-          description: getCol(row, 'Description', 'description'),
+          description,
           brand_id: brandId,
           type: (getCol(row, 'Type', 'type') || 'product').toLowerCase().startsWith('service') ? 'service' : 'product',
           purchase_price: getColNum(row, 'Purchase Price', 'purchase_price'),
@@ -226,25 +241,32 @@ const Items: React.FC = () => {
     {
       title: 'Actions',
       key: 'actions',
-      render: (_: any, record: any) => (
-        <Space>
-          <Button
-            icon={<EditOutlined />}
-            onClick={() => {
-              setEditingItem(record);
-              const { quantity: _q, purchase_price: _pp, selling_price: _sp, ...values } = record;
-              form.setFieldsValue(values);
-              setModalVisible(true);
-            }}
-          />
-          <Popconfirm
-            title="Are you sure you want to delete this item?"
-            onConfirm={() => handleDelete(record.id)}
-          >
-            <Button danger icon={<DeleteOutlined />} />
-          </Popconfirm>
-        </Space>
-      ),
+      render: (_: any, record: any) => {
+        if (isReadOnlySection) {
+          return null;
+        }
+        return (
+          <Space>
+            <Button
+              icon={<EditOutlined />}
+              onClick={() => {
+                setEditingItem(record);
+                const { quantity: _q, purchase_price: _pp, selling_price: _sp, ...values } = record;
+                form.setFieldsValue(values);
+                setModalVisible(true);
+              }}
+            />
+            {canEditOrDelete && (
+              <Popconfirm
+                title="Are you sure you want to delete this item?"
+                onConfirm={() => handleDelete(record.id)}
+              >
+                <Button danger icon={<DeleteOutlined />} />
+              </Popconfirm>
+            )}
+          </Space>
+        );
+      },
     },
   ];
 
@@ -260,31 +282,35 @@ const Items: React.FC = () => {
           >
             Excel format
           </Button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".xlsx,.xls"
-            style={{ display: 'none' }}
-            onChange={handleImportExcel}
-          />
-          <Button
-            icon={<UploadOutlined />}
-            loading={importing}
-            onClick={() => fileInputRef.current?.click()}
-          >
-            Import from Excel
-          </Button>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => {
-              setEditingItem(null);
-              form.resetFields();
-              setModalVisible(true);
-            }}
-          >
-            Add Item
-          </Button>
+          {!isReadOnlySection && (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx,.xls"
+                style={{ display: 'none' }}
+                onChange={handleImportExcel}
+              />
+              <Button
+                icon={<UploadOutlined />}
+                loading={importing}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                Import from Excel
+              </Button>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={() => {
+                  setEditingItem(null);
+                  form.resetFields();
+                  setModalVisible(true);
+                }}
+              >
+                Add Item
+              </Button>
+            </>
+          )}
         </Space>
       </div>
 
@@ -393,12 +419,12 @@ const Items: React.FC = () => {
         <p><strong>Required columns:</strong></p>
         <ul style={{ marginBottom: 12, paddingLeft: 20 }}>
           <li><strong>Name</strong> – Item name</li>
-          <li><strong>Code</strong> – Item code (numbers only; non-digits will be stripped)</li>
           <li><strong>Brand</strong> – Brand name (will be created if it does not exist)</li>
+          <li><strong>Description</strong> – Item description</li>
         </ul>
         <p><strong>Optional columns:</strong></p>
         <ul style={{ marginBottom: 0, paddingLeft: 20 }}>
-          <li>SKU, Description, Type (product/service), Purchase Price, Selling Price, GST Rate</li>
+          <li>SKU, Type (product/service), Purchase Price, Selling Price, GST Rate</li>
           <li>Reorder Level, Location, H.S Code</li>
         </ul>
       </Modal>

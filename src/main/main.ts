@@ -528,6 +528,11 @@ ipcMain.handle('db:brands:delete', async (event, id: number) => {
   return dbBridge.brands.delete(id);
 });
 
+// Danger: delete ALL brands
+ipcMain.handle('db:brands:deleteAll', async () => {
+  return dbBridge.brands.deleteAll();
+});
+
 ipcMain.handle('db:items:getAll', async (event, companyId: number) => {
   return dbBridge.items.getAll(companyId);
 });
@@ -546,6 +551,11 @@ ipcMain.handle('db:items:update', async (event, id: number, item: any) => {
 
 ipcMain.handle('db:items:delete', async (event, id: number) => {
   return dbBridge.items.delete(id);
+});
+
+// Danger: delete ALL items
+ipcMain.handle('db:items:deleteAll', async () => {
+  return dbBridge.items.deleteAll();
 });
 
 ipcMain.handle('db:salesInvoices:getAll', async (event, companyId: number, filters?: any) => {

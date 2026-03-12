@@ -4,12 +4,19 @@ import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useApp } from '../../context/AppContext';
 
 const Vendors: React.FC = () => {
-  const { currentCompany } = useApp();
+  const { currentCompany, user } = useApp();
   const [vendors, setVendors] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingVendor, setEditingVendor] = useState<any>(null);
   const [form] = Form.useForm();
+
+  // Section permissions (Purchase)
+  const isAdminUser = user?.role_id === 1 || (user as any)?.role === 'admin' || user?.username === 'admin';
+  const sectionPerms = (user as any)?.section_permissions || {};
+  const purchasePerm: string = isAdminUser ? 'all' : (sectionPerms.purchase || 'read');
+  const canEditOrDelete = isAdminUser || purchasePerm === 'edit' || purchasePerm === 'all' || purchasePerm === 'write';
+  const isReadOnlySection = !isAdminUser && purchasePerm === 'read';
 
   useEffect(() => {
     if (currentCompany) {
@@ -109,24 +116,31 @@ const Vendors: React.FC = () => {
     {
       title: 'Actions',
       key: 'actions',
-      render: (_: any, record: any) => (
-        <Space>
-          <Button
-            icon={<EditOutlined />}
-            onClick={() => {
-              setEditingVendor(record);
-              form.setFieldsValue(record);
-              setModalVisible(true);
-            }}
-          />
-          <Popconfirm
-            title="Are you sure you want to delete this vendor?"
-            onConfirm={() => handleDelete(record.id)}
-          >
-            <Button danger icon={<DeleteOutlined />} />
-          </Popconfirm>
-        </Space>
-      ),
+      render: (_: any, record: any) => {
+        if (isReadOnlySection) {
+          return null;
+        }
+        return (
+          <Space>
+            <Button
+              icon={<EditOutlined />}
+              onClick={() => {
+                setEditingVendor(record);
+                form.setFieldsValue(record);
+                setModalVisible(true);
+              }}
+            />
+            {canEditOrDelete && (
+              <Popconfirm
+                title="Are you sure you want to delete this vendor?"
+                onConfirm={() => handleDelete(record.id)}
+              >
+                <Button danger icon={<DeleteOutlined />} />
+              </Popconfirm>
+            )}
+          </Space>
+        );
+      },
     },
   ];
 
@@ -134,17 +148,19 @@ const Vendors: React.FC = () => {
     <div>
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
         <h1>Vendors</h1>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={() => {
-            setEditingVendor(null);
-            form.resetFields();
-            setModalVisible(true);
-          }}
-        >
-          Add Vendor
-        </Button>
+        {!isReadOnlySection && (
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => {
+              setEditingVendor(null);
+              form.resetFields();
+              setModalVisible(true);
+            }}
+          >
+            Add Vendor
+          </Button>
+        )}
       </div>
 
       <Table

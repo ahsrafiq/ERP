@@ -123,7 +123,7 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
             } catch (err: any) {
                 if (!cancelled) {
                     console.error('Error loading letterhead:', err);
-                    setLetterheadBase64(null);
+                setLetterheadBase64(null);
                     setLetterheadError(err?.message || 'Failed to load letterhead');
                     onReadyRef.current?.();
                 }
@@ -292,16 +292,16 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
 
     const tableBlock = (
             <div className={`items-table ${isInvoice ? 'items-table-invoice' : ''} ${isBill ? 'items-table-bill' : ''}`}>
-                <Table
-                    dataSource={data.items}
+                    <Table
+                        dataSource={data.items}
                     columns={tableColumns}
-                    pagination={false}
-                    rowKey="id"
-                    size="small"
-                    bordered
+                        pagination={false}
+                        rowKey="id"
+                        size="small"
+                        bordered
                     tableLayout="auto"
-                />
-            </div>
+                    />
+                </div>
     );
 
     /* Totals row(s) — scale with the table */
@@ -329,28 +329,28 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
             )}
             {!isInvoice && !isBill && type !== 'challan' && (
                 <div className="totals-section">
-                    <div className="totals">
-                        <div className="total-row">
-                            <span>Subtotal:</span>
-                            <span>{data.subtotal?.toLocaleString()}</span>
-                        </div>
-                        <div className="total-row grand-total">
-                            <span>Grand Total:</span>
-                            <span>{data.total_amount?.toLocaleString()} ({company.currency})</span>
-                        </div>
-                    </div>
-                </div>
-            )}
-            {type === 'challan' && (
-                <div className="totals-section">
-                    <div className="totals">
-                        <div className="total-row grand-total">
-                            <span>Total Quantity:</span>
-                            <span>{data.total_quantity}</span>
+                        <div className="totals">
+                            <div className="total-row">
+                                <span>Subtotal:</span>
+                                <span>{data.subtotal?.toLocaleString()}</span>
+                            </div>
+                            <div className="total-row grand-total">
+                                <span>Grand Total:</span>
+                                <span>{data.total_amount?.toLocaleString()} ({company.currency})</span>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )}
+                {type === 'challan' && (
+                    <div className="totals-section">
+                        <div className="totals">
+                            <div className="total-row grand-total">
+                                <span>Total Quantity:</span>
+                                <span>{data.total_quantity}</span>
+                            </div>
+                        </div>
+                    </div>
+                )}
         </>
     );
 
@@ -444,7 +444,7 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
                             </div>
                             <div className="dc-signature-box">
                                 <div className="dc-stamp-line" />
-                                <p>Customer Signature</p>
+                        <p>Customer Signature</p>
                                 <p style={{ fontSize: '10pt', color: '#666', marginTop: 4 }}>Date: _______________</p>
                             </div>
                         </div>

@@ -43,6 +43,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       create: (brand: any) => ipcRenderer.invoke('db:brands:create', brand),
       update: (id: number, brand: any) => ipcRenderer.invoke('db:brands:update', id, brand),
       delete: (id: number) => ipcRenderer.invoke('db:brands:delete', id),
+      deleteAll: () => ipcRenderer.invoke('db:brands:deleteAll'),
     },
     items: {
       getAll: (companyId: number) => ipcRenderer.invoke('db:items:getAll', companyId),
@@ -50,6 +51,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       create: (item: any) => ipcRenderer.invoke('db:items:create', item),
       update: (id: number, item: any) => ipcRenderer.invoke('db:items:update', id, item),
       delete: (id: number) => ipcRenderer.invoke('db:items:delete', id),
+      deleteAll: () => ipcRenderer.invoke('db:items:deleteAll'),
     },
     salesInvoices: {
       getAll: (companyId: number, filters?: any) => ipcRenderer.invoke('db:salesInvoices:getAll', companyId, filters),

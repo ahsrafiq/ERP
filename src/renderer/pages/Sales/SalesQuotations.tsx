@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Table, Button, Space, Modal, Form, Input, DatePicker, Select, InputNumber, message, Popconfirm, Row, Col, Tag, AutoComplete, Checkbox } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, PrinterOutlined, FileTextOutlined, CheckCircleOutlined, MinusCircleOutlined, LockOutlined, StopOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, DeleteOutlined, PrinterOutlined, FileTextOutlined, CheckCircleOutlined, MinusCircleOutlined, LockOutlined, StopOutlined, EyeOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
@@ -64,6 +64,14 @@ const SalesQuotations: React.FC = () => {
     const [remarksSuggestions, setRemarksSuggestions] = useState<string[]>([]);
 
     const watchedCustomerId = Form.useWatch('customer_id', form);
+
+    // Section permissions (Sales)
+    const isAdminUser = user?.role_id === 1 || user?.role === 'admin' || user?.username === 'admin';
+    const sectionPerms = (user as any)?.section_permissions || {};
+    const salesPerm: string = isAdminUser ? 'all' : (sectionPerms.sales || 'read');
+    const canCreateOrEdit = isAdminUser || salesPerm === 'write' || salesPerm === 'edit' || salesPerm === 'all';
+    const canEditOrDelete = isAdminUser || salesPerm === 'edit' || salesPerm === 'all';
+    const isReadOnlySection = !isAdminUser && salesPerm === 'read';
 
     useEffect(() => {
         setValiditySuggestions(loadSuggestions(VALIDITY_STORAGE_KEY));
@@ -431,17 +439,32 @@ const SalesQuotations: React.FC = () => {
             key: 'actions',
             render: (_: any, record: any) => {
                 const isDisabled = record.status === 'cancelled';
-                return isDisabled ? (
-                    <Tag color="red">Disabled</Tag>
-                ) : (
+                if (isDisabled) {
+                    return <Tag color="red">Disabled</Tag>;
+                }
+                if (isReadOnlySection) {
+                    // Read-only: only allow viewing/printing
+                    return (
+                        <Space>
+                            <Button icon={<EyeOutlined />} onClick={() => handlePrint(record)} title="View Quotation" />
+                        </Space>
+                    );
+                }
+                return (
                     <Space>
                         <Button icon={<FileTextOutlined />} onClick={() => handleCreateChallan(record)} title="Create Delivery Challan" />
                         <Button icon={<PrinterOutlined />} onClick={() => handlePrint(record)} title="Print" />
-                        <Button icon={<EditOutlined />} onClick={() => handleEdit(record)} title="Edit" />
-                        <Popconfirm title="Are you sure you want to disable this quotation? This cannot be undone." onConfirm={() => handleDisable(record.id)} okText="Yes, Disable" cancelText="Cancel">
-                            <Button icon={<StopOutlined />} title="Disable" />
-                        </Popconfirm>
-                        <Button danger icon={<DeleteOutlined />} onClick={() => handleRequestDelete(record.id)} title="Delete (Admin)" />
+                        {canCreateOrEdit && (
+                            <Button icon={<EditOutlined />} onClick={() => handleEdit(record)} title="Edit" />
+                        )}
+                        {canEditOrDelete && (
+                            <>
+                                <Popconfirm title="Are you sure you want to disable this quotation? This cannot be undone." onConfirm={() => handleDisable(record.id)} okText="Yes, Disable" cancelText="Cancel">
+                                    <Button icon={<StopOutlined />} title="Disable" />
+                                </Popconfirm>
+                                <Button danger icon={<DeleteOutlined />} onClick={() => handleRequestDelete(record.id)} title="Delete (Admin)" />
+                            </>
+                        )}
                     </Space>
                 );
             },
@@ -452,14 +475,16 @@ const SalesQuotations: React.FC = () => {
         <div>
             <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
                 <h1>Sales Quotations</h1>
-                <Button type="primary" icon={<PlusOutlined />} onClick={async () => {
-                    setEditingQuotation(null);
-                    form.resetFields();
-                    setModalVisible(true);
-                    await loadNextQuotationNumber();
-                }}>
-                    New Quotation
-                </Button>
+                {!isReadOnlySection && (
+                    <Button type="primary" icon={<PlusOutlined />} onClick={async () => {
+                        setEditingQuotation(null);
+                        form.resetFields();
+                        setModalVisible(true);
+                        await loadNextQuotationNumber();
+                    }}>
+                        New Quotation
+                    </Button>
+                )}
             </div>
 
             <Table columns={columns} dataSource={quotations} loading={loading} rowKey="id" />

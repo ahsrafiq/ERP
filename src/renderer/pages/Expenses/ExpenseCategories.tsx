@@ -4,11 +4,17 @@ import { PlusOutlined } from '@ant-design/icons';
 import { useApp } from '../../context/AppContext';
 
 const ExpenseCategories: React.FC = () => {
-  const { currentCompany } = useApp();
+  const { currentCompany, user } = useApp();
   const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [form] = Form.useForm();
+
+  // Section permissions (Expenses)
+  const isAdminUser = user?.role_id === 1 || (user as any)?.role === 'admin' || user?.username === 'admin';
+  const sectionPerms = (user as any)?.section_permissions || {};
+  const expensesPerm: string = isAdminUser ? 'all' : (sectionPerms.expenses || 'read');
+  const isReadOnlySection = !isAdminUser && expensesPerm === 'read';
   const loadErrorShown = useRef(false);
 
   useEffect(() => {
@@ -69,9 +75,11 @@ const ExpenseCategories: React.FC = () => {
     <div>
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
         <h1>Expense Categories</h1>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setModalVisible(true); }}>
-          Add Category
-        </Button>
+        {!isReadOnlySection && (
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setModalVisible(true); }}>
+            Add Category
+          </Button>
+        )}
       </div>
       <Table columns={columns} dataSource={categories} loading={loading} rowKey="id" pagination={{ pageSize: 20 }} />
       <Modal title="Add Category" open={modalVisible} onCancel={() => setModalVisible(false)} onOk={() => form.submit()} destroyOnClose>

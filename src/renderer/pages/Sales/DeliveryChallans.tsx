@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Table, Button, Space, Modal, Form, Input, DatePicker, Select, InputNumber, message, Popconfirm, Switch, Tag } from 'antd';
-import { PlusOutlined, EditOutlined, PrinterOutlined, DeleteOutlined, FileTextOutlined, MinusCircleOutlined, LockOutlined, StopOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, PrinterOutlined, DeleteOutlined, FileTextOutlined, MinusCircleOutlined, LockOutlined, StopOutlined, EyeOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
@@ -26,6 +26,14 @@ const DeliveryChallans: React.FC = () => {
     const [deletePasswordModal, setDeletePasswordModal] = useState(false);
     const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
     const [adminPassword, setAdminPassword] = useState('');
+
+    // Section permissions (Sales)
+    const isAdminUser = user?.role_id === 1 || user?.role === 'admin' || user?.username === 'admin';
+    const sectionPerms = (user as any)?.section_permissions || {};
+    const salesPerm: string = isAdminUser ? 'all' : (sectionPerms.sales || 'read');
+    const canCreateOrEdit = isAdminUser || salesPerm === 'write' || salesPerm === 'edit' || salesPerm === 'all';
+    const canEditOrDelete = isAdminUser || salesPerm === 'edit' || salesPerm === 'all';
+    const isReadOnlySection = !isAdminUser && salesPerm === 'read';
 
     const watchedCustomerId = Form.useWatch('customer_id', form);
 
@@ -355,15 +363,30 @@ const DeliveryChallans: React.FC = () => {
                 if (record.status === 'cancelled') {
                     return <Tag color="red">Disabled</Tag>;
                 }
+                if (isReadOnlySection) {
+                    return (
+                        <Space>
+                            <Button icon={<EyeOutlined />} onClick={() => handlePrint(record)} title="View Challan" />
+                        </Space>
+                    );
+                }
                 return (
                     <Space>
-                        <Button icon={<FileTextOutlined />} onClick={() => handleCreateInvoice(record)} title={`Create ${docLabel}`} />
+                        {!isReadOnlySection && (
+                            <Button icon={<FileTextOutlined />} onClick={() => handleCreateInvoice(record)} title={`Create ${docLabel}`} />
+                        )}
                         <Button icon={<PrinterOutlined />} onClick={() => handlePrint(record)} title="Print" />
-                        <Button icon={<EditOutlined />} onClick={() => handleEdit(record)} title="Edit" />
-                        <Popconfirm title="Are you sure you want to disable this delivery challan? This cannot be undone." onConfirm={() => handleDisable(record.id)} okText="Yes, Disable" cancelText="Cancel">
-                            <Button icon={<StopOutlined />} title="Disable" />
-                        </Popconfirm>
-                        <Button danger icon={<DeleteOutlined />} title="Delete" onClick={() => handleRequestDelete(record.id)} />
+                        {canCreateOrEdit && (
+                            <Button icon={<EditOutlined />} onClick={() => handleEdit(record)} title="Edit" />
+                        )}
+                        {canEditOrDelete && (
+                            <>
+                                <Popconfirm title="Are you sure you want to disable this delivery challan? This cannot be undone." onConfirm={() => handleDisable(record.id)} okText="Yes, Disable" cancelText="Cancel">
+                                    <Button icon={<StopOutlined />} title="Disable" />
+                                </Popconfirm>
+                                <Button danger icon={<DeleteOutlined />} title="Delete" onClick={() => handleRequestDelete(record.id)} />
+                            </>
+                        )}
                     </Space>
                 );
             },
@@ -374,9 +397,11 @@ const DeliveryChallans: React.FC = () => {
         <div>
             <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
                 <h1>Delivery Challans</h1>
-                <Button type="primary" icon={<PlusOutlined />} onClick={handleNewChallan}>
-                    New Challan
-                </Button>
+                {!isReadOnlySection && (
+                    <Button type="primary" icon={<PlusOutlined />} onClick={handleNewChallan}>
+                        New Challan
+                    </Button>
+                )}
             </div>
 
             <Table columns={columns} dataSource={challans} loading={loading} rowKey="id" />

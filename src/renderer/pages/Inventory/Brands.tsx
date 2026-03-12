@@ -1,13 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { Table, Button, Space, Modal, Form, Input, message, Popconfirm } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { useApp } from '../../context/AppContext';
 
 const Brands: React.FC = () => {
+  const { user } = useApp();
   const [brands, setBrands] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingBrand, setEditingBrand] = useState<any>(null);
   const [form] = Form.useForm();
+
+  // Section permissions (Inventory)
+  const isAdminUser = user?.role_id === 1 || (user as any)?.role === 'admin' || user?.username === 'admin';
+  const sectionPerms = (user as any)?.section_permissions || {};
+  const inventoryPerm: string = isAdminUser ? 'all' : (sectionPerms.inventory || 'read');
+  const canEditOrDelete = isAdminUser || inventoryPerm === 'edit' || inventoryPerm === 'all' || inventoryPerm === 'write';
+  const isReadOnlySection = !isAdminUser && inventoryPerm === 'read';
 
   useEffect(() => {
     loadBrands();
@@ -73,24 +82,31 @@ const Brands: React.FC = () => {
     {
       title: 'Actions',
       key: 'actions',
-      render: (_: any, record: any) => (
-        <Space>
-          <Button
-            icon={<EditOutlined />}
-            onClick={() => {
-              setEditingBrand(record);
-              form.setFieldsValue(record);
-              setModalVisible(true);
-            }}
-          />
-          <Popconfirm
-            title="Delete this brand?"
-            onConfirm={() => handleDelete(record.id)}
-          >
-            <Button danger icon={<DeleteOutlined />} />
-          </Popconfirm>
-        </Space>
-      ),
+      render: (_: any, record: any) => {
+        if (isReadOnlySection) {
+          return null;
+        }
+        return (
+          <Space>
+            <Button
+              icon={<EditOutlined />}
+              onClick={() => {
+                setEditingBrand(record);
+                form.setFieldsValue(record);
+                setModalVisible(true);
+              }}
+            />
+            {canEditOrDelete && (
+              <Popconfirm
+                title="Delete this brand?"
+                onConfirm={() => handleDelete(record.id)}
+              >
+                <Button danger icon={<DeleteOutlined />} />
+              </Popconfirm>
+            )}
+          </Space>
+        );
+      },
     },
   ];
 
@@ -98,17 +114,19 @@ const Brands: React.FC = () => {
     <div>
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
         <h1>Brands</h1>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={() => {
-            setEditingBrand(null);
-            form.resetFields();
-            setModalVisible(true);
-          }}
-        >
-          Add Brand
-        </Button>
+        {!isReadOnlySection && (
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => {
+              setEditingBrand(null);
+              form.resetFields();
+              setModalVisible(true);
+            }}
+          >
+            Add Brand
+          </Button>
+        )}
       </div>
       <Table
         columns={columns}

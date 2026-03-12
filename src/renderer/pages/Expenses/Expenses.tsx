@@ -5,7 +5,7 @@ import dayjs from 'dayjs';
 import { useApp } from '../../context/AppContext';
 
 const Expenses: React.FC = () => {
-  const { currentCompany } = useApp();
+  const { currentCompany, user } = useApp();
   const [expenses, setExpenses] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [vendors, setVendors] = useState<any[]>([]);
@@ -13,6 +13,13 @@ const Expenses: React.FC = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [editingExpense, setEditingExpense] = useState<any>(null);
   const [form] = Form.useForm();
+
+  // Section permissions (Expenses)
+  const isAdminUser = user?.role_id === 1 || (user as any)?.role === 'admin' || user?.username === 'admin';
+  const sectionPerms = (user as any)?.section_permissions || {};
+  const expensesPerm: string = isAdminUser ? 'all' : (sectionPerms.expenses || 'read');
+  const canEditOrDelete = isAdminUser || expensesPerm === 'edit' || expensesPerm === 'all' || expensesPerm === 'write';
+  const isReadOnlySection = !isAdminUser && expensesPerm === 'read';
 
   useEffect(() => {
     if (currentCompany) {
@@ -157,27 +164,34 @@ const Expenses: React.FC = () => {
     {
       title: 'Actions',
       key: 'actions',
-      render: (_: any, record: any) => (
-        <Space>
-          <Button
-            icon={<EditOutlined />}
-            onClick={() => {
-              setEditingExpense(record);
-              form.setFieldsValue({
-                ...record,
-                expense_date: dayjs(record.expense_date),
-              });
-              setModalVisible(true);
-            }}
-          />
-          <Popconfirm
-            title="Are you sure you want to delete this expense?"
-            onConfirm={() => handleDelete(record.id)}
-          >
-            <Button danger icon={<DeleteOutlined />} />
-          </Popconfirm>
-        </Space>
-      ),
+      render: (_: any, record: any) => {
+        if (isReadOnlySection) {
+          return null;
+        }
+        return (
+          <Space>
+            <Button
+              icon={<EditOutlined />}
+              onClick={() => {
+                setEditingExpense(record);
+                form.setFieldsValue({
+                  ...record,
+                  expense_date: dayjs(record.expense_date),
+                });
+                setModalVisible(true);
+              }}
+            />
+            {canEditOrDelete && (
+              <Popconfirm
+                title="Are you sure you want to delete this expense?"
+                onConfirm={() => handleDelete(record.id)}
+              >
+                <Button danger icon={<DeleteOutlined />} />
+              </Popconfirm>
+            )}
+          </Space>
+        );
+      },
     },
   ];
 
@@ -185,17 +199,19 @@ const Expenses: React.FC = () => {
     <div>
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
         <h1>Expenses</h1>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={() => {
-            setEditingExpense(null);
-            form.resetFields();
-            setModalVisible(true);
-          }}
-        >
-          Add Expense
-        </Button>
+        {!isReadOnlySection && (
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => {
+              setEditingExpense(null);
+              form.resetFields();
+              setModalVisible(true);
+            }}
+          >
+            Add Expense
+          </Button>
+        )}
       </div>
 
       <Table

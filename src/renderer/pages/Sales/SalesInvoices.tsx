@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Table, Button, Space, Modal, Form, Input, InputNumber, Select, DatePicker, message, Alert, Progress, Tag, Switch, Popconfirm } from 'antd';
-import { EditOutlined, DeleteOutlined, PrinterOutlined, WarningOutlined, LockOutlined, StopOutlined } from '@ant-design/icons';
+import { EditOutlined, DeleteOutlined, PrinterOutlined, WarningOutlined, LockOutlined, StopOutlined, EyeOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useApp } from '../../context/AppContext';
 import PrintTemplate from '../../components/PrintTemplate';
@@ -19,6 +19,14 @@ const SalesInvoices: React.FC = () => {
   const [adminPassword, setAdminPassword] = useState('');
   const [form] = Form.useForm();
   const [printData, setPrintData] = useState<any>(null);
+
+  // Section permissions (Sales)
+  const isAdminUser = user?.role_id === 1 || user?.role === 'admin' || user?.username === 'admin';
+  const sectionPerms = (user as any)?.section_permissions || {};
+  const salesPerm: string = isAdminUser ? 'all' : (sectionPerms.sales || 'read');
+  const canCreateOrEdit = isAdminUser || salesPerm === 'write' || salesPerm === 'edit' || salesPerm === 'all';
+  const canEditOrDelete = isAdminUser || salesPerm === 'edit' || salesPerm === 'all';
+  const isReadOnlySection = !isAdminUser && salesPerm === 'read';
 
   useEffect(() => {
     if (currentCompany) {
@@ -334,6 +342,19 @@ const SalesInvoices: React.FC = () => {
         if (record.status === 'cancelled') {
           return <Tag color="red">Disabled</Tag>;
         }
+        // Read-only users: allow only viewing/printing
+        if (isReadOnlySection) {
+          return (
+            <Space>
+              <Button
+                icon={<EyeOutlined />}
+                onClick={() => handlePrint(record)}
+                title={`View ${docLabel}`}
+              />
+            </Space>
+          );
+        }
+        // Users with write/edit/all: full actions
         return (
           <Space>
             <Button
@@ -341,42 +362,53 @@ const SalesInvoices: React.FC = () => {
               onClick={() => handlePrint(record)}
               title={`Print ${docLabel}`}
             />
-            <Button
-              icon={<EditOutlined />}
-              onClick={async () => {
-                const hide = message.loading('Fetching invoice details...', 0);
-                try {
-                  const result = await (window as any).electronAPI.db.salesInvoices.getById(record.id);
-                  if (result.success && result.data) {
-                    const detailedInvoice = result.data;
-                    setEditingInvoice(detailedInvoice);
-                    setSelectedCustomerInfo(customers.find((c: any) => c.id === detailedInvoice.customer_id) || null);
-                    form.setFieldsValue({
-                      ...detailedInvoice,
-                      invoice_number: detailedInvoice.invoice_number,
-                      invoice_date: dayjs(detailedInvoice.invoice_date),
-                      due_date: detailedInvoice.due_date ? dayjs(detailedInvoice.due_date) : null,
-                    });
-                    setModalVisible(true);
-                  } else {
+            {canCreateOrEdit && (
+              <Button
+                icon={<EditOutlined />}
+                onClick={async () => {
+                  const hide = message.loading('Fetching invoice details...', 0);
+                  try {
+                    const result = await (window as any).electronAPI.db.salesInvoices.getById(record.id);
+                    if (result.success && result.data) {
+                      const detailedInvoice = result.data;
+                      setEditingInvoice(detailedInvoice);
+                      setSelectedCustomerInfo(customers.find((c: any) => c.id === detailedInvoice.customer_id) || null);
+                      form.setFieldsValue({
+                        ...detailedInvoice,
+                        invoice_number: detailedInvoice.invoice_number,
+                        invoice_date: dayjs(detailedInvoice.invoice_date),
+                        due_date: detailedInvoice.due_date ? dayjs(detailedInvoice.due_date) : null,
+                      });
+                      setModalVisible(true);
+                    } else {
+                      message.error('Failed to fetch invoice details');
+                    }
+                  } catch (error) {
                     message.error('Failed to fetch invoice details');
+                  } finally {
+                    hide();
                   }
-                } catch (error) {
-                  message.error('Failed to fetch invoice details');
-                } finally {
-                  hide();
-                }
-              }}
-            />
-            <Popconfirm title={`Are you sure you want to disable this ${docLabel.toLowerCase()}? This cannot be undone.`} onConfirm={() => handleDisableInvoice(record.id)} okText="Yes, Disable" cancelText="Cancel">
-              <Button icon={<StopOutlined />} title="Disable" />
-            </Popconfirm>
-            <Button
-              danger
-              icon={<DeleteOutlined />}
-              onClick={() => handleRequestDelete(record.id)}
-              title={`Delete ${docLabel}`}
-            />
+                }}
+              />
+            )}
+            {canEditOrDelete && (
+              <>
+                <Popconfirm
+                  title={`Are you sure you want to disable this ${docLabel.toLowerCase()}? This cannot be undone.`}
+                  onConfirm={() => handleDisableInvoice(record.id)}
+                  okText="Yes, Disable"
+                  cancelText="Cancel"
+                >
+                  <Button icon={<StopOutlined />} title="Disable" />
+                </Popconfirm>
+                <Button
+                  danger
+                  icon={<DeleteOutlined />}
+                  onClick={() => handleRequestDelete(record.id)}
+                  title={`Delete ${docLabel}`}
+                />
+              </>
+            )}
           </Space>
         );
       },

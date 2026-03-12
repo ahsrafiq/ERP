@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Table, Button, Space, Modal, Form, Input, InputNumber, Select, DatePicker, message, Tag, Popconfirm } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, PrinterOutlined, LockOutlined, StopOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, DeleteOutlined, PrinterOutlined, LockOutlined, StopOutlined, EyeOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useApp } from '../../context/AppContext';
 
@@ -21,6 +21,14 @@ const PurchaseInvoices: React.FC = () => {
   const [adminPassword, setAdminPassword] = useState('');
   const [form] = Form.useForm();
   const [paymentForm] = Form.useForm();
+
+  // Section permissions (Purchase)
+  const isAdminUser = user?.role_id === 1 || user?.role === 'admin' || user?.username === 'admin';
+  const sectionPerms = (user as any)?.section_permissions || {};
+  const purchasePerm: string = isAdminUser ? 'all' : (sectionPerms.purchase || 'read');
+  const canCreateOrEdit = isAdminUser || purchasePerm === 'write' || purchasePerm === 'edit' || purchasePerm === 'all';
+  const canEditOrDelete = isAdminUser || purchasePerm === 'edit' || purchasePerm === 'all';
+  const isReadOnlySection = !isAdminUser && purchasePerm === 'read';
 
   useEffect(() => {
     if (currentCompany) {
@@ -265,6 +273,37 @@ const PurchaseInvoices: React.FC = () => {
         if (record.status === 'cancelled') {
           return <Tag color="red">Disabled</Tag>;
         }
+        if (isReadOnlySection) {
+          return (
+            <Space>
+              <Button
+                icon={<EyeOutlined />}
+                onClick={async () => {
+                  const hide = message.loading('Fetching invoice details...', 0);
+                  try {
+                    const result = await (window as any).electronAPI.db.purchaseInvoices.getById(record.id);
+                    if (result.success && result.data) {
+                      const detailedInvoice = result.data;
+                      setEditingInvoice(detailedInvoice);
+                      form.setFieldsValue({
+                        ...detailedInvoice,
+                        invoice_date: dayjs(detailedInvoice.invoice_date),
+                      });
+                      setModalVisible(true);
+                    } else {
+                      message.error('Failed to fetch invoice details');
+                    }
+                  } catch (error) {
+                    message.error('Failed to fetch invoice details');
+                  } finally {
+                    hide();
+                  }
+                }}
+                title="View Invoice"
+              />
+            </Space>
+          );
+        }
         return (
           <Space>
             <Button
@@ -297,10 +336,14 @@ const PurchaseInvoices: React.FC = () => {
                 }
               }}
             />
-            <Popconfirm title="Are you sure you want to disable this invoice? This cannot be undone." onConfirm={() => handleDisableInvoice(record.id)} okText="Yes, Disable" cancelText="Cancel">
-              <Button icon={<StopOutlined />} title="Disable" />
-            </Popconfirm>
-            <Button danger icon={<DeleteOutlined />} onClick={() => handleRequestDelete(record.id)} />
+            {canEditOrDelete && (
+              <>
+                <Popconfirm title="Are you sure you want to disable this invoice? This cannot be undone." onConfirm={() => handleDisableInvoice(record.id)} okText="Yes, Disable" cancelText="Cancel">
+                  <Button icon={<StopOutlined />} title="Disable" />
+                </Popconfirm>
+                <Button danger icon={<DeleteOutlined />} onClick={() => handleRequestDelete(record.id)} />
+              </>
+            )}
           </Space>
         );
       },
@@ -311,17 +354,19 @@ const PurchaseInvoices: React.FC = () => {
     <div>
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
         <h1>Purchase Invoices</h1>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={() => {
-            setEditingInvoice(null);
-            form.resetFields();
-            setModalVisible(true);
-          }}
-        >
-          New Invoice
-        </Button>
+        {!isReadOnlySection && (
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => {
+              setEditingInvoice(null);
+              form.resetFields();
+              setModalVisible(true);
+            }}
+          >
+            New Invoice
+          </Button>
+        )}
       </div>
 
       <Table

@@ -22,6 +22,13 @@ const Customers: React.FC = () => {
   const [importFormatModal, setImportFormatModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Section permissions (Sales)
+  const isAdminUser = user?.role_id === 1 || (user as any)?.role === 'admin' || user?.username === 'admin';
+  const sectionPerms = (user as any)?.section_permissions || {};
+  const salesPerm: string = isAdminUser ? 'all' : (sectionPerms.sales || 'read');
+  const canEditOrDelete = isAdminUser || salesPerm === 'edit' || salesPerm === 'all' || salesPerm === 'write';
+  const isReadOnlySection = !isAdminUser && salesPerm === 'read';
+
   useEffect(() => {
     if (currentCompany) loadCustomers();
   }, [currentCompany]);
@@ -86,15 +93,23 @@ const Customers: React.FC = () => {
       }
       let created = 0;
       let failed = 0;
+      const existingCodes = (Array.isArray(customers) ? customers : [])
+        .map((c: any) => {
+          const raw = c && c.code != null ? String(c.code) : '';
+          const numeric = raw.replace(/\D/g, '');
+          return numeric ? Number(numeric) : NaN;
+        })
+        .filter((n) => !Number.isNaN(n));
+      let nextCode = existingCodes.length > 0 ? Math.max(...existingCodes) + 1 : 1;
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
         const name = getCol(row, 'Name', 'name');
-        const code = getCol(row, 'Code', 'code', 'Customer Code');
-        if (!name || !code) { failed++; continue; }
+        const salesPerson = getCol(row, 'Sales Person', 'Salesperson Name', 'salesperson_name');
+        if (!name || !salesPerson) { failed++; continue; }
         const payload = {
           company_id: currentCompany.id,
           name,
-          code: code.replace(/\D/g, '') || code,
+          code: String(nextCode++),
           email: getCol(row, 'Email', 'email'),
           phone: getCol(row, 'Phone', 'phone'),
           address: getCol(row, 'Address', 'address'),
@@ -105,13 +120,14 @@ const Customers: React.FC = () => {
           tax_number: getCol(row, 'Tax Number', 'NTN Number', 'tax_number'),
           credit_limit: getColNum(row, 'Credit Limit', 'credit_limit'),
           attention_person: getCol(row, 'Attention Person', 'attention_person'),
-          salesperson_name: getCol(row, 'Sales Person', 'Salesperson Name', 'salesperson_name'),
+          salesperson_name: salesPerson,
           gst_number: getCol(row, 'GST Number', 'gst_number'),
           po_number: getCol(row, 'PO Number', 'po_number'),
         };
         try {
           const result = await (window as any).electronAPI.db.customers.create(payload);
-          if (result?.id != null) created++;
+          const data = result && typeof result === 'object' && 'data' in result ? (result as any).data : result;
+          if (data?.id != null) created++;
           else failed++;
         } catch (_) {
           failed++;
@@ -203,30 +219,37 @@ const Customers: React.FC = () => {
     {
       title: 'Actions',
       key: 'actions',
-      render: (_: any, record: any) => (
-        <Space>
-          <Button
-            icon={<EditOutlined />}
-            onClick={() => {
-              setEditingCustomer(record);
-              let terms: string[] = [];
-              try { terms = JSON.parse(record.terms_and_conditions || '[]'); } catch { terms = record.terms_and_conditions ? [record.terms_and_conditions] : []; }
-              form.setFieldsValue({ ...record, terms_and_conditions: terms });
-              setModalVisible(true);
-            }}
-          />
-          <Tooltip title="Record Advance Payment">
+      render: (_: any, record: any) => {
+        if (isReadOnlySection) {
+          return null;
+        }
+        return (
+          <Space>
             <Button
-              icon={<DollarOutlined />}
-              style={{ color: '#389e0d', borderColor: '#389e0d' }}
-              onClick={() => openAdvanceModal(record)}
+              icon={<EditOutlined />}
+              onClick={() => {
+                setEditingCustomer(record);
+                let terms: string[] = [];
+                try { terms = JSON.parse(record.terms_and_conditions || '[]'); } catch { terms = record.terms_and_conditions ? [record.terms_and_conditions] : []; }
+                form.setFieldsValue({ ...record, terms_and_conditions: terms });
+                setModalVisible(true);
+              }}
             />
-          </Tooltip>
-          <Popconfirm title="Are you sure you want to delete this customer?" onConfirm={() => handleDelete(record.id)}>
-            <Button danger icon={<DeleteOutlined />} />
-          </Popconfirm>
-        </Space>
-      ),
+            <Tooltip title="Record Advance Payment">
+              <Button
+                icon={<DollarOutlined />}
+                style={{ color: '#389e0d', borderColor: '#389e0d' }}
+                onClick={() => openAdvanceModal(record)}
+              />
+            </Tooltip>
+            {canEditOrDelete && (
+              <Popconfirm title="Are you sure you want to delete this customer?" onConfirm={() => handleDelete(record.id)}>
+                <Button danger icon={<DeleteOutlined />} />
+              </Popconfirm>
+            )}
+          </Space>
+        );
+      },
     },
   ];
 
@@ -236,11 +259,15 @@ const Customers: React.FC = () => {
         <h1 style={{ margin: 0 }}>Customers</h1>
         <Space>
           <Button icon={<UploadOutlined />} onClick={() => setImportFormatModal(true)}>Excel format</Button>
-          <input ref={fileInputRef} type="file" accept=".xlsx,.xls" style={{ display: 'none' }} onChange={handleImportExcel} />
-          <Button icon={<UploadOutlined />} loading={importing} onClick={() => fileInputRef.current?.click()}>Import from Excel</Button>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingCustomer(null); form.resetFields(); setModalVisible(true); }}>
-            Add Customer
-          </Button>
+          {!isReadOnlySection && (
+            <>
+              <input ref={fileInputRef} type="file" accept=".xlsx,.xls" style={{ display: 'none' }} onChange={handleImportExcel} />
+              <Button icon={<UploadOutlined />} loading={importing} onClick={() => fileInputRef.current?.click()}>Import from Excel</Button>
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingCustomer(null); form.resetFields(); setModalVisible(true); }}>
+                Add Customer
+              </Button>
+            </>
+          )}
         </Space>
       </div>
 
@@ -373,8 +400,7 @@ const Customers: React.FC = () => {
         <p><strong>Required columns:</strong></p>
         <ul style={{ marginBottom: 12, paddingLeft: 20 }}>
           <li><strong>Name</strong> – Customer name</li>
-          <li><strong>Code</strong> – Customer code (numbers only; non-digits will be stripped)</li>
-          <li><strong>Credit Limit</strong> – Numeric</li>
+          <li><strong>Sales Person</strong> – Sales representative name</li>
         </ul>
         <p><strong>Optional columns:</strong></p>
         <ul style={{ marginBottom: 0, paddingLeft: 20 }}>
