@@ -709,7 +709,7 @@ const SalesQuotations: React.FC = () => {
             >
                 <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span>Scale:</span>
-                    <Select value={contentScale} onChange={v => setContentScale(v)} style={{ width: 100 }} options={[{ value: 0.8, label: '80% (more rows)' }, { value: 0.9, label: '90%' }, { value: 1, label: '100%' }]} />
+                    <Select value={contentScale} onChange={v => setContentScale(v)} style={{ width: 90 }} options={[{ value: 0.5, label: '50%' }, { value: 0.6, label: '60%' }, { value: 0.7, label: '70%' }, { value: 0.8, label: '80%' }, { value: 0.9, label: '90%' }, { value: 1, label: '100%' }]} />
                 </div>
                 <div style={{ maxHeight: '70vh', overflowY: 'auto', padding: '20px', background: '#f5f5f5' }}>
                     <div className="preview-page-wrapper">

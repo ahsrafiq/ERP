@@ -107,7 +107,7 @@ const Customers: React.FC = () => {
           attention_person: getCol(row, 'Attention Person', 'attention_person'),
           salesperson_name: getCol(row, 'Sales Person', 'Salesperson Name', 'salesperson_name'),
           gst_number: getCol(row, 'GST Number', 'gst_number'),
-          pr_number: getCol(row, 'PR Number', 'pr_number'),
+          po_number: getCol(row, 'PO Number', 'po_number'),
         };
         try {
           const result = await (window as any).electronAPI.db.customers.create(payload);
@@ -170,7 +170,7 @@ const Customers: React.FC = () => {
     { title: 'Name',      dataIndex: 'name',      key: 'name' },
     { title: 'Email',     dataIndex: 'email',     key: 'email' },
     { title: 'Phone',     dataIndex: 'phone',     key: 'phone' },
-    { title: 'PR Number', dataIndex: 'pr_number', key: 'pr_number' },
+    { title: 'PO Number', dataIndex: 'po_number', key: 'po_number' },
     {
       title: 'Balance / Credit',
       key: 'balance_credit',
@@ -283,7 +283,7 @@ const Customers: React.FC = () => {
               <Input placeholder="e.g., 1234567-8" />
             </Form.Item>
           )}
-          <Form.Item name="pr_number" label="PR Number" rules={[{ required: true, message: 'Please enter PR number' }]}><Input /></Form.Item>
+          <Form.Item name="po_number" label="PO Number"><Input placeholder="e.g. PO number" /></Form.Item>
           <div style={{ marginBottom: 16 }}>
             <label style={{ fontWeight: 500 }}>Terms and Conditions</label>
             <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>Wrap text with ** to make it bold (e.g. **This is bold**)</div>
@@ -379,7 +379,7 @@ const Customers: React.FC = () => {
         <p><strong>Optional columns:</strong></p>
         <ul style={{ marginBottom: 0, paddingLeft: 20 }}>
           <li>Email, Phone, Address, City, State, Country, Postal Code</li>
-          <li>Tax Number (NTN), Attention Person, Sales Person, GST Number, PR Number</li>
+          <li>Tax Number (NTN), Attention Person, Sales Person, GST Number, PO Number</li>
         </ul>
       </Modal>
     </div>

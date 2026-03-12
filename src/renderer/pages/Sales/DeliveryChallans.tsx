@@ -13,6 +13,7 @@ const DeliveryChallans: React.FC = () => {
     const [challans, setChallans] = useState<any[]>([]);
     const [customers, setCustomers] = useState<any[]>([]);
     const [items, setItems] = useState<any[]>([]);
+    const [brands, setBrands] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
     const [modalVisible, setModalVisible] = useState(false);
     const [editingChallan, setEditingChallan] = useState<any>(null);
@@ -73,6 +74,7 @@ const DeliveryChallans: React.FC = () => {
             loadChallans();
             loadCustomers();
             loadItems();
+            loadBrands();
         }
     }, [currentCompany]);
 
@@ -99,6 +101,14 @@ const DeliveryChallans: React.FC = () => {
         if (!currentCompany) return;
         const result = await (window as any).electronAPI.db.items.getAll(currentCompany.id);
         if (result.success) setItems(result.data || []);
+    };
+
+    const loadBrands = async () => {
+        try {
+            const result = await (window as any).electronAPI.db.brands.getAll();
+            if (result?.success && Array.isArray(result.data)) setBrands(result.data || []);
+            else setBrands([]);
+        } catch (_) { setBrands([]); }
     };
 
     const handlePrint = async (record: any) => {
@@ -153,14 +163,9 @@ const DeliveryChallans: React.FC = () => {
 
         if (currentCompany) {
             try {
-                const [challanRes, poRes] = await Promise.all([
-                    (window as any).electronAPI.db.deliveryChallans.getNextNumber(currentCompany.id, fiscalYear),
-                    (window as any).electronAPI.db.deliveryChallans.getNextPoNumber(currentCompany.id, fiscalYear)
-                ]);
-
+                const challanRes = await (window as any).electronAPI.db.deliveryChallans.getNextNumber(currentCompany.id, fiscalYear);
                 form.setFieldsValue({
                     challan_number: challanRes.success ? challanRes.data : undefined,
-                    po_number: poRes.success ? poRes.data : undefined,
                     challan_date: dayjs(),
                 });
             } catch (err) {
@@ -177,8 +182,13 @@ const DeliveryChallans: React.FC = () => {
             let terms: string[] = [];
             const raw = result.data.terms_and_conditions;
             if (raw) { try { const arr = JSON.parse(raw); terms = Array.isArray(arr) ? arr : [raw]; } catch { terms = [raw]; } }
+            const itemsWithBrandId = (result.data.items || []).map((row: any) => {
+                const master = items.find((i: any) => i.id === row.item_id);
+                return { ...row, brand_id: master?.brand_id ?? row.brand_id };
+            });
             form.setFieldsValue({
                 ...result.data,
+                items: itemsWithBrandId,
                 challan_date: dayjs(result.data.challan_date),
                 terms_and_conditions: terms,
             });
@@ -189,8 +199,23 @@ const DeliveryChallans: React.FC = () => {
     };
 
     const handleCreateInvoice = async (record: any) => {
+        const alreadyHasInvoice = record.sales_invoice_id != null && record.sales_invoice_id !== '';
+        if (alreadyHasInvoice) {
+            Modal.confirm({
+                title: 'Duplicate invoice',
+                content: 'This delivery challan already has an invoice. You are creating another invoice (a duplicate). Do you want to continue?',
+                okText: 'Yes, create duplicate',
+                cancelText: 'Cancel',
+                onOk: () => doCreateInvoiceFromChallan(record.id),
+            });
+        } else {
+            await doCreateInvoiceFromChallan(record.id);
+        }
+    };
+
+    const doCreateInvoiceFromChallan = async (challanId: number) => {
         try {
-            const result = await (window as any).electronAPI.db.salesInvoices.createFromChallan(record.id, user?.id);
+            const result = await (window as any).electronAPI.db.salesInvoices.createFromChallan(challanId, user?.id);
             if (result.success && result.data) {
                 message.success(`${docLabel} ${result.data.invoice_number} created from challan`);
                 navigate('/sales/invoices');
@@ -258,20 +283,27 @@ const DeliveryChallans: React.FC = () => {
     const handleSave = async (values: any) => {
         if (!currentCompany) return;
         try {
+            const customer = customers.find((c: any) => c.id === values.customer_id);
             const challanData = {
                 ...values,
                 company_id: currentCompany.id,
                 challan_number: values.challan_number?.trim?.() || undefined,
+                po_number: customer?.po_number ?? undefined,
                 fiscal_year: fiscalYear,
                 challan_date: values.challan_date.format('YYYY-MM-DD'),
                 created_by: user?.id,
                 terms_and_conditions: JSON.stringify((values.terms_and_conditions || []).filter((t: string) => t?.trim())),
             };
 
-            // Calculate total quantity
+            // Ensure each item has brand (text) for backend; total quantity
             let totalQty = 0;
-            challanData.items?.forEach((item: any) => {
-                totalQty += item.quantity;
+            challanData.items = (challanData.items || []).map((item: any) => {
+                totalQty += item.quantity ?? 0;
+                const brandName = (item.brand_id != null && item.brand_id !== '')
+                    ? (brands.find((b: any) => Number(b.id) === Number(item.brand_id))?.name)
+                    : null;
+                const fallbackBrand = items.find((i: any) => i.id === item.item_id)?.brand_name;
+                return { ...item, brand: brandName ?? fallbackBrand ?? item.brand };
             });
             challanData.total_quantity = totalQty;
 
@@ -306,7 +338,6 @@ const DeliveryChallans: React.FC = () => {
         { title: 'Challan #', dataIndex: 'challan_number', key: 'challan_number' },
         { title: 'Customer', dataIndex: 'customer_name', key: 'customer' },
         { title: 'Date', dataIndex: 'challan_date', key: 'date', render: (d: string) => dayjs(d).format('DD/MM/YYYY') },
-        { title: 'PO Number', dataIndex: 'po_number', key: 'po_number' },
         { title: 'Total Qty', dataIndex: 'total_quantity', key: 'qty' },
         {
             title: 'Status',
@@ -355,7 +386,7 @@ const DeliveryChallans: React.FC = () => {
                     <Form.Item name="challan_number" label="Challan #" rules={[{ required: true, message: 'Required' }]} style={{ marginBottom: 16 }}>
                         <Input placeholder="e.g. DC-0001/26" style={{ width: 160 }} />
                     </Form.Item>
-                    <Space align="start">
+                    <Space align="start" wrap>
                         <Form.Item name="customer_id" label="Customer" rules={[{ required: true }]} style={{ width: 300 }}>
                             <Select showSearch optionFilterProp="children">
                                 {customers.map(c => <Select.Option key={c.id} value={c.id}>{c.name}</Select.Option>)}
@@ -363,9 +394,6 @@ const DeliveryChallans: React.FC = () => {
                         </Form.Item>
                         <Form.Item name="challan_date" label="Date" rules={[{ required: true }]} initialValue={dayjs()}>
                             <DatePicker />
-                        </Form.Item>
-                        <Form.Item name="po_number" label="PO Number">
-                            <Input placeholder="e.g. PO-12345" style={{ width: 160 }} />
                         </Form.Item>
                     </Space>
 
@@ -383,48 +411,66 @@ const DeliveryChallans: React.FC = () => {
                     >
                         {(fields, { add, remove }, { errors }) => (
                             <>
-                                {fields.map(({ key, name, ...restField }) => (
+                                {fields.map(({ key, name, ...restField }) => {
+                                    const rowBrandId = form.getFieldValue(['items', name, 'brand_id']);
+                                    const itemsForBrand = (rowBrandId != null && rowBrandId !== '')
+                                        ? items.filter((i: any) => Number(i.brand_id) === Number(rowBrandId))
+                                        : items;
+                                    return (
                                     <div key={key} style={{ borderBottom: '1px solid #f0f0f0', marginBottom: 16, paddingBottom: 16 }}>
-                                        <Space style={{ display: 'flex', marginBottom: 8 }} align="baseline">
-                                            <Form.Item {...restField} name={[name, 'item_id']} rules={[{ required: true, message: 'Select item' }]}>
+                                        <div style={{ display: 'flex', flexWrap: 'nowrap', alignItems: 'flex-end', gap: 12, marginBottom: 8 }}>
+                                            <Form.Item {...restField} name={[name, 'brand_id']} label="Brand" rules={[{ required: true, message: 'Select brand' }]} style={{ marginBottom: 0, minWidth: 140 }}>
+                                                <Select
+                                                    placeholder="Brand"
+                                                    style={{ width: 140 }}
+                                                    showSearch
+                                                    optionFilterProp="children"
+                                                    onChange={(selectedBrandId) => {
+                                                        const currentItems = form.getFieldValue('items') || [];
+                                                        currentItems[name] = { ...currentItems[name], brand_id: selectedBrandId, item_id: undefined, description: '', unit_price: 0 };
+                                                        form.setFieldsValue({ items: currentItems });
+                                                    }}
+                                                >
+                                                    {(brands || []).map((b: any) => <Select.Option key={b.id} value={b.id}>{b.name}</Select.Option>)}
+                                                </Select>
+                                            </Form.Item>
+                                            <Form.Item {...restField} name={[name, 'item_id']} label="Item" rules={[{ required: true, message: 'Select item' }]} style={{ marginBottom: 0, minWidth: 200 }}>
                                                 <Select
                                                     placeholder="Item"
-                                                    style={{ width: 300 }}
+                                                    style={{ width: 200 }}
                                                     showSearch
                                                     optionFilterProp="children"
                                                     onChange={(itemId) => {
-                                                        const item = items.find(i => i.id === itemId);
+                                                        const item = items.find((i: any) => i.id === itemId);
                                                         if (item) {
                                                             const currentItems = form.getFieldValue('items') || [];
                                                             currentItems[name] = {
                                                                 ...currentItems[name],
                                                                 description: item.description || '',
-                                                                brand: item.brand_name || '',
+                                                                brand_id: item.brand_id,
                                                                 unit_price: item.selling_price ?? 0
                                                             };
                                                             form.setFieldsValue({ items: currentItems });
                                                         }
                                                     }}
                                                 >
-                                                    {items.map(i => <Select.Option key={i.id} value={i.id}>{i.name} ({i.code})</Select.Option>)}
+                                                    {itemsForBrand.map((i: any) => <Select.Option key={i.id} value={i.id}>{i.name} ({i.code})</Select.Option>)}
                                                 </Select>
                                             </Form.Item>
-                                            <Form.Item {...restField} name={[name, 'brand']}>
-                                                <Input placeholder="Brand" style={{ width: 120 }} />
-                                            </Form.Item>
-                                            <Form.Item {...restField} name={[name, 'unit_price']} label="Price" initialValue={0}>
+                                            <Form.Item {...restField} name={[name, 'unit_price']} label="Price" initialValue={0} style={{ marginBottom: 0, width: 100, flexShrink: 0 }}>
                                                 <InputNumber placeholder="Price" min={0} style={{ width: 100 }} />
                                             </Form.Item>
-                                            <Form.Item {...restField} name={[name, 'quantity']} rules={[{ required: true, message: 'Enter qty' }]}>
-                                                <InputNumber placeholder="Qty" min={1} />
+                                            <Form.Item {...restField} name={[name, 'quantity']} label="Qty" rules={[{ required: true, message: 'Qty' }]} style={{ marginBottom: 0, width: 80, flexShrink: 0 }}>
+                                                <InputNumber placeholder="Qty" min={1} style={{ width: 80 }} />
                                             </Form.Item>
-                                            <Button danger onClick={() => remove(name)} icon={<DeleteOutlined />} />
-                                        </Space>
+                                            <Button danger onClick={() => remove(name)} icon={<DeleteOutlined />} style={{ flexShrink: 0 }} />
+                                        </div>
                                         <Form.Item {...restField} name={[name, 'description']} style={{ marginBottom: 0 }}>
                                             <Input.TextArea placeholder="Item Description" autoSize={{ minRows: 1, maxRows: 3 }} />
                                         </Form.Item>
                                     </div>
-                                ))}
+                                    );
+                                })}
                                 <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />}>Add Item</Button>
                                 <div style={{ color: '#ff4d4f', marginTop: 8 }}>
                                     <Form.ErrorList errors={errors} />
@@ -474,7 +520,7 @@ const DeliveryChallans: React.FC = () => {
                                 />
                             )}
                             <span>Scale:</span>
-                            <Select value={contentScale} onChange={v => setContentScale(v)} style={{ width: 100 }} options={[{ value: 0.8, label: '80%' }, { value: 0.9, label: '90%' }, { value: 1, label: '100%' }]} />
+                            <Select value={contentScale} onChange={v => setContentScale(v)} style={{ width: 90 }} options={[{ value: 0.5, label: '50%' }, { value: 0.6, label: '60%' }, { value: 0.7, label: '70%' }, { value: 0.8, label: '80%' }, { value: 0.9, label: '90%' }, { value: 1, label: '100%' }]} />
                         </div>
                         <Space>
                             <Button onClick={() => { setIsPreviewVisible(false); setPrintData(null); }}>Close</Button>

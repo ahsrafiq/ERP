@@ -188,13 +188,14 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
     const tableColumns = isInvoice ? invoiceColumns : isBill ? billColumns : columns;
 
     const showLetterhead = withLetterhead && !!company.letterhead_path;
-    const scale = contentScale > 0 && contentScale <= 1 ? contentScale : 1;
-    const useScale = scale < 1;
-    // Content area (between header and footer strips): 210 - 30 padding = 180mm wide; 297 - 65 - 58 = 174mm tall
-    const contentAreaW = 180;
-    const contentAreaH = 297 - 65 - 58;
+    const scale = contentScale >= 0.5 && contentScale <= 1 ? contentScale : 1;
+    const tableScale = scale < 1;
 
-    const documentContent = (
+    // Content area width for no-letterhead centering
+    const contentAreaW = 180;
+
+    /* Content above table: title + customer/doc details */
+    const contentAboveTable = (
         <>
             <div className={`document-title ${isInvoice ? 'document-title-invoice' : ''} ${isBill ? 'document-title-bill' : ''}`}>
                 <h2>{getTitle()}</h2>
@@ -204,10 +205,11 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
                 <>
                     <div className="inv-two-col">
                         <div className="inv-block inv-bill-to">
-                            <div className="inv-block-label">Bill to</div>
+                            <div className="inv-block-label">Invoice to</div>
                             <p className="inv-company-name">{data.customer_name}</p>
                             {data.customer_address != null && String(data.customer_address).trim() !== '' && <p className="inv-address">{data.customer_address}</p>}
                             {data.customer_tax_number != null && String(data.customer_tax_number).trim() !== '' && <p className="inv-tax"><strong>NTN #:</strong> {data.customer_tax_number}</p>}
+                            {(data.customer_gst_number != null && String(data.customer_gst_number).trim() !== '') && <p className="inv-tax"><strong>STN #:</strong> {data.customer_gst_number}</p>}
                             {data.attention_person != null && String(data.attention_person).trim() !== '' && <p className="inv-contact"><strong>Contact Person:</strong> {data.attention_person}</p>}
                         </div>
                         <div className="inv-block inv-company-info">
@@ -221,8 +223,9 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
                     <div className="inv-details-row">
                         <span><strong>Invoice Date:</strong> {formatDate(getDate())}</span>
                         <span><strong>Invoice Number:</strong> {getNumber()}</span>
+                        {company.po_number != null && String(company.po_number).trim() !== '' && <span><strong>PO#:</strong> {company.po_number}</span>}
                         {data.person_name != null && String(data.person_name).trim() !== '' && <span><strong>Person Name:</strong> {data.person_name}</span>}
-                        {data.delivery_challan_number && <span><strong>DC No.:</strong> {data.delivery_challan_number}</span>}
+                        {data.delivery_challan_number && <span><strong>Ref D/C#:</strong> {data.delivery_challan_number}</span>}
                     </div>
                 </>
             )}
@@ -242,6 +245,9 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
                             <p><strong>Ref:</strong>  {data.person_name}</p>
                         )}
                         {data.delivery_challan_number && <p><strong>DC No:</strong> {data.delivery_challan_number}</p>}
+                        {data.customer_pr_number != null && String(data.customer_pr_number).trim() !== '' && (
+                            <p><strong>PR No:</strong> {data.customer_pr_number}</p>
+                        )}
                     </div>
                 </div>
             )}
@@ -265,7 +271,7 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
                         {(type === 'invoice' || type === 'bill') && data.delivery_challan_number && (
                             <p><strong>DC No:</strong> {data.delivery_challan_number}</p>
                         )}
-                        {data.po_number && <p><strong>PO No:</strong> {data.po_number}</p>}
+                        {(data.customer_pr_number ?? data.po_number) && <p><strong>PR No:</strong> {data.customer_pr_number || data.po_number}</p>}
                         {data.customer_pr_number && type === 'quotation' && (
                             <p><strong>PR No:</strong> {data.customer_pr_number}</p>
                         )}
@@ -281,6 +287,10 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
                     Thank you for the inquiry, we are pleased to offer:
                 </div>
             )}
+        </>
+    );
+
+    const tableBlock = (
             <div className={`items-table ${isInvoice ? 'items-table-invoice' : ''} ${isBill ? 'items-table-bill' : ''}`}>
                 <Table
                     dataSource={data.items}
@@ -292,6 +302,11 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
                     tableLayout="auto"
                 />
             </div>
+    );
+
+    /* Totals row(s) — scale with the table */
+    const totalsBlock = (
+        <>
             {isInvoice && (
                 <div className="totals-section inv-totals-section">
                     <div className="totals">
@@ -303,15 +318,47 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
                 </div>
             )}
             {isBill && (
+                <table className="bill-totals-table">
+                    <tbody>
+                        <tr>
+                            <td className="bill-total-label">Total Rs.</td>
+                            <td className="bill-total-value">{Number(data.total_amount || 0).toLocaleString()}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            )}
+            {!isInvoice && !isBill && type !== 'challan' && (
+                <div className="totals-section">
+                    <div className="totals">
+                        <div className="total-row">
+                            <span>Subtotal:</span>
+                            <span>{data.subtotal?.toLocaleString()}</span>
+                        </div>
+                        <div className="total-row grand-total">
+                            <span>Grand Total:</span>
+                            <span>{data.total_amount?.toLocaleString()} ({company.currency})</span>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {type === 'challan' && (
+                <div className="totals-section">
+                    <div className="totals">
+                        <div className="total-row grand-total">
+                            <span>Total Quantity:</span>
+                            <span>{data.total_quantity}</span>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </>
+    );
+
+    /* Content below table: terms, footer, disclaimer (not scaled) */
+    const contentBelowTable = (
+            <>
+            {isBill && (
                 <div className="bill-totals-section">
-                    <table className="bill-totals-table">
-                        <tbody>
-                            <tr>
-                                <td className="bill-total-label">Total Rs.</td>
-                                <td className="bill-total-value">{Number(data.total_amount || 0).toLocaleString()}</td>
-                            </tr>
-                        </tbody>
-                    </table>
                     {data.terms_and_conditions != null && String(data.terms_and_conditions).trim() !== '' && (() => {
                         let terms: string[] = [];
                         try { const arr = JSON.parse(data.terms_and_conditions); terms = Array.isArray(arr) ? arr : []; } catch { terms = [String(data.terms_and_conditions)]; }
@@ -368,16 +415,6 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
                             </>
                         )}
                     </div>
-                    <div className="totals">
-                        <div className="total-row">
-                            <span>Subtotal:</span>
-                            <span>{data.subtotal?.toLocaleString()}</span>
-                        </div>
-                        <div className="total-row grand-total">
-                            <span>Grand Total:</span>
-                            <span>{data.total_amount?.toLocaleString()} ({company.currency})</span>
-                        </div>
-                    </div>
                 </div>
             )}
             {type === 'quotation' && (
@@ -416,14 +453,6 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
             )}
             {type === 'challan' && (
                 <>
-                    <div className="totals-section">
-                        <div className="totals">
-                            <div className="total-row grand-total">
-                                <span>Total Quantity:</span>
-                                <span>{data.total_quantity}</span>
-                            </div>
-                        </div>
-                    </div>
                     <div className="dc-footer">
                         <div className="dc-stamp-box">
                             <div className="dc-stamp-line" />
@@ -441,6 +470,26 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
                     This is a computer-generated quotation and is valid without a physical signature.
                 </p>
             )}
+            </>
+    );
+
+    const tableSection = tableScale ? (
+        <div className="print-table-scale-wrapper" style={{ zoom: scale }}>
+            {tableBlock}
+            {totalsBlock}
+        </div>
+    ) : (
+        <>
+            {tableBlock}
+            {totalsBlock}
+        </>
+    );
+
+    const documentContent = (
+        <>
+            {contentAboveTable}
+            {tableSection}
+            {contentBelowTable}
         </>
     );
 
@@ -492,44 +541,18 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
                 </div>
             )}
 
-            {/* Document content - overlaid between header and footer; only this part is scaled so footer stays at bottom */}
+            {/* Document content: details above/below table stay fixed; only the table is scaled when scale < 100% */}
             <div className="print-content">
-                {useScale ? (
-                    showLetterhead ? (
-                        <div
-                            className="print-content-scaled"
-                            style={{
-                                transform: `scale(${scale})`,
-                                transformOrigin: 'top left',
-                                width: `${contentAreaW / scale}mm`,
-                                minHeight: `${contentAreaH / scale}mm`,
-                            }}
-                        >
-                            {documentContent}
-                        </div>
-                    ) : (
-                        <div
-                            className="print-content-scaled-wrapper"
-                            style={{
-                                width: `${contentAreaW}mm`,
-                                overflow: 'hidden',
-                            }}
-                        >
-                            <div
-                                className="print-content-scaled"
-                                style={{
-                                    transform: `scale(${scale})`,
-                                    transformOrigin: 'top center',
-                                    width: `${contentAreaW / scale}mm`,
-                                    minHeight: `${contentAreaH / scale}mm`,
-                                    marginLeft: `${-(contentAreaW / scale - contentAreaW) / 2}mm`,
-                                }}
-                            >
-                                {documentContent}
-                            </div>
-                        </div>
-                    )
-                ) : documentContent}
+                {showLetterhead ? (
+                    documentContent
+                ) : (
+                    <div
+                        className="print-content-scaled-wrapper"
+                        style={{ width: `${contentAreaW}mm` }}
+                    >
+                        {documentContent}
+                    </div>
+                )}
             </div>
         </div>
     );

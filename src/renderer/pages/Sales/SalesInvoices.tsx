@@ -152,8 +152,9 @@ const SalesInvoices: React.FC = () => {
     invoiceData.items.forEach((item: any) => {
       const lineTotal = item.quantity * item.unit_price;
       subtotal += lineTotal;
-      const rate = isGst ? (item.gst_rate != null && item.gst_rate !== '' ? Number(item.gst_rate) : 18) : 0;
-      if (isGst && (item.gst_rate == null || item.gst_rate === '')) item.gst_rate = 18;
+      // Flat 18% GST when company is GST-enabled; otherwise 0
+      const rate = isGst ? 18 : 0;
+      item.gst_rate = rate;
       const gstAmount = lineTotal * (rate / 100);
       gstTotal += gstAmount;
       item.gst_amount = gstAmount;
@@ -507,14 +508,8 @@ const SalesInvoices: React.FC = () => {
                         style={{ width: 220 }}
                         onChange={(value) => {
                           const item = items.find(i => i.id === value);
-                          const customerId = form.getFieldValue('customer_id');
-                          const customer = customers.find((c: any) => c.id === customerId);
-                          // When GST enabled: use customer default_tax_rate if set, else 18%; else 0
-                          const defaultTaxRate = isGst
-                            ? (customer?.default_tax_rate != null ? Number(customer.default_tax_rate) : 18)
-                            : 0;
-                          const itemTaxRate = (item?.gst_rate != null && item.gst_rate !== '') ? Number(item.gst_rate) : null;
-                          const gstRate = isGst ? (itemTaxRate ?? defaultTaxRate) : 0;
+                          // Flat 18% GST when GST is enabled; otherwise 0
+                          const gstRate = isGst ? 18 : 0;
                           if (item) {
                             const currentItems = form.getFieldValue('items');
                             currentItems[name] = {
@@ -540,9 +535,6 @@ const SalesInvoices: React.FC = () => {
                     </Form.Item>
                     <Form.Item {...restField} name={[name, 'brand']}>
                       <Input placeholder="Brand" style={{ width: 100 }} />
-                    </Form.Item>
-                    <Form.Item {...restField} name={[name, 'availability']}>
-                      <Input placeholder="Remarks" style={{ width: 120 }} />
                     </Form.Item>
                     <Form.Item
                       {...restField}
@@ -570,10 +562,7 @@ const SalesInvoices: React.FC = () => {
                 </Form.Item>
               </>
             )}
-          </Form.List>
-          <Form.Item name="notes" label="Notes">
-            <Input.TextArea rows={3} />
-          </Form.Item>
+                </Form.List>
         </Form>
       </Modal>
 
@@ -627,18 +616,14 @@ const SalesInvoices: React.FC = () => {
       >
         <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
           <span>Scale:</span>
-          <Select value={contentScale} onChange={v => setContentScale(v)} style={{ width: 100 }} options={[{ value: 0.8, label: '80% (more rows)' }, { value: 0.9, label: '90%' }, { value: 1, label: '100%' }]} />
-          {currentCompany?.letterhead_path && (
-            <>
-              <span>Letterhead:</span>
-              <Switch
-                checked={printWithLetterhead}
-                onChange={setPrintWithLetterhead}
-                checkedChildren="With"
-                unCheckedChildren="Without"
-              />
-            </>
-          )}
+          <Select value={contentScale} onChange={v => setContentScale(v)} style={{ width: 100 }} options={[{ value: 0.5, label: '50%' }, { value: 0.6, label: '60%' }, { value: 0.7, label: '70%' }, { value: 0.8, label: '80%' }, { value: 0.9, label: '90%' }, { value: 1, label: '100%' }]} />
+          <span>Letterhead:</span>
+          <Switch
+            checked={printWithLetterhead}
+            onChange={setPrintWithLetterhead}
+            checkedChildren="With"
+            unCheckedChildren="Without"
+          />
         </div>
         <div style={{ maxHeight: '70vh', overflowY: 'auto', padding: '20px', background: '#f5f5f5' }}>
           <div className="preview-page-wrapper">

@@ -517,14 +517,14 @@
 
 /* Letterhead mode: content starts right after header (minimal gap); footer strip reserved at bottom */
 .print-template.has-letterhead .print-content {
-    padding: 65mm 15mm 58mm 15mm;
-    /* 65 mm header (no gap); 55 mm footer + 3 mm gap */
+    padding: 42mm 15mm 58mm 15mm;
+    /* ~52mm top so content starts immediately below letterhead; 58mm bottom for footer strip */
 }
 
 /* No-letterhead mode: content slightly down, centered, keep A4 min-height */
 .print-template:not(.has-letterhead) .print-content {
     padding: 20px;
-    padding-top: 48px;
+    padding-top: 150px;
     min-height: 257mm;
     margin-left: auto;
     margin-right: auto;
@@ -535,9 +535,14 @@
     align-items: center;
 }
 
-/* Center the scaled content block so it doesn't sit on the left at 80% scale */
-.print-template:not(.has-letterhead) .print-content .print-content-scaled {
-    flex-shrink: 0;
+/* Table-only scaling: wrapper full width; scaled table centered */
+.print-table-scale-wrapper {
+    width: 100%;
+    box-sizing: border-box;
+}
+.print-table-scaled {
+    display: block;
+    box-sizing: border-box;
 }
 
 /* ══════════════════════════════════════════════════════════════════

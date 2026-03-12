@@ -197,6 +197,9 @@ const Companies: React.FC = () => {
               <Form.Item name="currency" label="Currency" initialValue="PKR">
                 <Input />
               </Form.Item>
+              <Form.Item name="po_number" label="PO Number">
+                <Input placeholder="e.g. 2602000229" />
+              </Form.Item>
             </div>
             <div style={{ width: 320 }}>
               <Form.Item label="Letterhead (PDF or Image)">
