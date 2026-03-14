@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Table, Button, Space, Modal, Form, Input, InputNumber, Select, DatePicker, message, Tag, Popconfirm } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, PrinterOutlined, LockOutlined, StopOutlined, EyeOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, DeleteOutlined, LockOutlined, StopOutlined, EyeOutlined, SearchOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useApp } from '../../context/AppContext';
 
@@ -14,7 +14,7 @@ const PurchaseInvoices: React.FC = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
   const [editingInvoice, setEditingInvoice] = useState<any>(null);
-  const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
+  const [selectedInvoice, _setSelectedInvoice] = useState<any>(null);
   // Admin password delete
   const [deletePasswordModal, setDeletePasswordModal] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
@@ -26,7 +26,7 @@ const PurchaseInvoices: React.FC = () => {
   const isAdminUser = user?.role_id === 1 || user?.role === 'admin' || user?.username === 'admin';
   const sectionPerms = (user as any)?.section_permissions || {};
   const purchasePerm: string = isAdminUser ? 'all' : (sectionPerms.purchase || 'read');
-  const canCreateOrEdit = isAdminUser || purchasePerm === 'write' || purchasePerm === 'edit' || purchasePerm === 'all';
+  // const canCreateOrEdit = isAdminUser || purchasePerm === 'write' || purchasePerm === 'edit' || purchasePerm === 'all';
   const canEditOrDelete = isAdminUser || purchasePerm === 'edit' || purchasePerm === 'all';
   const isReadOnlySection = !isAdminUser && purchasePerm === 'read';
 
@@ -179,11 +179,12 @@ const PurchaseInvoices: React.FC = () => {
   };
 
   const handleConfirmDelete = async () => {
-    if (adminPassword !== 'admin123') {
-      message.error('Incorrect admin password');
-      setAdminPassword('');
-      return;
-    }
+        const verify = await (window as any).electronAPI.db.auth.verifyAdminPassword(adminPassword);
+        if (!verify.success || !verify.data) {
+            message.error('Incorrect admin password');
+            setAdminPassword('');
+            return;
+        }
     if (pendingDeleteId == null) return;
     try {
       const result = await (window as any).electronAPI.db.purchaseInvoices.delete(pendingDeleteId);
@@ -350,10 +351,27 @@ const PurchaseInvoices: React.FC = () => {
     },
   ];
 
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredInvoices = invoices.filter(inv =>
+    (inv.invoice_number || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (inv.vendor_name || '').toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   return (
     <div>
-      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
-        <h1>Purchase Invoices</h1>
+      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <h1 style={{ margin: 0 }}>Purchase Invoices</h1>
+          <Input
+            placeholder="Search by inv # or vendor..."
+            prefix={<SearchOutlined />}
+            style={{ width: 250 }}
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            allowClear
+          />
+        </div>
         {!isReadOnlySection && (
           <Button
             type="primary"
@@ -371,7 +389,7 @@ const PurchaseInvoices: React.FC = () => {
 
       <Table
         columns={columns}
-        dataSource={invoices}
+        dataSource={filteredInvoices}
         loading={loading}
         rowKey="id"
         pagination={{ pageSize: 10 }}

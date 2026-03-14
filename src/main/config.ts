@@ -8,12 +8,15 @@ export interface AppConfig {
     mode: AppMode;
     serverIp: string;
     serverPort: number;
+    // Optional path where automatic database backups will be stored (e.g. Drive sync folder)
+    backupPath?: string;
 }
 
 const defaultConfig: AppConfig = {
     mode: 'MASTER',
     serverIp: '127.0.0.1',
     serverPort: 3000,
+    backupPath: '',
 };
 
 function getConfigPath() {

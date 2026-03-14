@@ -22,7 +22,7 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
 
     const getTitle = () => {
         switch (type) {
-            case 'invoice': return 'SALES INVOICE';
+            case 'invoice': return 'SALES TAX INVOICE';
             case 'bill': return 'COMMERCIAL INVOICE';
             case 'quotation': return 'QUOTATION';
             case 'challan': return 'DELIVERY CHALLAN';
@@ -33,7 +33,7 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
     const getNumberLabel = () => {
         switch (type) {
             case 'invoice': return 'Invoice No:';
-            case 'bill': return 'Commercial Invoice No:';
+            case 'bill': return 'Bill #';
             case 'quotation': return 'Quotation No:';
             case 'challan': return 'Challan No:';
             default: return 'No:';
@@ -144,11 +144,11 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
         { title: 'Description', dataIndex: 'description', key: 'description', render: (t: string) => (t != null && String(t).trim() !== '' ? String(t) : '-') },
         { title: 'H.S Code', dataIndex: 'hs_code', key: 'hs_code', align: 'center' as const, render: (v: string) => (v != null && String(v).trim() !== '' ? String(v) : '-') },
         { title: 'Quantity', dataIndex: 'quantity', key: 'quantity', align: 'right' as const },
-        { title: 'Unit Price', dataIndex: 'unit_price', key: 'unit_price', align: 'right' as const, render: (v: number) => (v != null && v !== '') ? Number(v).toLocaleString() : '-' },
+        { title: 'Unit Price', dataIndex: 'unit_price', key: 'unit_price', align: 'right' as const, render: (v: number) => (v != null && (v as any) !== '') ? Number(v).toLocaleString() : '-' },
         { title: 'Amount (Excl. Tax)', key: 'amount_excl', align: 'right' as const, render: (_: any, row: any) => ((row.quantity || 0) * (row.unit_price || 0)).toLocaleString() },
-        { title: 'Sales Tax Rate', dataIndex: 'gst_rate', key: 'gst_rate', align: 'center' as const, render: (_: any, row: any) => (row.gst_rate != null && row.gst_rate !== '') ? `${Number(row.gst_rate)}%` : '0%' },
-        { title: 'Sales Tax Payable', dataIndex: 'gst_amount', key: 'gst_amount', align: 'right' as const, render: (_: any, row: any) => (row.gst_amount != null && row.gst_amount !== '') ? Number(row.gst_amount).toLocaleString() : '0' },
-        { title: 'Total Amount', dataIndex: 'line_total', key: 'line_total', align: 'right' as const, render: (_: any, row: any) => (row.line_total != null && row.line_total !== '') ? Number(row.line_total).toLocaleString() : '-' },
+        { title: 'Sales Tax Rate', dataIndex: 'gst_rate', key: 'gst_rate', align: 'center' as const, render: (_: any, row: any) => (row.gst_rate != null && (row.gst_rate as any) !== '') ? `${Number(row.gst_rate)}%` : '0%' },
+        { title: 'Sales Tax Payable', dataIndex: 'gst_amount', key: 'gst_amount', align: 'right' as const, render: (_: any, row: any) => (row.gst_amount != null && (row.gst_amount as any) !== '') ? Number(row.gst_amount).toLocaleString() : '0' },
+        { title: 'Total Amount', dataIndex: 'line_total', key: 'line_total', align: 'right' as const, render: (_: any, row: any) => (row.line_total != null && (row.line_total as any) !== '') ? Number(row.line_total).toLocaleString() : '-' },
     ] : [];
 
     // Bill columns â€” simple, no tax, with brand and HS Code
@@ -165,7 +165,7 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
         { title: 'Brand', dataIndex: 'brand', key: 'brand', align: 'center' as const, render: (v: string) => (v != null && String(v).trim() !== '' ? String(v) : '-') },
         { title: 'H.S Code', dataIndex: 'hs_code', key: 'hs_code', align: 'center' as const, render: (v: string) => (v != null && String(v).trim() !== '' ? String(v) : '-') },
         { title: 'Qty', dataIndex: 'quantity', key: 'quantity', align: 'center' as const },
-        { title: 'Unit Price', dataIndex: 'unit_price', key: 'unit_price', align: 'right' as const, render: (v: number) => (v != null && v !== '') ? Number(v).toLocaleString() : '-' },
+        { title: 'Unit Price', dataIndex: 'unit_price', key: 'unit_price', align: 'right' as const, render: (v: number) => (v != null && (v as any) !== '') ? Number(v).toLocaleString() : '-' },
         { title: 'Total Amount', dataIndex: 'line_total', key: 'line_total', align: 'right' as const, render: (_: any, row: any) => (row.line_total != null && row.line_total !== '') ? Number(row.line_total).toLocaleString() : ((row.quantity || 0) * (row.unit_price || 0)).toLocaleString() },
     ] : [];
 
@@ -175,7 +175,9 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
         { title: 'Item', dataIndex: 'item_name', key: 'item_name', width: 150, render: (text: string) => <div style={{ fontWeight: 'bold' }}>{text}</div> },
         { title: 'Description', dataIndex: 'description', key: 'description', width: 250 },
         { title: 'Brand', dataIndex: 'brand', key: 'brand', width: 100, render: (text: string) => (text != null && String(text).trim() !== '' ? text : '-') },
+        { title: 'H.S Code', dataIndex: 'hs_code', key: 'hs_code', width: 100, align: 'center' as const, render: (v: string) => (v != null && String(v).trim() !== '' ? String(v) : '-') },
         { title: 'Qty', dataIndex: 'quantity', key: 'quantity', width: 60, align: 'right' as const },
+        { title: 'Remarks', dataIndex: 'availability', key: 'remarks', width: 120, render: (v: string) => (v != null && String(v).trim() !== '' ? String(v) : '-') },
     ];
 
     if (type !== 'challan' && !isInvoice && !isBill) {
@@ -203,7 +205,7 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
             {/* Content block - same in scaled and non-scaled render */}
             {isInvoice && (
                 <>
-                    <div className="inv-two-col">
+                    <div className="inv-header-row">
                         <div className="inv-block inv-bill-to">
                             <div className="inv-block-label">Invoice to</div>
                             <p className="inv-company-name">{data.customer_name}</p>
@@ -212,20 +214,16 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
                             {(data.customer_gst_number != null && String(data.customer_gst_number).trim() !== '') && <p className="inv-tax"><strong>STN #:</strong> {data.customer_gst_number}</p>}
                             {data.attention_person != null && String(data.attention_person).trim() !== '' && <p className="inv-contact"><strong>Contact Person:</strong> {data.attention_person}</p>}
                         </div>
-                        <div className="inv-block inv-company-info">
-                            <p className="inv-company-name">{company.name}</p>
-                            {company.address != null && String(company.address).trim() !== '' && <p className="inv-address">{company.address}</p>}
-                            {company.phone != null && String(company.phone).trim() !== '' && <p className="inv-contact"><strong>Contact:</strong> {company.phone}</p>}
-                            {company.tax_number != null && String(company.tax_number).trim() !== '' && <p className="inv-tax"><strong>NTN #:</strong> {company.tax_number}</p>}
-                            {company.gst_registration_number != null && String(company.gst_registration_number).trim() !== '' && <p className="inv-tax"><strong>STN #:</strong> {company.gst_registration_number}</p>}
+
+                        <div className="inv-header-right">
+                            <div className="doc-info-box">
+                                <p><strong>Invoice Date:</strong> <span>{formatDate(getDate())}</span></p>
+                                <p><strong>Invoice Number:</strong> <span>{getNumber()}</span></p>
+                                {company.po_number != null && String(company.po_number).trim() !== '' && <p><strong>PO#:</strong> <span>{company.po_number}</span></p>}
+                                { (data.customer_salesperson_name || data.person_name) != null && String(data.customer_salesperson_name || data.person_name).trim() !== '' && <p><strong>Person:</strong> <span>{data.customer_salesperson_name || data.person_name}</span></p>}
+                                {data.delivery_challan_number && <p><strong>Ref D/C#:</strong> <span>{data.delivery_challan_number}</span></p>}
+                            </div>
                         </div>
-                    </div>
-                    <div className="inv-details-row">
-                        <span><strong>Invoice Date:</strong> {formatDate(getDate())}</span>
-                        <span><strong>Invoice Number:</strong> {getNumber()}</span>
-                        {company.po_number != null && String(company.po_number).trim() !== '' && <span><strong>PO#:</strong> {company.po_number}</span>}
-                        {data.person_name != null && String(data.person_name).trim() !== '' && <span><strong>Person Name:</strong> {data.person_name}</span>}
-                        {data.delivery_challan_number && <span><strong>Ref D/C#:</strong> {data.delivery_challan_number}</span>}
                     </div>
                 </>
             )}
@@ -239,12 +237,14 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
                         )}
                     </div>
                     <div className="bill-doc-info">
-                        <p><strong>Commercial Invoice #</strong> {getNumber()}</p>
+                        <p><strong>{getNumberLabel()}</strong> {getNumber()}</p>
                         <p><strong>Date:</strong>  {formatDate(getDate())}</p>
                         {data.person_name != null && String(data.person_name).trim() !== '' && (
                             <p><strong>Ref:</strong>  {data.person_name}</p>
                         )}
-                        {data.delivery_challan_number && <p><strong>DC No:</strong> {data.delivery_challan_number}</p>}
+                        {company.po_number != null && String(company.po_number).trim() !== '' && (
+                            <p><strong>PO No:</strong> {company.po_number}</p>
+                        )}
                         {data.customer_pr_number != null && String(data.customer_pr_number).trim() !== '' && (
                             <p><strong>PR No:</strong> {data.customer_pr_number}</p>
                         )}
@@ -263,23 +263,30 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
                         )}
                         {data.customer_gst_number && <p><strong>GST No:</strong> {data.customer_gst_number}</p>}
                         {data.customer_ntn_number && <p><strong>NTN:</strong> {data.customer_ntn_number}</p>}
-                        {data.customer_pr_number && <p className="customer-pr"><strong>Customer PR No:</strong> {data.customer_pr_number}</p>}
+                        {/* Remove PR No from DC */}
+                        {type !== 'challan' && data.customer_pr_number && <p className="customer-pr"><strong>Customer PR No:</strong> {data.customer_pr_number}</p>}
                     </div>
                     <div className="doc-info">
                         <p><strong>{getNumberLabel()}</strong> {getNumber()}</p>
                         <p><strong>Date:</strong> {formatDate(getDate())}</p>
-                        {(type === 'invoice' || type === 'bill') && data.delivery_challan_number && (
+                        {type === 'challan' && data.customer_salesperson_name && (
+                            <p><strong>Sales Person:</strong> {data.customer_salesperson_name}</p>
+                        )}
+                        {type === 'challan' && data.customer_po_number && (
+                            <p><strong>PO No:</strong> {data.customer_po_number}</p>
+                        )}
+                        {data.delivery_challan_number && (
                             <p><strong>DC No:</strong> {data.delivery_challan_number}</p>
                         )}
                         {type === 'quotation'
                             ? (data.customer_pr_number && (
                                 <p><strong>PR No:</strong> {data.customer_pr_number}</p>
                               ))
-                            : ((data.customer_pr_number ?? data.po_number) && (
+                            : ((type !== 'challan') && (data.customer_pr_number ?? data.po_number) && (
                                 <p><strong>PR No:</strong> {data.customer_pr_number || data.po_number}</p>
                               ))}
                         {data.expiry_date && <p><strong>Valid Until:</strong> {formatDate(data.expiry_date)}</p>}
-                        {data.customer_salesperson_name && (
+                        {type !== 'quotation' && data.customer_salesperson_name && (
                             <p><strong>Sales Person:</strong> {data.customer_salesperson_name}</p>
                         )}
                     </div>
@@ -297,12 +304,38 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
             <div className={`items-table ${isInvoice ? 'items-table-invoice' : ''} ${isBill ? 'items-table-bill' : ''}`}>
                     <Table
                         dataSource={data.items}
-                    columns={tableColumns}
+                        columns={tableColumns}
                         pagination={false}
                         rowKey="id"
                         size="small"
                         bordered
-                    tableLayout="auto"
+                        tableLayout="auto"
+                        summary={(pageData) => {
+                            if (!isInvoice) return null;
+                            let totalQty = 0;
+                            let totalSub = 0;
+                            let totalTax = 0;
+                            let totalGrand = 0;
+
+                            (pageData as any[]).forEach(({ quantity, unit_price, gst_amount, line_total }) => {
+                                totalQty += Number(quantity) || 0;
+                                totalSub += (Number(quantity) || 0) * (Number(unit_price) || 0);
+                                totalTax += Number(gst_amount) || 0;
+                                totalGrand += Number(line_total) || 0;
+                            });
+
+                            return (
+                                <Table.Summary.Row>
+                                    <Table.Summary.Cell index={0} colSpan={4}><strong>Totals</strong></Table.Summary.Cell>
+                                    <Table.Summary.Cell index={1} align="right"><strong>{totalQty}</strong></Table.Summary.Cell>
+                                    <Table.Summary.Cell index={2}></Table.Summary.Cell>
+                                    <Table.Summary.Cell index={3} align="right"><strong>{totalSub.toLocaleString()}</strong></Table.Summary.Cell>
+                                    <Table.Summary.Cell index={4}></Table.Summary.Cell>
+                                    <Table.Summary.Cell index={5} align="right"><strong>{totalTax.toLocaleString()}</strong></Table.Summary.Cell>
+                                    <Table.Summary.Cell index={6} align="right"><strong>{totalGrand.toLocaleString()}</strong></Table.Summary.Cell>
+                                </Table.Summary.Row>
+                            );
+                        }}
                     />
                 </div>
     );
@@ -331,23 +364,21 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
                 </table>
             )}
             {!isInvoice && !isBill && type !== 'challan' && (
-                <div className="totals-section">
-                    <div className="totals" style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                        <div style={{ minWidth: 50, textAlign: 'right' }}>
-                            <div className="total-row">
-                                <span style={{ marginRight: 12 }}>Subtotal:</span>
-                                <span>{data.subtotal?.toLocaleString()}</span>
-                            </div>
-                            <div className="total-row grand-total">
-                                <span style={{ marginRight: 12 }}>Grand Total:</span>
-                                <span>{data.total_amount?.toLocaleString()} ({company.currency})</span>
-                            </div>
+                <div className={type === 'quotation' ? 'extreme-right-totals' : 'totals-section'}>
+                    <div className="totals">
+                        <div className="total-row">
+                            <span>Subtotal:</span>
+                            <span>{data.subtotal?.toLocaleString()}</span>
+                        </div>
+                        <div className="total-row grand-total">
+                            <span>Grand Total:</span>
+                            <span>{data.total_amount?.toLocaleString()} ({company.currency})</span>
                         </div>
                     </div>
                 </div>
             )}
                 {type === 'challan' && (
-                    <div className="totals-section">
+                    <div className="extreme-right-totals">
                         <div className="totals">
                             <div className="total-row grand-total">
                                 <span>Total Quantity:</span>
@@ -362,7 +393,7 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
     /* Content below table: terms, footer, disclaimer (not scaled) */
     const contentBelowTable = (
             <>
-            {isBill && (
+            {(isInvoice || isBill) && (
                 <div className="bill-totals-section">
                     {data.terms_and_conditions != null && String(data.terms_and_conditions).trim() !== '' && (() => {
                         let terms: string[] = [];
@@ -371,7 +402,7 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
                         if (!terms.length) return null;
                         return (
                             <div className="bill-terms">
-                                <p className="bill-terms-heading">Terms &amp; Conditions:</p>
+                                <p className="bill-terms-heading"><span style={{ borderBottom: '1px solid black' }}>Terms &amp; Conditions:</span></p>
                                 <ul style={{ margin: '4px 0 0 18px', padding: 0, fontSize: '11pt', listStyleType: 'disc' }}>
                                     {terms.map((t: string, i: number) => {
                                         const isBold = t.startsWith('**') && t.endsWith('**');
@@ -382,83 +413,98 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
                             </div>
                         );
                     })()}
+
+                    {!showLetterhead && (
+                        <div className="dc-footer" style={{ marginTop: 24, paddingBottom: 20 }}>
+                            <div className="dc-stamp-box">
+                                <div className="dc-stamp-line" />
+                                <p>Stamp/Signature</p>
+                            </div>
+                            <div className="dc-signature-box">
+                                <div className="dc-stamp-line" />
+                                <p>Customer Signature</p>
+                            </div>
+                        </div>
+                    )}
+
                     <div className="bill-footer-thanks">
                         <p>Thanks for your business</p>
-                        <p className="bill-footer-company">{company.name}</p>
+                        <p className="bill-footer-company"><strong>{company.name}</strong></p>
                         {company.phone && <p>{company.phone}</p>}
                     </div>
                 </div>
             )}
-            {!isInvoice && !isBill && type !== 'challan' && (
-                <div className="totals-section">
-                    <div
-                        className="notes"
-                        style={type === 'quotation' ? { fontSize: '7pt', lineHeight: 1.25 } : undefined}
-                    >
-                        {type === 'quotation' ? (
-                            <>
-                                {data.quotation_validity && (
-                                    <p><strong>Quotation Validity:</strong> {data.quotation_validity}</p>
-                                )}
-                                <strong>Terms and Conditions:</strong>
-                                {(() => {
-                                    let terms: string[] = [];
-                                    try { const arr = JSON.parse(data.terms_and_conditions); terms = Array.isArray(arr) ? arr : []; } catch { terms = data.terms_and_conditions ? [String(data.terms_and_conditions)] : []; }
-                                    terms = terms.filter((t: string) => t?.trim());
-                                    return terms.length ? (
-                                        <ul style={{ margin: '4px 0 0 18px', padding: 0, listStyleType: 'disc' }}>
-                                            {terms.map((t: string, i: number) => {
-                                                const isBold = t.startsWith('**') && t.endsWith('**');
-                                                const text = isBold ? t.slice(2, -2) : t;
-                                                return <li key={i} style={isBold ? { fontWeight: 700 } : undefined}>{text}</li>;
-                                            })}
-                                        </ul>
-                                    ) : <p>-</p>;
-                                })()}
-                            </>
-                        ) : (
-                            <>
-                                <strong>Notes:</strong>
-                                <p>{data.notes || 'Thank you for your business!'}</p>
-                            </>
-                        )}
+            {type === 'quotation' && (
+                <div style={{ marginTop: '20px' }}>
+                    {data.terms_and_conditions != null && String(data.terms_and_conditions).trim() !== '' && (() => {
+                        let terms: string[] = [];
+                        try { const arr = JSON.parse(data.terms_and_conditions); terms = Array.isArray(arr) ? arr : []; } catch { terms = [String(data.terms_and_conditions)]; }
+                        terms = terms.filter((t: string) => t?.trim());
+                        if (!terms.length) return null;
+                        return (
+                            <div className="bill-terms">
+                                <p className="bill-terms-heading"><span style={{ borderBottom: '1px solid black' }}>Terms &amp; Conditions:</span></p>
+                                <ul style={{ margin: '4px 0 0 18px', padding: 0, fontSize: '11pt', listStyleType: 'disc' }}>
+                                    {terms.map((t: string, i: number) => {
+                                        const isBold = t.startsWith('**') && t.endsWith('**');
+                                        const text = isBold ? t.slice(2, -2) : t;
+                                        return <li key={i} style={isBold ? { fontWeight: 700 } : undefined}>{text}</li>;
+                                    })}
+                                </ul>
+                            </div>
+                        );
+                    })()}
+                    <p style={{ fontSize: '10px', margin: '10px 0 10px 0' }}>{data.quotation_validity && `Validity: ${data.quotation_validity}`}</p>
+                    <div className="quotation-personalized-footer" style={{ marginTop: '20px', fontSize: '12px' }}>
+                        <p style={{ margin: '0 0 4px 0' }}>Thanks,</p>
+                        <p style={{ margin: '0 0 4px 0' }}>Best Regards,</p>
+                        <p style={{ margin: 0 }}><strong>{data.customer_salesperson_name || data.person_name || 'Sales Department'}</strong></p>
+                        <p style={{ margin: 0 }}>{company.name}</p>
+                        {company.phone && <p style={{ margin: 0 }}>{company.phone}</p>}
+                    </div>
+
+                    {!showLetterhead && (
+                        <div className="dc-footer" style={{ marginTop: 40, paddingBottom: 20 }}>
+                            <div className="dc-stamp-box">
+                                <div className="dc-stamp-line" />
+                                <p>Stamp/Signature</p>
+                            </div>
+                            <div className="dc-signature-box">
+                                <div className="dc-stamp-line" />
+                                <p>Customer Signature</p>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
+            {type === 'challan' && (
+                <div style={{ marginTop: '20px' }}>
+                    <div style={{ fontSize: '11pt', marginBottom: '20px' }}>
+                        <p>We confirm that above items are received in good order and sound condition</p>
+                    </div>
+                    {/* Signatures for DC */}
+                    {!showLetterhead && (
+                        <div className="dc-footer" style={{ marginTop: 24, paddingBottom: 20 }}>
+                            <div className="dc-stamp-box">
+                                <div className="dc-stamp-line" />
+                                <p>Stamp/Signature</p>
+                            </div>
+                            <div className="dc-signature-box">
+                                <div className="dc-stamp-line" />
+                                <p>Customer Signature</p>
+                            </div>
+                        </div>
+                    )}
+                    <div style={{ textAlign: 'left', marginTop: '40px', fontSize: '12px' }}>
+                        <p style={{ margin: 0 }}>Thanks,</p>
+                        <p style={{ marginTop: '4px' }}><strong>From {company.name}</strong></p>
                     </div>
                 </div>
             )}
-            {type === 'quotation' && (
-                <>
-                    <div style={{ marginTop: 12, textAlign: 'left', fontSize: '9pt' }}>
-                        <p style={{ fontWeight: 700, marginBottom: 4 }}>From: {company.name}</p>
-                    </div>
-                    <div className="dc-footer" style={{ marginTop: showLetterhead ? 14 : 24 }}>
-                        <div className="dc-stamp-box">
-                            <div className="dc-stamp-line" />
-                            <p>Company Stamp / Signature</p>
-                        </div>
-                        <div className="dc-signature-box">
-                            <div className="dc-stamp-line" />
-                            <p>Customer Signature</p>
-                        </div>
-                    </div>
-                </>
-            )}
-            {type === 'challan' && (
-                <>
-                    <div className="dc-footer">
-                        <div className="dc-stamp-box">
-                            <div className="dc-stamp-line" />
-                            <p>Stamp</p>
-                        </div>
-                        <div className="dc-signature-box">
-                            <div className="dc-stamp-line" />
-                            <p>Authorized Signature</p>
-                        </div>
-                    </div>
-                </>
-            )}
+
             {showLetterhead && (
                 <p style={{ marginTop: 12, textAlign: 'center', fontSize: '8pt', color: '#888', fontStyle: 'italic' }}>
-                    This is a computer-generated quotation and is valid without a physical signature.
+                    This is a computer-generated {type} and is valid without a physical signature.
                 </p>
             )}
             </>

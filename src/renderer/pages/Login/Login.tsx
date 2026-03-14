@@ -12,11 +12,16 @@ const Login: React.FC = () => {
     const [error, setError] = useState('');
 
     const onFinish = async (values: any) => {
-        const success = await login(values.username, values.password);
-        if (success) {
-            navigate('/dashboard');
-        } else {
-            setError('Invalid credentials. Please check your username and password.');
+        try {
+            const success = await login(values.username, values.password);
+            if (success) {
+                navigate('/dashboard');
+            } else {
+                setError('Invalid credentials. Please check your username and password.');
+            }
+        } catch (err: any) {
+            const msg = err?.message || err?.error || 'Invalid credentials. Please check your username and password.';
+            setError(msg);
         }
     };
 

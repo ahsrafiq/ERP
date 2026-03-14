@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Table, Button, Space, Modal, Form, Input, DatePicker, Select, InputNumber, message, Popconfirm, Row, Col, Tag, AutoComplete, Checkbox, Switch } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, PrinterOutlined, FileTextOutlined, CheckCircleOutlined, MinusCircleOutlined, LockOutlined, StopOutlined, EyeOutlined } from '@ant-design/icons';
+import React, { useState, useEffect } from 'react';
+import { Table, Button, Space, Modal, Form, Input, DatePicker, Select, InputNumber, message, Popconfirm, Row, Col, Tag, AutoComplete, Switch } from 'antd';
+import { PlusOutlined, EditOutlined, DeleteOutlined, PrinterOutlined, FileTextOutlined, CheckCircleOutlined, MinusCircleOutlined, LockOutlined, StopOutlined, EyeOutlined, SearchOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
@@ -261,7 +261,9 @@ const SalesQuotations: React.FC = () => {
         try {
             const selectedItems = dcSelectedItems.map(i => dcSourceQuotation.items[i]);
             const result = await (window as any).electronAPI.db.deliveryChallans.createFromQuotation(
-                dcSourceQuotation.id, user?.id, selectedItems.map((it: any) => it.item_id)
+                dcSourceQuotation.id,
+                user?.id,
+                selectedItems.map((it: any) => it.item_id)
             );
             if (result.success && result.data) {
                 message.success(`Delivery Challan ${result.data.challan_number} created`);
@@ -283,7 +285,8 @@ const SalesQuotations: React.FC = () => {
     };
 
     const handleConfirmDelete = async () => {
-        if (adminPassword !== 'admin123') {
+        const verify = await (window as any).electronAPI.db.auth.verifyAdminPassword(adminPassword);
+        if (!verify.success || !verify.data) {
             message.error('Incorrect admin password');
             setAdminPassword('');
             return;
@@ -297,8 +300,9 @@ const SalesQuotations: React.FC = () => {
             } else {
                 message.error(result.error || 'Failed to delete');
             }
-        } catch {
-            message.error('Failed to delete');
+        } catch (error: any) {
+            const msg = error?.message || 'Failed to delete';
+            message.error(msg);
         } finally {
             setDeletePasswordModal(false);
             setPendingDeleteId(null);
@@ -472,10 +476,27 @@ const SalesQuotations: React.FC = () => {
         },
     ];
 
+    const [searchQuery, setSearchQuery] = useState('');
+
+    const filteredQuotations = quotations.filter(q =>
+        (q.quotation_number || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (q.customer_name || '').toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
     return (
         <div>
-            <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
-                <h1>Sales Quotations</h1>
+            <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                    <h1 style={{ margin: 0 }}>Sales Quotations</h1>
+                    <Input
+                        placeholder="Search by quo # or customer..."
+                        prefix={<SearchOutlined />}
+                        style={{ width: 250 }}
+                        value={searchQuery}
+                        onChange={e => setSearchQuery(e.target.value)}
+                        allowClear
+                    />
+                </div>
                 {!isReadOnlySection && (
                     <Button type="primary" icon={<PlusOutlined />} onClick={async () => {
                         setEditingQuotation(null);
@@ -488,7 +509,7 @@ const SalesQuotations: React.FC = () => {
                 )}
             </div>
 
-            <Table columns={columns} dataSource={quotations} loading={loading} rowKey="id" />
+            <Table columns={columns} dataSource={filteredQuotations} loading={loading} rowKey="id" />
 
             <Modal title={editingQuotation ? 'Edit Quotation' : 'New Quotation'} open={modalVisible} onCancel={() => setModalVisible(false)} onOk={() => form.submit()} width={1100} destroyOnClose>
                 <Form

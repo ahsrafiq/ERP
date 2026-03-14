@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Table, Button, Modal, Form, Input, message } from 'antd';
-import { PlusOutlined } from '@ant-design/icons';
+import { Table, Button, Space, Modal, Form, Input, message } from 'antd';
+import { PlusOutlined, DeleteOutlined, LockOutlined } from '@ant-design/icons';
 import { useApp } from '../../context/AppContext';
 
 const ExpenseCategories: React.FC = () => {
@@ -9,6 +9,11 @@ const ExpenseCategories: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [form] = Form.useForm();
+
+  // Admin password delete
+  const [deletePasswordModal, setDeletePasswordModal] = useState(false);
+  const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
+  const [adminPassword, setAdminPassword] = useState('');
 
   // Section permissions (Expenses)
   const isAdminUser = user?.role_id === 1 || (user as any)?.role === 'admin' || user?.username === 'admin';
@@ -66,9 +71,56 @@ const ExpenseCategories: React.FC = () => {
     }
   };
 
+  const handleRequestDelete = (id: number) => {
+    setPendingDeleteId(id);
+    setAdminPassword('');
+    setDeletePasswordModal(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    const verify = await (window as any).electronAPI.db.auth.verifyAdminPassword(adminPassword);
+    if (!verify.success || !verify.data) {
+        message.error('Incorrect admin password');
+        setAdminPassword('');
+        return;
+    }
+    if (pendingDeleteId == null) return;
+    try {
+      const result = await (window as any).electronAPI.db.expenses.deleteCategory(pendingDeleteId);
+      if (result.success) {
+        message.success('Category deleted successfully');
+        loadCategories();
+      } else {
+        message.error(result.error || 'Failed to delete category');
+      }
+    } catch {
+      message.error('Failed to delete category');
+    } finally {
+      setDeletePasswordModal(false);
+      setPendingDeleteId(null);
+      setAdminPassword('');
+    }
+  };
+
   const columns = [
     { title: 'Name', dataIndex: 'name', key: 'name' },
     { title: 'Description', dataIndex: 'description', key: 'description' },
+    {
+      title: 'Actions',
+      key: 'actions',
+      render: (_: any, record: any) => {
+        if (isReadOnlySection) return null;
+        return (
+          <Space>
+            <Button
+              danger
+              icon={<DeleteOutlined />}
+              onClick={() => handleRequestDelete(record.id)}
+            />
+          </Space>
+        );
+      },
+    },
   ];
 
   return (
@@ -91,6 +143,26 @@ const ExpenseCategories: React.FC = () => {
             <Input.TextArea rows={2} />
           </Form.Item>
         </Form>
+      </Modal>
+
+      {/* Admin password for delete */}
+      <Modal
+        title="Admin Authorization Required"
+        open={deletePasswordModal}
+        onCancel={() => { setDeletePasswordModal(false); setPendingDeleteId(null); }}
+        onOk={handleConfirmDelete}
+        okText="Delete"
+        okButtonProps={{ danger: true }}
+      >
+        <p>Enter admin password to delete this category:</p>
+        <Input.Password
+          prefix={<LockOutlined />}
+          value={adminPassword}
+          onChange={e => setAdminPassword(e.target.value)}
+          placeholder="Admin password"
+          onKeyDown={e => { if (e.key === 'Enter') handleConfirmDelete(); }}
+          autoFocus
+        />
       </Modal>
     </div>
   );

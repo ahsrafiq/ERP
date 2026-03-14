@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Button, Space, Modal, Form, Input, message, Popconfirm } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { Table, Button, Space, Modal, Form, Input, message } from 'antd';
+import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined, LockOutlined } from '@ant-design/icons';
 import { useApp } from '../../context/AppContext';
 
 const Vendors: React.FC = () => {
@@ -10,6 +10,11 @@ const Vendors: React.FC = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [editingVendor, setEditingVendor] = useState<any>(null);
   const [form] = Form.useForm();
+
+  // Admin password delete
+  const [deletePasswordModal, setDeletePasswordModal] = useState(false);
+  const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
+  const [adminPassword, setAdminPassword] = useState('');
 
   // Section permissions (Purchase)
   const isAdminUser = user?.role_id === 1 || (user as any)?.role === 'admin' || user?.username === 'admin';
@@ -72,17 +77,34 @@ const Vendors: React.FC = () => {
     }
   };
 
-  const handleDelete = async (id: number) => {
+  const handleRequestDelete = (id: number) => {
+    setPendingDeleteId(id);
+    setAdminPassword('');
+    setDeletePasswordModal(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    const verify = await (window as any).electronAPI.db.auth.verifyAdminPassword(adminPassword);
+    if (!verify.success || !verify.data) {
+        message.error('Incorrect admin password');
+        setAdminPassword('');
+        return;
+    }
+    if (pendingDeleteId == null) return;
     try {
-      const result = await (window as any).electronAPI.db.vendors.delete(id);
+      const result = await (window as any).electronAPI.db.vendors.delete(pendingDeleteId);
       if (result.success) {
         message.success('Vendor deleted successfully');
         loadVendors();
       } else {
         message.error(result.error || 'Failed to delete vendor');
       }
-    } catch (error) {
+    } catch {
       message.error('Failed to delete vendor');
+    } finally {
+      setDeletePasswordModal(false);
+      setPendingDeleteId(null);
+      setAdminPassword('');
     }
   };
 
@@ -131,12 +153,7 @@ const Vendors: React.FC = () => {
               }}
             />
             {canEditOrDelete && (
-              <Popconfirm
-                title="Are you sure you want to delete this vendor?"
-                onConfirm={() => handleDelete(record.id)}
-              >
-                <Button danger icon={<DeleteOutlined />} />
-              </Popconfirm>
+              <Button danger icon={<DeleteOutlined />} onClick={() => handleRequestDelete(record.id)} />
             )}
           </Space>
         );
@@ -144,10 +161,27 @@ const Vendors: React.FC = () => {
     },
   ];
 
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredVendors = vendors.filter(v =>
+    (v.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (v.code || '').toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   return (
     <div>
-      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
-        <h1>Vendors</h1>
+      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <h1 style={{ margin: 0 }}>Vendors</h1>
+          <Input
+            placeholder="Search by name or code..."
+            prefix={<SearchOutlined />}
+            style={{ width: 250 }}
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            allowClear
+          />
+        </div>
         {!isReadOnlySection && (
           <Button
             type="primary"
@@ -165,7 +199,7 @@ const Vendors: React.FC = () => {
 
       <Table
         columns={columns}
-        dataSource={vendors}
+        dataSource={filteredVendors}
         loading={loading}
         rowKey="id"
         pagination={{ pageSize: 10 }}
@@ -221,6 +255,26 @@ const Vendors: React.FC = () => {
             <Input />
           </Form.Item>
         </Form>
+      </Modal>
+
+      {/* Admin password for delete */}
+      <Modal
+        title="Admin Authorization Required"
+        open={deletePasswordModal}
+        onCancel={() => { setDeletePasswordModal(false); setPendingDeleteId(null); }}
+        onOk={handleConfirmDelete}
+        okText="Delete"
+        okButtonProps={{ danger: true }}
+      >
+        <p>Enter admin password to delete this vendor:</p>
+        <Input.Password
+          prefix={<LockOutlined />}
+          value={adminPassword}
+          onChange={e => setAdminPassword(e.target.value)}
+          placeholder="Admin password"
+          onKeyDown={e => { if (e.key === 'Enter') handleConfirmDelete(); }}
+          autoFocus
+        />
       </Modal>
     </div>
   );

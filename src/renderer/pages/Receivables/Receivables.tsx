@@ -161,7 +161,7 @@ const Receivables: React.FC = () => {
       width: 120,
       render: (_: any, record: any) => (
         <Button type="primary" size="small" icon={<FileTextOutlined />} onClick={() => handleCustomerClick(record)}>
-          Invoices & Bills
+          {docLabel}s
         </Button>
       ),
     },

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Table, Button, Space, Modal, Form, Input, InputNumber, Select, AutoComplete, message, Popconfirm, Alert } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, UploadOutlined } from '@ant-design/icons';
+import { Table, Button, Space, Modal, Form, Input, InputNumber, Select, AutoComplete, message, Alert } from 'antd';
+import { PlusOutlined, EditOutlined, DeleteOutlined, UploadOutlined, SearchOutlined, LockOutlined } from '@ant-design/icons';
 import { useApp } from '../../context/AppContext';
 import { parseExcelToRows, getCol, getColNum } from '../../utils/excelImport';
 
@@ -15,6 +15,11 @@ const Items: React.FC = () => {
   const [importing, setImporting] = useState(false);
   const [importFormatModal, setImportFormatModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Admin password delete
+  const [deletePasswordModal, setDeletePasswordModal] = useState(false);
+  const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
+  const [adminPassword, setAdminPassword] = useState('');
 
   // Section permissions (Inventory)
   const isAdminUser = user?.role_id === 1 || (user as any)?.role === 'admin' || user?.username === 'admin';
@@ -177,17 +182,34 @@ const Items: React.FC = () => {
     }
   };
 
-  const handleDelete = async (id: number) => {
+  const handleRequestDelete = (id: number) => {
+    setPendingDeleteId(id);
+    setAdminPassword('');
+    setDeletePasswordModal(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    const verify = await (window as any).electronAPI.db.auth.verifyAdminPassword(adminPassword);
+    if (!verify.success || !verify.data) {
+      message.error('Incorrect admin password');
+      setAdminPassword('');
+      return;
+    }
+    if (pendingDeleteId == null) return;
     try {
-      const result = await (window as any).electronAPI.db.items.delete(id);
+      const result = await (window as any).electronAPI.db.items.delete(pendingDeleteId);
       if (result.success) {
         message.success('Item deleted successfully');
         loadItems();
       } else {
         message.error(result.error || 'Failed to delete item');
       }
-    } catch (error) {
+    } catch {
       message.error('Failed to delete item');
+    } finally {
+      setDeletePasswordModal(false);
+      setPendingDeleteId(null);
+      setAdminPassword('');
     }
   };
 
@@ -257,12 +279,7 @@ const Items: React.FC = () => {
               }}
             />
             {canEditOrDelete && (
-              <Popconfirm
-                title="Are you sure you want to delete this item?"
-                onConfirm={() => handleDelete(record.id)}
-              >
-                <Button danger icon={<DeleteOutlined />} />
-              </Popconfirm>
+              <Button danger icon={<DeleteOutlined />} onClick={() => handleRequestDelete(record.id)} />
             )}
           </Space>
         );
@@ -270,11 +287,30 @@ const Items: React.FC = () => {
     },
   ];
 
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredItems = items.filter(i =>
+    (i.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (i.code || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (i.brand_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (i.location || '').toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   return (
     <div>
-      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-        <h1 style={{ margin: 0 }}>Items</h1>
-        <span style={{ color: '#666', fontSize: 12 }}>Items are shared across all companies</span>
+      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <h1 style={{ margin: 0 }}>Items</h1>
+          <Input
+            placeholder="Search by name, code, brand or loc..."
+            prefix={<SearchOutlined />}
+            style={{ width: 300 }}
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            allowClear
+          />
+          <span style={{ color: '#666', fontSize: 12 }}>Items are shared across all companies</span>
+        </div>
         <Space>
           <Button
             icon={<UploadOutlined />}
@@ -316,7 +352,7 @@ const Items: React.FC = () => {
 
       <Table
         columns={columns}
-        dataSource={Array.isArray(items) ? items : []}
+        dataSource={Array.isArray(filteredItems) ? filteredItems : []}
         loading={loading}
         rowKey={(r) => (r?.id != null ? String(r.id) : String(Math.random()))}
         pagination={{ pageSize: 10 }}
@@ -427,6 +463,26 @@ const Items: React.FC = () => {
           <li>SKU, Type (product/service), Purchase Price, Selling Price, GST Rate</li>
           <li>Reorder Level, Location, H.S Code</li>
         </ul>
+      </Modal>
+
+      {/* Admin password for delete */}
+      <Modal
+        title="Admin Authorization Required"
+        open={deletePasswordModal}
+        onCancel={() => { setDeletePasswordModal(false); setPendingDeleteId(null); }}
+        onOk={handleConfirmDelete}
+        okText="Delete"
+        okButtonProps={{ danger: true }}
+      >
+        <p>Enter admin password to delete this item:</p>
+        <Input.Password
+          prefix={<LockOutlined />}
+          value={adminPassword}
+          onChange={e => setAdminPassword(e.target.value)}
+          placeholder="Admin password"
+          onKeyDown={e => { if (e.key === 'Enter') handleConfirmDelete(); }}
+          autoFocus
+        />
       </Modal>
     </div>
   );

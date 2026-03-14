@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Button, Space, Modal, Form, Input, message, Popconfirm } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { Table, Button, Space, Modal, Form, Input, message } from 'antd';
+import { PlusOutlined, EditOutlined, DeleteOutlined, LockOutlined } from '@ant-design/icons';
 import { useApp } from '../../context/AppContext';
 
 const Brands: React.FC = () => {
@@ -10,6 +10,11 @@ const Brands: React.FC = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [editingBrand, setEditingBrand] = useState<any>(null);
   const [form] = Form.useForm();
+  
+  // Admin password delete
+  const [deletePasswordModal, setDeletePasswordModal] = useState(false);
+  const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
+  const [adminPassword, setAdminPassword] = useState('');
 
   // Section permissions (Inventory)
   const isAdminUser = user?.role_id === 1 || (user as any)?.role === 'admin' || user?.username === 'admin';
@@ -62,9 +67,22 @@ const Brands: React.FC = () => {
     }
   };
 
-  const handleDelete = async (id: number) => {
+  const handleRequestDelete = (id: number) => {
+    setPendingDeleteId(id);
+    setAdminPassword('');
+    setDeletePasswordModal(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    const verify = await (window as any).electronAPI.db.auth.verifyAdminPassword(adminPassword);
+    if (!verify.success || !verify.data) {
+        message.error('Incorrect admin password');
+        setAdminPassword('');
+        return;
+    }
+    if (pendingDeleteId == null) return;
     try {
-      const result = await (window as any).electronAPI.db.brands.delete(id);
+      const result = await (window as any).electronAPI.db.brands.delete(pendingDeleteId);
       if (result.success) {
         message.success('Brand deleted successfully');
         loadBrands();
@@ -73,6 +91,10 @@ const Brands: React.FC = () => {
       }
     } catch (error) {
       message.error('Failed to delete brand');
+    } finally {
+      setDeletePasswordModal(false);
+      setPendingDeleteId(null);
+      setAdminPassword('');
     }
   };
 
@@ -97,12 +119,7 @@ const Brands: React.FC = () => {
               }}
             />
             {canEditOrDelete && (
-              <Popconfirm
-                title="Delete this brand?"
-                onConfirm={() => handleDelete(record.id)}
-              >
-                <Button danger icon={<DeleteOutlined />} />
-              </Popconfirm>
+              <Button danger icon={<DeleteOutlined />} onClick={() => handleRequestDelete(record.id)} />
             )}
           </Space>
         );
@@ -153,6 +170,26 @@ const Brands: React.FC = () => {
             <Input.TextArea rows={2} />
           </Form.Item>
         </Form>
+      </Modal>
+
+      {/* Admin password for delete */}
+      <Modal
+        title="Admin Authorization Required"
+        open={deletePasswordModal}
+        onCancel={() => { setDeletePasswordModal(false); setPendingDeleteId(null); }}
+        onOk={handleConfirmDelete}
+        okText="Delete"
+        okButtonProps={{ danger: true }}
+      >
+        <p>Enter admin password to delete this brand:</p>
+        <Input.Password
+          prefix={<LockOutlined />}
+          value={adminPassword}
+          onChange={e => setAdminPassword(e.target.value)}
+          placeholder="Admin password"
+          onKeyDown={e => { if (e.key === 'Enter') handleConfirmDelete(); }}
+          autoFocus
+        />
       </Modal>
     </div>
   );

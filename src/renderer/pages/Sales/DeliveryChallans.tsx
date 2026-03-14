@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Table, Button, Space, Modal, Form, Input, DatePicker, Select, InputNumber, message, Popconfirm, Switch, Tag } from 'antd';
-import { PlusOutlined, EditOutlined, PrinterOutlined, DeleteOutlined, FileTextOutlined, MinusCircleOutlined, LockOutlined, StopOutlined, EyeOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, PrinterOutlined, DeleteOutlined, FileTextOutlined, MinusCircleOutlined, LockOutlined, StopOutlined, EyeOutlined, SearchOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
@@ -242,7 +242,8 @@ const DeliveryChallans: React.FC = () => {
     };
 
     const handleConfirmDelete = async () => {
-        if (adminPassword !== 'admin123') {
+        const verify = await (window as any).electronAPI.db.auth.verifyAdminPassword(adminPassword);
+        if (!verify.success || !verify.data) {
             message.error('Incorrect admin password');
             setAdminPassword('');
             return;
@@ -256,8 +257,9 @@ const DeliveryChallans: React.FC = () => {
             } else {
                 message.error(result.error || 'Failed to delete challan');
             }
-        } catch (error) {
-            message.error('Failed to delete challan');
+        } catch (error: any) {
+            const msg = error?.message || 'Failed to delete challan';
+            message.error(msg);
         } finally {
             setDeletePasswordModal(false);
             setPendingDeleteId(null);
@@ -393,10 +395,27 @@ const DeliveryChallans: React.FC = () => {
         },
     ];
 
+    const [searchQuery, setSearchQuery] = useState('');
+
+    const filteredChallans = challans.filter(c =>
+        (c.challan_number || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (c.customer_name || '').toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
     return (
         <div>
-            <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
-                <h1>Delivery Challans</h1>
+            <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                    <h1 style={{ margin: 0 }}>Delivery Challans</h1>
+                    <Input
+                        placeholder="Search by challan # or customer..."
+                        prefix={<SearchOutlined />}
+                        style={{ width: 250 }}
+                        value={searchQuery}
+                        onChange={e => setSearchQuery(e.target.value)}
+                        allowClear
+                    />
+                </div>
                 {!isReadOnlySection && (
                     <Button type="primary" icon={<PlusOutlined />} onClick={handleNewChallan}>
                         New Challan
@@ -404,7 +423,7 @@ const DeliveryChallans: React.FC = () => {
                 )}
             </div>
 
-            <Table columns={columns} dataSource={challans} loading={loading} rowKey="id" />
+            <Table columns={columns} dataSource={filteredChallans} loading={loading} rowKey="id" />
 
             <Modal title={editingChallan ? 'Edit Delivery Challan' : 'New Delivery Challan'} open={modalVisible} onCancel={() => setModalVisible(false)} onOk={() => form.submit()} width={900}>
                 <Form form={form} layout="vertical" onFinish={handleSave}>

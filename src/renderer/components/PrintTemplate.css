@@ -234,6 +234,67 @@
     text-overflow: ellipsis;
 }
 
+/* Doc Info Box for Invoice */
+.doc-info-box {
+    border: 1px solid #333;
+    padding: 10px;
+    width: 250px;
+    font-size: 11px;
+    line-height: 1.6;
+}
+
+.doc-info-box p {
+    margin: 0;
+    display: flex;
+    justify-content: space-between;
+}
+
+.doc-info-box p strong {
+    margin-right: 8px;
+}
+
+.inv-header-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+}
+
+.inv-header-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 20px;
+    gap: 100px;
+}
+
+.extreme-right-totals {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 10px;
+}
+
+.extreme-right-totals .totals {
+    width: auto;
+    min-width: 200px;
+}
+
+.confirmation-text {
+    margin: 20px 0;
+    font-size: 12px;
+    font-style: italic;
+    border-top: 1px solid #eee;
+    padding-top: 10px;
+}
+
+.sales-person-info {
+    font-size: 12px;
+    margin-top: 10px;
+}
+
+.bill-footer-phone {
+    margin-top: 4px;
+    font-weight: bold;
+}
+
 .inv-total-row {
     display: flex;
     justify-content: space-between;
@@ -267,8 +328,8 @@
     max-width: 100% !important;
 }
 
-.items-table-invoice .ant-table-thead > tr > th,
-.items-table-invoice .ant-table-tbody > tr > td {
+.items-table-invoice .ant-table-thead>tr>th,
+.items-table-invoice .ant-table-tbody>tr>td {
     padding: 4px 6px;
     font-size: 10px;
     overflow: hidden;
@@ -276,28 +337,58 @@
     word-break: break-word;
 }
 
-.items-table-invoice .ant-table-thead > tr > th:nth-child(1),
-.items-table-invoice .ant-table-tbody > tr > td:nth-child(1) { width: 3%; min-width: 28px; }
-.items-table-invoice .ant-table-thead > tr > th:nth-child(2),
-.items-table-invoice .ant-table-tbody > tr > td:nth-child(2) { width: 10%; }
-.items-table-invoice .ant-table-thead > tr > th:nth-child(3),
-.items-table-invoice .ant-table-tbody > tr > td:nth-child(3) { width: 14%; }
-.items-table-invoice .ant-table-thead > tr > th:nth-child(4),
-.items-table-invoice .ant-table-tbody > tr > td:nth-child(4) { width: 6%; }
-.items-table-invoice .ant-table-thead > tr > th:nth-child(5),
-.items-table-invoice .ant-table-tbody > tr > td:nth-child(5) { width: 5%; }
-.items-table-invoice .ant-table-thead > tr > th:nth-child(6),
-.items-table-invoice .ant-table-tbody > tr > td:nth-child(6) { width: 8%; }
-.items-table-invoice .ant-table-thead > tr > th:nth-child(7),
-.items-table-invoice .ant-table-tbody > tr > td:nth-child(7) { width: 10%; }
-.items-table-invoice .ant-table-thead > tr > th:nth-child(8),
-.items-table-invoice .ant-table-tbody > tr > td:nth-child(8) { width: 6%; }
-.items-table-invoice .ant-table-thead > tr > th:nth-child(9),
-.items-table-invoice .ant-table-tbody > tr > td:nth-child(9) { width: 8%; }
-.items-table-invoice .ant-table-thead > tr > th:nth-child(10),
-.items-table-invoice .ant-table-tbody > tr > td:nth-child(10) { width: 8%; }
+.items-table-invoice .ant-table-thead>tr>th:nth-child(1),
+.items-table-invoice .ant-table-tbody>tr>td:nth-child(1) {
+    width: 3%;
+    min-width: 28px;
+}
 
-.items-table .ant-table-thead > tr > th {
+.items-table-invoice .ant-table-thead>tr>th:nth-child(2),
+.items-table-invoice .ant-table-tbody>tr>td:nth-child(2) {
+    width: 10%;
+}
+
+.items-table-invoice .ant-table-thead>tr>th:nth-child(3),
+.items-table-invoice .ant-table-tbody>tr>td:nth-child(3) {
+    width: 14%;
+}
+
+.items-table-invoice .ant-table-thead>tr>th:nth-child(4),
+.items-table-invoice .ant-table-tbody>tr>td:nth-child(4) {
+    width: 6%;
+}
+
+.items-table-invoice .ant-table-thead>tr>th:nth-child(5),
+.items-table-invoice .ant-table-tbody>tr>td:nth-child(5) {
+    width: 5%;
+}
+
+.items-table-invoice .ant-table-thead>tr>th:nth-child(6),
+.items-table-invoice .ant-table-tbody>tr>td:nth-child(6) {
+    width: 8%;
+}
+
+.items-table-invoice .ant-table-thead>tr>th:nth-child(7),
+.items-table-invoice .ant-table-tbody>tr>td:nth-child(7) {
+    width: 10%;
+}
+
+.items-table-invoice .ant-table-thead>tr>th:nth-child(8),
+.items-table-invoice .ant-table-tbody>tr>td:nth-child(8) {
+    width: 6%;
+}
+
+.items-table-invoice .ant-table-thead>tr>th:nth-child(9),
+.items-table-invoice .ant-table-tbody>tr>td:nth-child(9) {
+    width: 8%;
+}
+
+.items-table-invoice .ant-table-thead>tr>th:nth-child(10),
+.items-table-invoice .ant-table-tbody>tr>td:nth-child(10) {
+    width: 8%;
+}
+
+.items-table .ant-table-thead>tr>th {
     background: #eee !important;
     font-weight: bold;
     -webkit-print-color-adjust: exact;
@@ -402,8 +493,8 @@
     max-width: 100% !important;
 }
 
-.items-table-bill .ant-table-thead > tr > th,
-.items-table-bill .ant-table-tbody > tr > td {
+.items-table-bill .ant-table-thead>tr>th,
+.items-table-bill .ant-table-tbody>tr>td {
     padding: 4px 6px;
     font-size: 10px;
     overflow: hidden;
@@ -540,6 +631,7 @@
     width: 100%;
     box-sizing: border-box;
 }
+
 .print-table-scaled {
     display: block;
     box-sizing: border-box;
@@ -548,7 +640,7 @@
 /* ══════════════════════════════════════════════════════════════════
    In-app preview modal
    ══════════════════════════════════════════════════════════════════ */
-.print-preview-modal .ant-modal-body > div {
+.print-preview-modal .ant-modal-body>div {
     display: flex;
     justify-content: center;
     background: #f5f5f5;
@@ -584,7 +676,9 @@
         margin: 0;
     }
 
-    *, *::before, *::after {
+    *,
+    *::before,
+    *::after {
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
     }
@@ -652,10 +746,12 @@
 body.capturing-pdf * {
     visibility: hidden !important;
 }
+
 body.capturing-pdf #print-container,
 body.capturing-pdf #print-container * {
     visibility: visible !important;
 }
+
 body.capturing-pdf #print-container {
     display: block !important;
     position: fixed !important;

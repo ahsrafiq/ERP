@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   db: {
     auth: {
       login: (username: string, password?: string) => ipcRenderer.invoke('db:auth:login', username, password),
+      verifyAdminPassword: (password: string) => ipcRenderer.invoke('db:auth:verifyAdminPassword', password),
     },
     users: {
       getAll: (companyId?: number) => ipcRenderer.invoke('db:users:getAll', companyId),
@@ -72,7 +73,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       update: (id: number, quotation: any) => ipcRenderer.invoke('db:salesQuotations:update', id, quotation),
       delete: (id: number) => ipcRenderer.invoke('db:salesQuotations:delete', id),
     },
-    deliveryChallans: {
+      deliveryChallans: {
       getAll: (companyId: number) => ipcRenderer.invoke('db:deliveryChallans:getAll', companyId),
       getById: (id: number) => ipcRenderer.invoke('db:deliveryChallans:getById', id),
       getNextNumber: (companyId: number, fiscalYear?: number | string) => ipcRenderer.invoke('db:deliveryChallans:getNextNumber', companyId, fiscalYear),
@@ -81,7 +82,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       update: (id: number, challan: any) => ipcRenderer.invoke('db:deliveryChallans:update', id, challan),
       delete: (id: number) => ipcRenderer.invoke('db:deliveryChallans:delete', id),
       createFromInvoice: (invoiceId: number, createdBy?: number) => ipcRenderer.invoke('db:deliveryChallans:createFromInvoice', invoiceId, createdBy),
-      createFromQuotation: (quotationId: number, createdBy?: number) => ipcRenderer.invoke('db:deliveryChallans:createFromQuotation', quotationId, createdBy),
+      createFromQuotation: (quotationId: number, createdBy?: number, selectedItemIds?: number[]) =>
+        ipcRenderer.invoke('db:deliveryChallans:createFromQuotation', quotationId, createdBy, selectedItemIds),
     },
     purchaseInvoices: {
       getAll: (companyId: number, filters?: any) => ipcRenderer.invoke('db:purchaseInvoices:getAll', companyId, filters),

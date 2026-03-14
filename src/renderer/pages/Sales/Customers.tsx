@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Table, Button, Space, Modal, Form, Input, InputNumber, Select, DatePicker, message, Popconfirm, Tag, Tooltip, Alert } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, DollarOutlined, WarningOutlined, MinusCircleOutlined, BoldOutlined, UploadOutlined } from '@ant-design/icons';
+import { Table, Button, Space, Modal, Form, Input, InputNumber, Select, DatePicker, message, Tag, Tooltip, Alert } from 'antd';
+import { PlusOutlined, EditOutlined, DeleteOutlined, DollarOutlined, WarningOutlined, MinusCircleOutlined, BoldOutlined, UploadOutlined, SearchOutlined, LockOutlined } from '@ant-design/icons';
 import { useApp } from '../../context/AppContext';
 import dayjs from 'dayjs';
 import { parseExcelToRows, getCol, getColNum } from '../../utils/excelImport';
@@ -21,6 +21,11 @@ const Customers: React.FC = () => {
   const [importing, setImporting] = useState(false);
   const [importFormatModal, setImportFormatModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Admin password delete
+  const [deletePasswordModal, setDeletePasswordModal] = useState(false);
+  const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
+  const [adminPassword, setAdminPassword] = useState('');
 
   // Section permissions (Sales)
   const isAdminUser = user?.role_id === 1 || (user as any)?.role === 'admin' || user?.username === 'admin';
@@ -66,12 +71,35 @@ const Customers: React.FC = () => {
     } catch { message.error('Operation failed'); }
   };
 
-  const handleDelete = async (id: number) => {
+  const handleRequestDelete = (id: number) => {
+    setPendingDeleteId(id);
+    setAdminPassword('');
+    setDeletePasswordModal(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    const verify = await (window as any).electronAPI.db.auth.verifyAdminPassword(adminPassword);
+    if (!verify.success || !verify.data) {
+        message.error('Incorrect admin password');
+        setAdminPassword('');
+        return;
+    }
+    if (pendingDeleteId == null) return;
     try {
-      const result = await (window as any).electronAPI.db.customers.delete(id);
-      if (result.success) { message.success('Customer deleted successfully'); loadCustomers(); }
-      else message.error(result.error || 'Failed to delete customer');
-    } catch { message.error('Failed to delete customer'); }
+      const result = await (window as any).electronAPI.db.customers.delete(pendingDeleteId);
+      if (result.success) {
+        message.success('Customer deleted successfully');
+        loadCustomers();
+      } else {
+        message.error(result.error || 'Failed to delete customer');
+      }
+    } catch {
+      message.error('Failed to delete customer');
+    } finally {
+      setDeletePasswordModal(false);
+      setPendingDeleteId(null);
+      setAdminPassword('');
+    }
   };
 
   const handleImportExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -243,9 +271,7 @@ const Customers: React.FC = () => {
               />
             </Tooltip>
             {canEditOrDelete && (
-              <Popconfirm title="Are you sure you want to delete this customer?" onConfirm={() => handleDelete(record.id)}>
-                <Button danger icon={<DeleteOutlined />} />
-              </Popconfirm>
+              <Button danger icon={<DeleteOutlined />} onClick={() => handleRequestDelete(record.id)} />
             )}
           </Space>
         );
@@ -253,10 +279,27 @@ const Customers: React.FC = () => {
     },
   ];
 
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredCustomers = customers.filter(c => 
+    (c.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (c.code || '').toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   return (
     <div>
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-        <h1 style={{ margin: 0 }}>Customers</h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <h1 style={{ margin: 0 }}>Customers</h1>
+          <Input
+            placeholder="Search by name or code..."
+            prefix={<SearchOutlined />}
+            style={{ width: 250 }}
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            allowClear
+          />
+        </div>
         <Space>
           <Button icon={<UploadOutlined />} onClick={() => setImportFormatModal(true)}>Excel format</Button>
           {!isReadOnlySection && (
@@ -271,7 +314,7 @@ const Customers: React.FC = () => {
         </Space>
       </div>
 
-      <Table columns={columns} dataSource={customers} loading={loading} rowKey="id" pagination={{ pageSize: 10 }} />
+      <Table columns={columns} dataSource={filteredCustomers} loading={loading} rowKey="id" pagination={{ pageSize: 10 }} />
 
       {/* Add / Edit Customer Modal */}
       <Modal
@@ -407,6 +450,26 @@ const Customers: React.FC = () => {
           <li>Email, Phone, Address, City, State, Country, Postal Code</li>
           <li>Tax Number (NTN), Attention Person, Sales Person, GST Number, PO Number</li>
         </ul>
+      </Modal>
+
+      {/* Admin password for delete */}
+      <Modal
+        title="Admin Authorization Required"
+        open={deletePasswordModal}
+        onCancel={() => { setDeletePasswordModal(false); setPendingDeleteId(null); }}
+        onOk={handleConfirmDelete}
+        okText="Delete"
+        okButtonProps={{ danger: true }}
+      >
+        <p>Enter admin password to delete this customer:</p>
+        <Input.Password
+          prefix={<LockOutlined />}
+          value={adminPassword}
+          onChange={e => setAdminPassword(e.target.value)}
+          placeholder="Admin password"
+          onKeyDown={e => { if (e.key === 'Enter') handleConfirmDelete(); }}
+          autoFocus
+        />
       </Modal>
     </div>
   );

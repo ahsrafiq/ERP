@@ -71,7 +71,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [appConfig, setAppConfig] = useState<any>(null);
 
   useEffect(() => {
-    // Load config on mount
+    // Load config on first mount only
     loadConfig();
 
     // Heartbeat check every 10 seconds
@@ -79,7 +79,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       checkHeartbeat();
     }, 10000);
 
-    // List for menu action to open settings
+    return () => {
+      clearInterval(interval);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    // Listen for menu action to open settings.
+    // Access control for backupPath itself is handled inside the form/UI.
     const removeListener = (window as any).electronAPI.onMenuAction((action: string) => {
       if (action === 'open-settings') {
         setIsSettingsModalVisible(true);
@@ -87,10 +95,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     });
 
     return () => {
-      clearInterval(interval);
       if (removeListener) removeListener();
     };
-  }, []);
+  }, [user]);
 
   const loadConfig = async () => {
     try {
@@ -143,38 +150,36 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const login = async (username: string, password?: string): Promise<boolean> => {
-    try {
-      const result = await (window as any).electronAPI.db.auth.login(username, password);
-      if (result.success && result.data) {
-        const userData = result.data;
-        setUser(userData);
+    const result = await (window as any).electronAPI.db.auth.login(username, password);
+    if (result.success && result.data) {
+      const userData = result.data;
+      setUser(userData);
 
-        // Filter companies based on user's assigned companies
-        if (userData.role === 'admin' || userData.role_id === 1) {
-          loadCompanies(); // Reloads all
-        } else {
-          // Filter companies
-          const allowedIds = userData.company_ids || [];
-          if (allowedIds.length > 0) {
-            const allowedCompanies = companies.filter(c => allowedIds.includes(c.id));
-            setCompanies(allowedCompanies);
-            if (allowedCompanies.length > 0) {
-              setCurrentCompany(allowedCompanies[0]);
-            } else {
-              setCurrentCompany(null);
-            }
+      // Filter companies based on user's assigned companies
+      if (userData.role === 'admin' || userData.role_id === 1) {
+        loadCompanies(); // Reloads all
+      } else {
+        // Filter companies
+        const allowedIds = userData.company_ids || [];
+        if (allowedIds.length > 0) {
+          const allowedCompanies = companies.filter(c => allowedIds.includes(c.id));
+          setCompanies(allowedCompanies);
+          if (allowedCompanies.length > 0) {
+            setCurrentCompany(allowedCompanies[0]);
           } else {
-            setCompanies([]);
             setCurrentCompany(null);
           }
+        } else {
+          setCompanies([]);
+          setCurrentCompany(null);
         }
-        return true;
       }
-      return false;
-    } catch (error) {
-      console.error('Login failed:', error);
-      return false;
+      return true;
     }
+    if (result.error) {
+      throw new Error(result.error);
+    }
+    return false;
   };
 
   const logout = () => {
@@ -254,6 +259,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           >
             <Input type="number" />
           </Form.Item>
+
+          {(user?.role === 'admin' || user?.role_id === 1 || user?.username === 'admin') && (
+            <Form.Item
+              name="backupPath"
+              label="Database backup folder (Drive sync path)"
+              tooltip="This folder should be inside your Drive/OneDrive/etc. Only admin can change it."
+            >
+              <Input placeholder="e.g. D:\MyDrive\ERP_Backups" />
+            </Form.Item>
+          )}
 
           <Form.Item>
             <Button type="primary" htmlType="submit" block>

@@ -48,6 +48,11 @@ const Companies: React.FC = () => {
       companyData.logo_path = null; // Logo removed - PDF letterhead only
 
       // Handle letterhead upload (PDF or image)
+      if (!letterheadBase64 && !editingCompany?.letterhead_path) {
+        message.error('Please upload a letterhead (PDF or Image)');
+        return;
+      }
+
       if (letterheadBase64) {
         const ext = letterheadFileName.split('.').pop()?.toLowerCase() || 'pdf';
         const fileName = `letterhead_${Date.now()}.${ext}`;
@@ -188,21 +193,21 @@ const Companies: React.FC = () => {
               <Form.Item name="name" label="Company Name" rules={[{ required: true }]}>
                 <Input />
               </Form.Item>
-              <Form.Item name="email" label="Email" rules={[{ type: 'email' }]}>
+              <Form.Item name="email" label="Email" rules={[{ required: true, message: 'Email is required' }, { type: 'email' }]}>
                 <Input />
               </Form.Item>
-              <Form.Item name="phone" label="Phone">
+              <Form.Item name="phone" label="Phone" rules={[{ required: true, message: 'Phone is required' }]}>
                 <Input />
               </Form.Item>
-              <Form.Item name="currency" label="Currency" initialValue="PKR">
+              <Form.Item name="currency" label="Currency" initialValue="PKR" rules={[{ required: true, message: 'Currency is required' }]}>
                 <Input />
               </Form.Item>
-              <Form.Item name="po_number" label="PO Number">
+              <Form.Item name="po_number" label="PO Number" rules={[{ required: true, message: 'PO Number is required' }]}>
                 <Input placeholder="e.g. 2602000229" />
               </Form.Item>
             </div>
             <div style={{ width: 320 }}>
-              <Form.Item label="Letterhead (PDF or Image)">
+              <Form.Item label="Letterhead (PDF or Image)" required>
                 <Upload
                   accept=".pdf,.jpg,.jpeg,.png"
                   showUploadList={false}
@@ -246,13 +251,13 @@ const Companies: React.FC = () => {
             </div>
           </Space>
 
-          <Form.Item name="address" label="Address">
+          <Form.Item name="address" label="Address" rules={[{ required: true, message: 'Address is required' }]}>
             <Input.TextArea rows={2} />
           </Form.Item>
 
           <Space>
-            <Form.Item name="city" label="City"><Input /></Form.Item>
-            <Form.Item name="state" label="State"><Input /></Form.Item>
+            <Form.Item name="city" label="City" rules={[{ required: true, message: 'City is required' }]}><Input /></Form.Item>
+            <Form.Item name="state" label="State" rules={[{ required: true, message: 'State is required' }]}><Input /></Form.Item>
           </Space>
 
           <Form.Item
@@ -272,7 +277,7 @@ const Companies: React.FC = () => {
             {({ getFieldValue }) =>
               getFieldValue('is_gst_enabled') ? (
                 <>
-                  <Form.Item name="tax_number" label="NTN/Tax Number">
+                  <Form.Item name="tax_number" label="NTN/Tax Number" rules={[{ required: true, message: 'NTN/Tax Number is required' }]}>
                     <Input />
                   </Form.Item>
                   <Form.Item

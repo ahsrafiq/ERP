@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Table, Button, Space, Modal, Form, Input, InputNumber, Select, DatePicker, message, Alert, Progress, Tag, Switch, Popconfirm } from 'antd';
-import { EditOutlined, DeleteOutlined, PrinterOutlined, WarningOutlined, LockOutlined, StopOutlined, EyeOutlined } from '@ant-design/icons';
+import { EditOutlined, DeleteOutlined, PrinterOutlined, LockOutlined, StopOutlined, EyeOutlined, SearchOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useApp } from '../../context/AppContext';
 import PrintTemplate from '../../components/PrintTemplate';
@@ -140,7 +140,7 @@ const SalesInvoices: React.FC = () => {
 
   const isGst = currentCompany?.is_gst_enabled === 1;
   const docLabel = isGst ? 'Invoice' : 'Bill';
-  const docPlaceholder = isGst ? 'INV-0001/26' : 'BILL-0001/26';
+  const docPlaceholder = isGst ? 'INV-0001/26' : 'CI-0001/26';
 
 
   const buildInvoiceData = (values: any) => {
@@ -199,35 +199,24 @@ const SalesInvoices: React.FC = () => {
 
       // Credit limit check (skip when editing)
       if (!editingInvoice) {
-        const customer = customers.find((c: any) => c.id === values.customer_id);
-        const creditLimit = Number(customer?.credit_limit) || 0;
+        // Always fetch latest customer record to get up-to-date credit limit and balance
+        let customer: any = customers.find((c: any) => c.id === values.customer_id);
+        try {
+          const fetched = await (window as any).electronAPI.db.customers.getById(values.customer_id);
+          if (fetched?.success && fetched.data) {
+            customer = fetched.data;
+          }
+        } catch {
+          // If fetch fails, fall back to in-memory customer list
+        }
+
+        const creditLimit = Number(customer?.credit_limit ?? 0);
         if (creditLimit > 0) {
-          const currentBalance = Number(customer?.balance) || 0;
-          const newBalance = currentBalance + invoiceData.total_amount;
+          const currentBalance = Number(customer?.balance ?? 0);
+          const invoiceTotal = Number(invoiceData.total_amount ?? 0);
+          const newBalance = currentBalance + invoiceTotal;
           if (newBalance > creditLimit) {
-            const over = newBalance - creditLimit;
-            Modal.confirm({
-              title: <span><WarningOutlined style={{ color: '#faad14', marginRight: 8 }} />Credit Limit Exceeded</span>,
-              content: (
-                <div>
-                  <p><strong>{customer.name}</strong> will exceed their credit limit if this {docLabel.toLowerCase()} is saved.</p>
-                  <table style={{ width: '100%', marginTop: 8, fontSize: 13 }}>
-                    <tbody>
-                      <tr><td>Credit Limit</td><td style={{ textAlign: 'right' }}><strong>{creditLimit.toLocaleString()}</strong></td></tr>
-                      <tr><td>Current Balance</td><td style={{ textAlign: 'right' }}>{currentBalance.toLocaleString()}</td></tr>
-                      <tr><td>This {docLabel}</td><td style={{ textAlign: 'right' }}>{invoiceData.total_amount.toLocaleString()}</td></tr>
-                      <tr style={{ color: '#cf1322' }}><td><strong>Amount Over Limit</strong></td><td style={{ textAlign: 'right' }}><strong>{over.toLocaleString()}</strong></td></tr>
-                    </tbody>
-                  </table>
-                  <p style={{ marginTop: 12, color: '#888' }}>Do you want to proceed anyway?</p>
-                </div>
-              ),
-              okText: 'Proceed Anyway',
-              okButtonProps: { danger: true },
-              cancelText: 'Cancel',
-              width: 420,
-              onOk: () => doSave(invoiceData),
-            });
+            message.error('Credit limit reached. Cannot create this invoice.');
             return;
           }
         }
@@ -247,11 +236,12 @@ const SalesInvoices: React.FC = () => {
   };
 
   const handleConfirmDelete = async () => {
-    if (adminPassword !== 'admin123') {
-      message.error('Incorrect admin password');
-      setAdminPassword('');
-      return;
-    }
+        const verify = await (window as any).electronAPI.db.auth.verifyAdminPassword(adminPassword);
+        if (!verify.success || !verify.data) {
+            message.error('Incorrect admin password');
+            setAdminPassword('');
+            return;
+        }
     if (pendingDeleteId == null) return;
     try {
       const result = await (window as any).electronAPI.db.salesInvoices.delete(pendingDeleteId);
@@ -415,16 +405,35 @@ const SalesInvoices: React.FC = () => {
     },
   ];
 
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredInvoices = invoices.filter(inv =>
+    (inv.invoice_number || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (inv.customer_name || '').toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   return (
     <div>
-      <div style={{ marginBottom: 16 }}>
-        <h1>Sales {docLabel}s</h1>
-        <p style={{ margin: '4px 0 0', color: '#666', fontSize: 13 }}>Create a {docLabel.toLowerCase()} from a Delivery Challan (Delivery Challans page).</p>
+      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <h1 style={{ margin: 0 }}>Sales {docLabel}s</h1>
+          <Input
+            placeholder={`Search by ${docLabel.toLowerCase()} # or customer...`}
+            prefix={<SearchOutlined />}
+            style={{ width: 250 }}
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            allowClear
+          />
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+          <p style={{ margin: 0, color: '#666', fontSize: 13 }}>Create a {docLabel.toLowerCase()} from a Delivery Challan (Delivery Challans page).</p>
+        </div>
       </div>
 
       <Table
         columns={columns}
-        dataSource={invoices}
+        dataSource={filteredInvoices}
         loading={loading}
         rowKey="id"
         pagination={{ pageSize: 10 }}
@@ -446,9 +455,6 @@ const SalesInvoices: React.FC = () => {
           <Space align="start">
             <Form.Item name="invoice_number" label={`${docLabel} #`} rules={[{ required: true, message: 'Required' }]}>
               <Input placeholder={`e.g. ${docPlaceholder}`} style={{ width: 160 }} />
-            </Form.Item>
-            <Form.Item name="po_number" label="PO Number">
-              <Input placeholder="e.g. PO-12345" style={{ width: 160 }} />
             </Form.Item>
           </Space>
           <Form.Item name="customer_id" label="Customer" rules={[{ required: true }]}>

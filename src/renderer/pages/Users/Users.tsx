@@ -11,13 +11,11 @@ const PERMISSION_OPTIONS = [
 ];
 
 const SECTIONS = [
-  { key: 'dashboard', label: 'Dashboard' },
   { key: 'sales', label: 'Sales' },
   { key: 'receivables', label: 'Receivables' },
   { key: 'purchase', label: 'Purchase' },
   { key: 'inventory', label: 'Inventory' },
   { key: 'expenses', label: 'Expenses' },
-  { key: 'reports', label: 'Reports' },
 ];
 
 const Users: React.FC = () => {

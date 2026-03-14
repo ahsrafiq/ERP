@@ -35,6 +35,63 @@ let tray: Tray | null = null;
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
+// --- Automatic database backup (Master mode only) ---
+let backupInterval: NodeJS.Timeout | null = null;
+let lastBackupDate = '';
+let lastBackupSlots: { [date: string]: { '12': boolean; '18': boolean } } = {};
+
+function performAutomaticDatabaseBackup(now: Date) {
+  const config = getConfig();
+  const backupRoot = (config as any).backupPath as string | undefined;
+  if (!backupRoot || !backupRoot.trim()) {
+    // No backup path configured; skip silently
+    return;
+  }
+
+  try {
+    const datePart = now.toISOString().slice(0, 10);
+    const timePart = now.toTimeString().slice(0, 8).replace(/:/g, '-');
+    const folderName = `Database_Backup_${datePart}_${timePart}`;
+    const targetDir = path.join(backupRoot, folderName);
+
+    const dbPath = path.join(app.getPath('userData'), 'database', 'erp.db');
+
+    fs.mkdirSync(targetDir, { recursive: true });
+    const targetPath = path.join(targetDir, 'erp.db');
+    fs.copyFileSync(dbPath, targetPath);
+    console.log('[AutoBackup] Database backed up to:', targetPath);
+  } catch (err) {
+    console.error('[AutoBackup] Failed to back up database:', err);
+  }
+}
+
+function scheduleAutomaticDatabaseBackups() {
+  if (!isMasterMode()) return;
+  if (backupInterval) return;
+
+  backupInterval = setInterval(() => {
+    const now = new Date();
+    const hours = now.getHours();
+    const minutes = now.getMinutes();
+    const today = now.toISOString().slice(0, 10);
+
+    if (lastBackupDate !== today) {
+      lastBackupDate = today;
+      lastBackupSlots[today] = { '12': false, '18': false };
+    }
+
+    const slots = lastBackupSlots[today];
+    // Run exactly at 12:00 and 18:00 local time (once per day per slot)
+    if (minutes === 0 && (hours === 12 || hours === 18)) {
+      const key = hours === 12 ? '12' : '18';
+      if (!slots[key]) {
+        slots[key] = true;
+        performAutomaticDatabaseBackup(now);
+      }
+    }
+  }, 60 * 1000); // check every minute
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -305,6 +362,7 @@ app.whenReady().then(() => {
       initializeDatabase();
       console.log('Database initialized successfully at:', path.join(app.getPath('userData'), 'database', 'erp.db'));
       startServer();
+      scheduleAutomaticDatabaseBackups();
     } else {
       console.log('Running in CLIENT mode. Connecting to Master server.');
     }
@@ -650,8 +708,8 @@ ipcMain.handle('db:deliveryChallans:createFromInvoice', async (event, invoiceId:
   return dbBridge.deliveryChallans.createFromInvoice(invoiceId, createdBy);
 });
 
-ipcMain.handle('db:deliveryChallans:createFromQuotation', async (event, quotationId: number, createdBy?: number) => {
-  return dbBridge.deliveryChallans.createFromQuotation(quotationId, createdBy);
+ipcMain.handle('db:deliveryChallans:createFromQuotation', async (event, quotationId: number, createdBy?: number, selectedItemIds?: number[]) => {
+  return dbBridge.deliveryChallans.createFromQuotation(quotationId, createdBy, selectedItemIds);
 });
 
 ipcMain.handle('db:purchaseInvoices:getAll', async (event, companyId: number, filters?: any) => {
@@ -741,6 +799,10 @@ ipcMain.handle('db:dashboard:getTopCustomers', async (event, companyId: number, 
 // Auth handler
 ipcMain.handle('db:auth:login', async (event, username: string, password?: string) => {
   return dbBridge.auth.login(username, password);
+});
+
+ipcMain.handle('db:auth:verifyAdminPassword', async (event, password: string) => {
+    return dbBridge.auth.verifyAdminPassword(password);
 });
 
 // Global search handler

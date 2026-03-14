@@ -9,7 +9,6 @@ import {
   DatabaseOutlined,
   DollarOutlined,
   BarChartOutlined,
-  SearchOutlined,
   SettingOutlined,
   LogoutOutlined,
 } from '@ant-design/icons';
@@ -233,31 +232,11 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               maxLength={2}
             />
           </div>
-          <div className="header-right">
-            <Input
-              placeholder="Search (Ctrl+K)"
-              prefix={<SearchOutlined />}
-              style={{ width: 300 }}
-              onPressEnter={async (e) => {
-                const query = e.currentTarget.value;
-                if (query && currentCompany) {
-                  try {
-                    const result = await (window as any).electronAPI.db.search.global(currentCompany.id, query);
-                    if (result.success && result.data) {
-                      console.log('Search results:', result.data);
-                    }
-                  } catch (error) {
-                    console.error('Search error:', error);
-                  }
-                }
-              }}
-            />
             <Space size="large">
               <Dropdown menu={{ items: userMenuItems, onClick: handleUserMenuClick }} placement="bottomRight">
                 <Avatar style={{ cursor: 'pointer' }} icon={<UserOutlined />} />
               </Dropdown>
             </Space>
-          </div>
         </Header>
         <Content className="app-content">
           {children}

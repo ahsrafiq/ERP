@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Button, Space, Modal, Form, Input, InputNumber, Select, DatePicker, message, Popconfirm, Tag } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { Table, Button, Space, Modal, Form, Input, InputNumber, Select, DatePicker, message, Tag } from 'antd';
+import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined, LockOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useApp } from '../../context/AppContext';
 
@@ -13,6 +13,11 @@ const Expenses: React.FC = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [editingExpense, setEditingExpense] = useState<any>(null);
   const [form] = Form.useForm();
+
+  // Admin password delete
+  const [deletePasswordModal, setDeletePasswordModal] = useState(false);
+  const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
+  const [adminPassword, setAdminPassword] = useState('');
 
   // Section permissions (Expenses)
   const isAdminUser = user?.role_id === 1 || (user as any)?.role === 'admin' || user?.username === 'admin';
@@ -102,17 +107,34 @@ const Expenses: React.FC = () => {
     }
   };
 
-  const handleDelete = async (id: number) => {
+  const handleRequestDelete = (id: number) => {
+    setPendingDeleteId(id);
+    setAdminPassword('');
+    setDeletePasswordModal(true);
+  };
+
+  const handleConfirmDelete = async () => {
+        const verify = await (window as any).electronAPI.db.auth.verifyAdminPassword(adminPassword);
+        if (!verify.success || !verify.data) {
+            message.error('Incorrect admin password');
+            setAdminPassword('');
+            return;
+        }
+    if (pendingDeleteId == null) return;
     try {
-      const result = await (window as any).electronAPI.db.expenses.delete(id);
+      const result = await (window as any).electronAPI.db.expenses.delete(pendingDeleteId);
       if (result.success) {
         message.success('Expense deleted successfully');
         loadExpenses();
       } else {
         message.error(result.error || 'Failed to delete expense');
       }
-    } catch (error) {
+    } catch {
       message.error('Failed to delete expense');
+    } finally {
+      setDeletePasswordModal(false);
+      setPendingDeleteId(null);
+      setAdminPassword('');
     }
   };
 
@@ -182,12 +204,7 @@ const Expenses: React.FC = () => {
               }}
             />
             {canEditOrDelete && (
-              <Popconfirm
-                title="Are you sure you want to delete this expense?"
-                onConfirm={() => handleDelete(record.id)}
-              >
-                <Button danger icon={<DeleteOutlined />} />
-              </Popconfirm>
+              <Button danger icon={<DeleteOutlined />} onClick={() => handleRequestDelete(record.id)} />
             )}
           </Space>
         );
@@ -195,10 +212,28 @@ const Expenses: React.FC = () => {
     },
   ];
 
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredExpenses = expenses.filter(exp =>
+    (exp.expense_number || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (exp.category_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (exp.description || '').toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   return (
     <div>
-      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
-        <h1>Expenses</h1>
+      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <h1 style={{ margin: 0 }}>Expenses</h1>
+          <Input
+            placeholder="Search by exp #, category or desc..."
+            prefix={<SearchOutlined />}
+            style={{ width: 300 }}
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            allowClear
+          />
+        </div>
         {!isReadOnlySection && (
           <Button
             type="primary"
@@ -216,7 +251,7 @@ const Expenses: React.FC = () => {
 
       <Table
         columns={columns}
-        dataSource={expenses}
+        dataSource={filteredExpenses}
         loading={loading}
         rowKey="id"
         pagination={{ pageSize: 10 }}
@@ -270,6 +305,26 @@ const Expenses: React.FC = () => {
             </Select>
           </Form.Item>
         </Form>
+      </Modal>
+
+      {/* Admin password for delete */}
+      <Modal
+        title="Admin Authorization Required"
+        open={deletePasswordModal}
+        onCancel={() => { setDeletePasswordModal(false); setPendingDeleteId(null); }}
+        onOk={handleConfirmDelete}
+        okText="Delete"
+        okButtonProps={{ danger: true }}
+      >
+        <p>Enter admin password to delete this expense:</p>
+        <Input.Password
+          prefix={<LockOutlined />}
+          value={adminPassword}
+          onChange={e => setAdminPassword(e.target.value)}
+          placeholder="Admin password"
+          onKeyDown={e => { if (e.key === 'Enter') handleConfirmDelete(); }}
+          autoFocus
+        />
       </Modal>
     </div>
   );
