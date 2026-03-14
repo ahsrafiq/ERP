@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Table, Card, Row, Col, Select, Button, Space,
-  Statistic, Divider, Typography, message, Empty, Tag,
+  Statistic, Divider, Typography, notification, message, Empty, Tag,
 } from 'antd';
 import {
   PrinterOutlined, ArrowLeftOutlined, FileExcelOutlined,
@@ -103,7 +103,7 @@ const VendorLedgerReport: React.FC = () => {
 
       setLedger(entries);
     } catch {
-      message.error('Failed to load vendor ledger');
+      notification.error({ message: 'Error', description: 'Failed to load vendor ledger', duration: 0 });
     } finally {
       setLoading(false);
     }

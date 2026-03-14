@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Table, Card, Row, Col, Button, Space,
-  Statistic, Divider, Typography, message, Tag, Progress,
+  Statistic, Divider, Typography, notification, message, Tag, Progress,
 } from 'antd';
 import {
   PrinterOutlined, ArrowLeftOutlined, FileExcelOutlined,
@@ -101,7 +101,7 @@ const RecoveryReport: React.FC = () => {
       });
 
       setRecoveryData(Object.values(map).sort((a, b) => b.balance - a.balance));
-    } catch { message.error('Failed to load recovery data'); }
+    } catch { notification.error({ message: 'Error', description: 'Failed to load recovery data', duration: 0 }); }
     finally { setLoading(false); }
   };
 
@@ -189,7 +189,7 @@ const RecoveryReport: React.FC = () => {
     const sSumL  = { font: { bold: true, sz: 10 }, fill: { fgColor: { rgb: 'DCE6F1' } }, alignment: { horizontal: 'left', vertical: 'center' }, border: thin };
     const sSumV  = { font: { bold: true, sz: 10 }, fill: { fgColor: { rgb: 'DCE6F1' } }, alignment: { horizontal: 'right', vertical: 'center' }, border: thin };
 
-    const c = (v: any, s: any) => ({ v, s });
+    const c = (v: any, s: any = {}) => ({ v, s });
 
     const colHdrs = [
       c('Sr.', sHdr), c('Code', sHdr), c('Customer', sHdr), c('Phone', sHdr), c('Invoices', sHdrR), c('Last Invoice', sHdr),

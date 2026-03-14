@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Table, Card, Row, Col, Select, Button, Space,
-  Statistic, Divider, Typography, message, Empty, Tag,
+  Statistic, Divider, Typography, notification, message, Empty, Tag,
 } from 'antd';
 import {
   PrinterOutlined, ArrowLeftOutlined, FileExcelOutlined,
@@ -115,7 +115,7 @@ const CustomerLedgerReport: React.FC = () => {
 
       setLedger(ledgerRows);
     } catch (err) {
-      message.error('Failed to load ledger');
+      notification.error({ message: 'Error', description: 'Failed to load ledger', duration: 0 });
     } finally {
       setLoading(false);
     }
@@ -197,7 +197,7 @@ const CustomerLedgerReport: React.FC = () => {
     const sSumL   = { font: { bold: true, sz: 10 }, fill: { fgColor: { rgb: 'DCE6F1' } }, alignment: { horizontal: 'left', vertical: 'center' }, border: thin };
     const sSumV   = { font: { bold: true, sz: 10 }, fill: { fgColor: { rgb: 'DCE6F1' } }, alignment: { horizontal: 'right', vertical: 'center' }, border: thin };
 
-    const c = (v: any, s: any) => ({ v, s });
+    const c = (v: any, s: any = {}) => ({ v, s });
     const numCols = 8;
 
     const colHdrs = [

@@ -1,12 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Button, Space, Modal, Form, Input, InputNumber, Select, DatePicker, message, Alert, Progress, Tag, Switch, Popconfirm } from 'antd';
-import { EditOutlined, DeleteOutlined, PrinterOutlined, LockOutlined, StopOutlined, EyeOutlined, SearchOutlined } from '@ant-design/icons';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { Table, Button, Space, Modal, Form, Input, InputNumber, Select, DatePicker, message, notification, Alert, Progress, Tag, Switch, Popconfirm } from 'antd';
+import { EditOutlined, DeleteOutlined, PrinterOutlined, LockOutlined, StopOutlined, EyeOutlined, SearchOutlined, MinusSquareOutlined, CloseOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useApp } from '../../context/AppContext';
 import PrintTemplate from '../../components/PrintTemplate';
+import * as XLSX from 'xlsx';
 
 const SalesInvoices: React.FC = () => {
-  const { currentCompany, companies, user, fiscalYear } = useApp();
+  const { currentCompany, companies, user, fiscalYear, minimizeModal } = useApp();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const isGst = currentCompany?.is_gst_enabled === 1;
+  const docLabel = isGst ? 'Invoice' : 'Bill';
+  const docPlaceholder = isGst ? 'INV-0001/26' : 'CI-0001/26';
   const [invoices, setInvoices] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
   const [items, setItems] = useState<any[]>([]);
@@ -36,6 +43,39 @@ const SalesInvoices: React.FC = () => {
     }
   }, [currentCompany]);
 
+  const handleEdit = async (record: any) => {
+    const hide = message.loading(`Fetching ${docLabel.toLowerCase()} details...`, 0);
+    try {
+      const result = await (window as any).electronAPI.db.salesInvoices.getById(record.id);
+      if (result.success && result.data) {
+        const detailedInvoice = result.data;
+        setEditingInvoice(detailedInvoice);
+        setSelectedCustomerInfo(customers.find((c: any) => c.id === detailedInvoice.customer_id) || null);
+        form.setFieldsValue({
+          ...detailedInvoice,
+          invoice_number: detailedInvoice.invoice_number,
+          invoice_date: dayjs(detailedInvoice.invoice_date),
+          due_date: detailedInvoice.due_date ? dayjs(detailedInvoice.due_date) : null,
+        });
+        setModalVisible(true);
+      } else {
+        notification.error({ message: 'Error', description: 'Failed to fetch details', duration: 0 });
+      }
+    } catch (error) {
+      notification.error({ message: 'Error', description: 'Failed to fetch details', duration: 0 });
+    } finally {
+      hide();
+    }
+  };
+
+  useEffect(() => {
+    if (location.state?.editInvoiceId && customers.length > 0) {
+      handleEdit({ id: location.state.editInvoiceId });
+      // Clear state
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location.state, customers]);
+
   const loadInvoices = async () => {
     if (!currentCompany) return;
     setLoading(true);
@@ -45,7 +85,7 @@ const SalesInvoices: React.FC = () => {
         setInvoices(result.data || []);
       }
     } catch (error) {
-      message.error(`Failed to load ${docLabel}s`);
+      notification.error({ message: 'Error', description: `Failed to load ${docLabel}s`, duration: 0 });
     } finally {
       setLoading(false);
     }
@@ -95,10 +135,10 @@ const SalesInvoices: React.FC = () => {
         });
         setIsPreviewVisible(true);
       } else {
-        message.error('Failed to load invoice for print');
+        notification.error({ message: 'Error', description: 'Failed to load invoice for print', duration: 0 });
       }
     } catch (error) {
-      message.error('Failed to prepare print');
+      notification.error({ message: 'Error', description: 'Failed to prepare print', duration: 0 });
     }
   };
 
@@ -129,18 +169,59 @@ const SalesInvoices: React.FC = () => {
       if (result.success) {
         message.success(`Saved to: ${result.filePath}`);
       } else {
-        message.error(result.error || 'Failed to save PDF');
+        notification.error({ message: 'Error', description: result.error || 'Failed to update invoice', duration: 0 });
       }
     } catch {
-      message.error('Failed to save PDF');
+      notification.error({ message: 'Error', description: 'Failed to save PDF', duration: 0 });
     } finally {
       document.body.classList.remove('capturing-pdf');
     }
   };
 
-  const isGst = currentCompany?.is_gst_enabled === 1;
-  const docLabel = isGst ? 'Invoice' : 'Bill';
-  const docPlaceholder = isGst ? 'INV-0001/26' : 'CI-0001/26';
+  /*
+  const loadNextInvoiceNumber = async () => {
+    if (!currentCompany) return;
+    try {
+      const result = await (window as any).electronAPI.db.salesInvoices.getAll(currentCompany.id);
+      if (result.success && Array.isArray(result.data) && result.data.length > 0) {
+        const prefix = isGst ? 'INV' : 'CI';
+        const regex = new RegExp(`${prefix}-(\\d+)\\/(\\d+)`);
+        const invs = result.data
+          .map((inv: any) => {
+            const match = (inv.invoice_number || '').match(regex);
+            if (match) {
+              return { num: parseInt(match[1], 10), year: parseInt(match[2], 10) };
+            }
+            return null;
+          })
+          .filter(Boolean) as { num: number; year: number }[];
+
+        if (invs.length > 0) {
+          invs.sort((a, b) => (b.year - a.year) || (b.num - a.num));
+          const latest = invs[0];
+          const nextNum = latest.num + 1;
+          const yearStr = String(latest.year).padStart(2, '0');
+          form.setFieldsValue({
+            invoice_number: `${prefix}-${String(nextNum).padStart(4, '0')}/${yearStr}`,
+            invoice_date: dayjs(),
+          });
+          return;
+        }
+      }
+      const prefix = isGst ? 'INV' : 'CI';
+      const currentYear = fiscalYear || (new Date().getFullYear() % 100);
+      form.setFieldsValue({
+        invoice_number: `${prefix}-0001/${String(currentYear).padStart(2, '0')}`,
+        invoice_date: dayjs(),
+      });
+    } catch (err) {
+      console.error('Failed to load next invoice number:', err);
+      form.setFieldsValue({ invoice_date: dayjs() });
+    }
+  };
+  */
+
+
 
 
   const buildInvoiceData = (values: any) => {
@@ -179,11 +260,11 @@ const SalesInvoices: React.FC = () => {
     if (editingInvoice) {
       const result = await (window as any).electronAPI.db.salesInvoices.update(editingInvoice.id, invoiceData);
       if (result.success) message.success(`${docLabel} updated successfully`);
-      else message.error(result.error || `Failed to update ${docLabel.toLowerCase()}`);
+      else notification.error({ message: 'Error', description: result.error || `Failed to update ${docLabel.toLowerCase()}`, duration: 0 });
     } else {
       const result = await (window as any).electronAPI.db.salesInvoices.create(invoiceData);
       if (result.success) message.success(`${docLabel} created successfully`);
-      else message.error(result.error || `Failed to create ${docLabel.toLowerCase()}`);
+      else notification.error({ message: 'Error', description: result.error || `Failed to create ${docLabel.toLowerCase()}`, duration: 0 });
     }
     setModalVisible(false);
     setEditingInvoice(null);
@@ -210,22 +291,25 @@ const SalesInvoices: React.FC = () => {
           // If fetch fails, fall back to in-memory customer list
         }
 
-        const creditLimit = Number(customer?.credit_limit ?? 0);
-        if (creditLimit > 0) {
-          const currentBalance = Number(customer?.balance ?? 0);
-          const invoiceTotal = Number(invoiceData.total_amount ?? 0);
-          const newBalance = currentBalance + invoiceTotal;
-          if (newBalance > creditLimit) {
-            message.error('Credit limit reached. Cannot create this invoice.');
-            return;
-          }
+        const limit = Number(customer?.credit_limit) || 0;
+        const currentBalance = Number(customer?.balance) || 0;
+        const invoiceTotal = Number(invoiceData.total_amount ?? 0);
+        const newBalance = Math.round((currentBalance + invoiceTotal) * 100) / 100;
+
+        if (limit > 0 && newBalance > limit + 0.01) {
+          notification.error({
+            message: 'Credit Limit Reached',
+            description: `This ${docLabel.toLowerCase()} would exceed the customer's credit limit of ${limit.toLocaleString()}. Current balance: ${currentBalance.toLocaleString()}, New balance: ${newBalance.toLocaleString()}.`,
+            duration: 0,
+          });
+          return;
         }
       }
 
       await doSave(invoiceData);
       loadInvoices();
     } catch (error) {
-      message.error('Operation failed');
+      notification.error({ message: 'Error', description: 'Operation failed', duration: 0 });
     }
   };
 
@@ -238,7 +322,7 @@ const SalesInvoices: React.FC = () => {
   const handleConfirmDelete = async () => {
         const verify = await (window as any).electronAPI.db.auth.verifyAdminPassword(adminPassword);
         if (!verify.success || !verify.data) {
-            message.error('Incorrect admin password');
+            notification.error({ message: 'Error', description: 'Incorrect admin password' });
             setAdminPassword('');
             return;
         }
@@ -249,10 +333,10 @@ const SalesInvoices: React.FC = () => {
         message.success('Invoice deleted successfully');
         loadInvoices();
       } else {
-        message.error(result.error || 'Failed to delete invoice');
+        notification.error({ message: 'Error', description: result.error || 'Failed to delete invoice' });
       }
     } catch (error) {
-      message.error('Failed to delete invoice');
+      notification.error({ message: 'Error', description: 'Failed to delete invoice' });
     } finally {
       setDeletePasswordModal(false);
       setPendingDeleteId(null);
@@ -264,7 +348,7 @@ const SalesInvoices: React.FC = () => {
     try {
       const fetched = await (window as any).electronAPI.db.salesInvoices.getById(id);
       if (!fetched.success || !fetched.data) {
-        message.error('Failed to load invoice');
+        notification.error({ message: 'Error', description: 'Failed to load invoice', duration: 0 });
         return;
       }
       const data = fetched.data;
@@ -276,10 +360,10 @@ const SalesInvoices: React.FC = () => {
         message.success('Invoice disabled');
         loadInvoices();
       } else {
-        message.error(result.error || 'Failed to disable invoice');
+        notification.error({ message: 'Error', description: result.error || 'Failed to disable invoice', duration: 0 });
       }
     } catch (error) {
-      message.error('Failed to disable invoice');
+      notification.error({ message: 'Error', description: 'Failed to disable invoice', duration: 0 });
     }
   };
 
@@ -300,12 +384,6 @@ const SalesInvoices: React.FC = () => {
       key: 'invoice_date',
     },
     {
-      title: 'Total Amount',
-      dataIndex: 'total_amount',
-      key: 'total_amount',
-      render: (amount: number) => amount.toFixed(2),
-    },
-    {
       title: 'Balance',
       dataIndex: 'balance',
       key: 'balance',
@@ -314,16 +392,6 @@ const SalesInvoices: React.FC = () => {
           {balance.toFixed(2)}
         </span>
       ),
-    },
-    {
-      title: 'Status',
-      dataIndex: 'status',
-      key: 'status',
-      render: (status: string) => {
-        if (status === 'cancelled') return <Tag color="red">Disabled</Tag>;
-        if (status === 'finalized') return <Tag color="green">Finalized</Tag>;
-        return <Tag color="default">{status || 'Draft'}</Tag>;
-      },
     },
     {
       title: 'Actions',
@@ -355,30 +423,7 @@ const SalesInvoices: React.FC = () => {
             {canCreateOrEdit && (
               <Button
                 icon={<EditOutlined />}
-                onClick={async () => {
-                  const hide = message.loading('Fetching invoice details...', 0);
-                  try {
-                    const result = await (window as any).electronAPI.db.salesInvoices.getById(record.id);
-                    if (result.success && result.data) {
-                      const detailedInvoice = result.data;
-                      setEditingInvoice(detailedInvoice);
-                      setSelectedCustomerInfo(customers.find((c: any) => c.id === detailedInvoice.customer_id) || null);
-                      form.setFieldsValue({
-                        ...detailedInvoice,
-                        invoice_number: detailedInvoice.invoice_number,
-                        invoice_date: dayjs(detailedInvoice.invoice_date),
-                        due_date: detailedInvoice.due_date ? dayjs(detailedInvoice.due_date) : null,
-                      });
-                      setModalVisible(true);
-                    } else {
-                      message.error('Failed to fetch invoice details');
-                    }
-                  } catch (error) {
-                    message.error('Failed to fetch invoice details');
-                  } finally {
-                    hide();
-                  }
-                }}
+                onClick={() => handleEdit(record)}
               />
             )}
             {canEditOrDelete && (
@@ -412,6 +457,21 @@ const SalesInvoices: React.FC = () => {
     (inv.customer_name || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const handleExportExcel = () => {
+    const data = filteredInvoices.map((inv: any) => ({
+      [`${docLabel} #`]: inv.invoice_number || '',
+      'Customer': inv.customer_name || '',
+      'Date': inv.invoice_date ? dayjs(inv.invoice_date).format('DD/MM/YYYY') : '',
+      'Total Amount': inv.total_amount ? Number(inv.total_amount).toFixed(2) : '0.00',
+      'Balance': inv.balance ? Number(inv.balance).toFixed(2) : '0.00',
+    }));
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, docLabel + 's');
+    XLSX.writeFile(wb, `${docLabel}s_${dayjs().format('YYYYMMDD')}.xlsx`);
+    message.success('Exported to Excel');
+  };
+
   return (
     <div>
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
@@ -426,8 +486,9 @@ const SalesInvoices: React.FC = () => {
             allowClear
           />
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <p style={{ margin: 0, color: '#666', fontSize: 13 }}>Create a {docLabel.toLowerCase()} from a Delivery Challan (Delivery Challans page).</p>
+          <Button onClick={handleExportExcel}>Export to Excel</Button>
         </div>
       </div>
 
@@ -450,6 +511,30 @@ const SalesInvoices: React.FC = () => {
         }}
         onOk={() => form.submit()}
         width={900}
+        closeIcon={
+          <Space>
+            <MinusSquareOutlined 
+              style={{ fontSize: 18, color: '#1890ff' }}
+              onClick={(e) => {
+                e.stopPropagation();
+                setModalVisible(false);
+                const values = form.getFieldsValue();
+                const invNum = values.invoice_number || `New ${docLabel}`;
+                minimizeModal({
+                  id: editingInvoice ? `inv-edit-${editingInvoice.id}` : 'inv-new',
+                  title: editingInvoice ? `Edit ${docLabel} ${invNum}` : `New ${docLabel} ${invNum}`,
+                  onRestore: () => setModalVisible(true)
+                });
+              }} 
+            />
+            <CloseOutlined style={{ fontSize: 18 }} onClick={() => {
+              setModalVisible(false);
+              setEditingInvoice(null);
+              setSelectedCustomerInfo(null);
+              form.resetFields();
+            }} />
+          </Space>
+        }
       >
         <Form form={form} layout="vertical" onFinish={handleSave}>
           <Space align="start">
@@ -460,7 +545,9 @@ const SalesInvoices: React.FC = () => {
           <Form.Item name="customer_id" label="Customer" rules={[{ required: true }]}>
             <Select
               showSearch
-              optionFilterProp="label"
+              filterOption={(input, option) =>
+                String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+              }
               onChange={(val) => {
                 const c = customers.find((x: any) => x.id === val);
                 setSelectedCustomerInfo(c || null);
@@ -574,12 +661,12 @@ const SalesInvoices: React.FC = () => {
                     <Form.Item {...restField} name={[name, 'brand']}>
                       <Input placeholder="Brand" style={{ width: 100 }} />
                     </Form.Item>
-                    <Form.Item
+                     <Form.Item
                       {...restField}
                       name={[name, 'quantity']}
                       rules={[{ required: true, message: 'Quantity' }]}
                     >
-                      <InputNumber placeholder="Qty" min={0.01} style={{ width: 80 }} />
+                      <InputNumber placeholder="Qty" min={0} style={{ width: 80 }} />
                     </Form.Item>
                     <Form.Item
                       {...restField}

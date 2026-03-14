@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Card, Row, Col, DatePicker, Button, Space,
-  Statistic, Divider, Typography, message, Table, Tag,
+  Statistic, Divider, Typography, notification, Table, Tag,
 } from 'antd';
 import {
   PrinterOutlined, ArrowLeftOutlined, FileExcelOutlined,
@@ -74,7 +74,7 @@ const ProfitLossReport: React.FC = () => {
         setMonthlyData(monthlyRes.data || []);
       }
     } catch {
-      message.error('Failed to load P&L data');
+      notification.error({ message: 'Error', description: 'Failed to load P&L data', duration: 0 });
     } finally {
       setLoading(false);
     }
@@ -149,7 +149,7 @@ const ProfitLossReport: React.FC = () => {
     const sNet   = { font: { bold: true, sz: 12 }, fill: { fgColor: { rgb: netProfit >= 0 ? 'E6F4EA' : 'FDECEA' } }, border: { top: { style: 'medium' }, bottom: { style: 'medium' }, left: { style: 'thin' }, right: { style: 'thin' } } };
     const sNetR  = { ...sNet, alignment: { horizontal: 'right' } };
     const sSection = { font: { bold: true, color: { rgb: '1890FF' } }, fill: { fgColor: { rgb: 'EDF5FF' } } };
-    const c = (v: any, s: any) => ({ v, s });
+    const c = (v: any, s: any = {}) => ({ v, s });
 
     const rows: any[][] = [];
     rows.push([c(compName, { font: { bold: true, sz: 14 } })]);

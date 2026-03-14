@@ -11,6 +11,10 @@ import {
   BarChartOutlined,
   SettingOutlined,
   LogoutOutlined,
+  MenuFoldOutlined,
+  MenuUnfoldOutlined,
+  FileTextOutlined,
+  CloseOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
@@ -27,7 +31,18 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [fiscalYearInput, setFiscalYearInput] = useState<string | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
-  const { currentCompany, setCurrentCompany, companies, user, fiscalYear, setFiscalYear, logout } = useApp();
+  const { 
+    currentCompany, 
+    setCurrentCompany, 
+    companies, 
+    user, 
+    fiscalYear, 
+    setFiscalYear, 
+    logout,
+    minimizedModals,
+    restoreModal,
+    removeMinimizedModal
+  } = useApp();
 
   const menuItems = [
     {
@@ -134,7 +149,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const handleMenuClick = ({ key }: { key: string }) => {
     if (key.startsWith('/')) {
       navigate(key);
-      setCollapsed(true); // Close drawer on navigation
     }
   };
 
@@ -161,8 +175,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         trigger={null}
         collapsible
         collapsed={collapsed}
-        onMouseEnter={() => setCollapsed(false)}
-        onMouseLeave={() => setCollapsed(true)}
         width={250}
         theme="light"
         className="app-sider"
@@ -194,6 +206,11 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       <AntLayout style={{ marginLeft: collapsed ? 80 : 250, transition: 'all 0.2s' }}>
         <Header className="app-header">
           <div className="header-left">
+            {React.createElement(collapsed ? MenuUnfoldOutlined : MenuFoldOutlined, {
+              className: 'trigger',
+              onClick: () => setCollapsed(!collapsed),
+              style: { fontSize: '18px', cursor: 'pointer', padding: '0 24px' }
+            })}
             <div style={{ width: 8 }}></div>
             <Select
               value={currentCompany?.id}
@@ -241,6 +258,25 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         <Content className="app-content">
           {children}
         </Content>
+        {minimizedModals.length > 0 && (
+          <div className="minimized-modals-bar">
+            {minimizedModals.map((modal) => (
+              <div key={modal.id} className="minimized-modal-item" onClick={() => restoreModal(modal.id)}>
+                <Space>
+                  <FileTextOutlined style={{ color: '#1890ff' }} />
+                  <span className="modal-title">{modal.title}</span>
+                  <CloseOutlined 
+                    className="modal-close-icon"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeMinimizedModal(modal.id);
+                    }} 
+                  />
+                </Space>
+              </div>
+            ))}
+          </div>
+        )}
       </AntLayout>
     </AntLayout>
   );

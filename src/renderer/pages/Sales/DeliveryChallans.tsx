@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Button, Space, Modal, Form, Input, DatePicker, Select, InputNumber, message, Popconfirm, Switch, Tag } from 'antd';
-import { PlusOutlined, EditOutlined, PrinterOutlined, DeleteOutlined, FileTextOutlined, MinusCircleOutlined, LockOutlined, StopOutlined, EyeOutlined, SearchOutlined } from '@ant-design/icons';
+import { Table, Button, Space, Modal, Form, Input, DatePicker, Select, InputNumber, message, notification, Popconfirm, Switch, Tag } from 'antd';
+import { PlusOutlined, EditOutlined, PrinterOutlined, DeleteOutlined, FileTextOutlined, MinusCircleOutlined, MinusSquareOutlined, LockOutlined, StopOutlined, EyeOutlined, SearchOutlined, CloseOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import PrintTemplate from '../../components/PrintTemplate';
+import * as XLSX from 'xlsx';
 
 const DeliveryChallans: React.FC = () => {
-    const { currentCompany, companies, user, fiscalYear } = useApp();
+    const { currentCompany, companies, user, fiscalYear, minimizeModal } = useApp();
     const navigate = useNavigate();
+    const location = useLocation();
     const docLabel = currentCompany?.is_gst_enabled ? 'Invoice' : 'Bill';
     const [challans, setChallans] = useState<any[]>([]);
     const [customers, setCustomers] = useState<any[]>([]);
@@ -86,6 +88,13 @@ const DeliveryChallans: React.FC = () => {
         }
     }, [currentCompany]);
 
+    useEffect(() => {
+        if (location.state?.editChallanId && customers.length > 0 && items.length > 0) {
+            handleEdit({ id: location.state.editChallanId });
+            navigate(location.pathname, { replace: true, state: {} });
+        }
+    }, [location.state, customers]);
+
     const loadChallans = async () => {
         if (!currentCompany) return;
         setLoading(true);
@@ -93,7 +102,7 @@ const DeliveryChallans: React.FC = () => {
             const result = await (window as any).electronAPI.db.deliveryChallans.getAll(currentCompany.id);
             if (result.success) setChallans(result.data || []);
         } catch (error) {
-            message.error('Failed to load delivery challans');
+            notification.error({ message: 'Error', description: 'Failed to load delivery challans', duration: 0 });
         } finally {
             setLoading(false);
         }
@@ -127,7 +136,7 @@ const DeliveryChallans: React.FC = () => {
                 setIsPreviewVisible(true);
             }
         } catch (error) {
-            message.error('Failed to prepare print');
+            notification.error({ message: 'Error', description: 'Failed to prepare print', duration: 0 });
         }
     };
 
@@ -154,10 +163,10 @@ const DeliveryChallans: React.FC = () => {
             if (result.success) {
                 message.success(`Saved to: ${result.filePath}`);
             } else {
-                message.error(result.error || 'Failed to save PDF');
+                notification.error({ message: 'Error', description: result.error || 'Failed to save PDF', duration: 0 });
             }
         } catch {
-            message.error('Failed to save PDF');
+            notification.error({ message: 'Error', description: 'Failed to save PDF', duration: 0 });
         } finally {
             document.body.classList.remove('capturing-pdf');
         }
@@ -171,13 +180,37 @@ const DeliveryChallans: React.FC = () => {
 
         if (currentCompany) {
             try {
-                const challanRes = await (window as any).electronAPI.db.deliveryChallans.getNextNumber(currentCompany.id, fiscalYear);
+                const result = await (window as any).electronAPI.db.deliveryChallans.getAll(currentCompany.id);
+                if (result.success && Array.isArray(result.data) && result.data.length > 0) {
+                    const dcs = result.data
+                        .map((d: any) => {
+                            const match = (d.challan_number || '').match(/DC-(\d+)\/(\d+)/);
+                            if (match) {
+                                return { num: parseInt(match[1], 10), year: parseInt(match[2], 10) };
+                            }
+                            return null;
+                        })
+                        .filter(Boolean) as { num: number; year: number }[];
+
+                    if (dcs.length > 0) {
+                        dcs.sort((a, b) => (b.year - a.year) || (b.num - a.num));
+                        const latest = dcs[0];
+                        const nextNum = latest.num + 1;
+                        const yearStr = String(latest.year).padStart(2, '0');
+                        form.setFieldsValue({
+                            challan_number: `DC-${String(nextNum).padStart(4, '0')}/${yearStr}`,
+                            challan_date: dayjs(),
+                        });
+                        return;
+                    }
+                }
+                const currentYear = fiscalYear || (new Date().getFullYear() % 100);
                 form.setFieldsValue({
-                    challan_number: challanRes.success ? challanRes.data : undefined,
+                    challan_number: `DC-0001/${String(currentYear).padStart(2, '0')}`,
                     challan_date: dayjs(),
                 });
             } catch (err) {
-                console.error('Failed to pre-fill challan:', err);
+                console.error('Failed to load next DC number:', err);
                 form.setFieldsValue({ challan_date: dayjs() });
             }
         }
@@ -202,7 +235,7 @@ const DeliveryChallans: React.FC = () => {
             });
             setModalVisible(true);
         } else {
-            message.error('Failed to fetch challan details');
+            notification.error({ message: 'Error', description: 'Failed to fetch challan details', duration: 0 });
         }
     };
 
@@ -228,10 +261,10 @@ const DeliveryChallans: React.FC = () => {
                 message.success(`${docLabel} ${result.data.invoice_number} created from challan`);
                 navigate('/sales/invoices');
             } else {
-                message.error(result.error || `Failed to create ${docLabel.toLowerCase()}`);
+                notification.error({ message: 'Error', description: result.error || `Failed to create ${docLabel.toLowerCase()}`, duration: 0 });
             }
         } catch (error: any) {
-            message.error(error.message || `Failed to create ${docLabel.toLowerCase()}`);
+            notification.error({ message: 'Error', description: error.message || `Failed to create ${docLabel.toLowerCase()}`, duration: 0 });
         }
     };
 
@@ -244,7 +277,7 @@ const DeliveryChallans: React.FC = () => {
     const handleConfirmDelete = async () => {
         const verify = await (window as any).electronAPI.db.auth.verifyAdminPassword(adminPassword);
         if (!verify.success || !verify.data) {
-            message.error('Incorrect admin password');
+            notification.error({ message: 'Error', description: 'Incorrect admin password', duration: 0 });
             setAdminPassword('');
             return;
         }
@@ -255,11 +288,11 @@ const DeliveryChallans: React.FC = () => {
                 message.success('Delivery Challan deleted successfully');
                 loadChallans();
             } else {
-                message.error(result.error || 'Failed to delete challan');
+                notification.error({ message: 'Error', description: result.error || 'Failed to delete challan', duration: 0 });
             }
         } catch (error: any) {
             const msg = error?.message || 'Failed to delete challan';
-            message.error(msg);
+            notification.error({ message: 'Error', description: msg, duration: 0 });
         } finally {
             setDeletePasswordModal(false);
             setPendingDeleteId(null);
@@ -271,7 +304,7 @@ const DeliveryChallans: React.FC = () => {
         try {
             const fetched = await (window as any).electronAPI.db.deliveryChallans.getById(id);
             if (!fetched.success || !fetched.data) {
-                message.error('Failed to load challan');
+                notification.error({ message: 'Error', description: 'Failed to load challans', duration: 0 });
                 return;
             }
             const data = fetched.data;
@@ -283,22 +316,21 @@ const DeliveryChallans: React.FC = () => {
                 message.success('Delivery Challan disabled');
                 loadChallans();
             } else {
-                message.error(result.error || 'Failed to disable challan');
+                notification.error({ message: 'Error', description: result.error || 'Failed to disable challan', duration: 0 });
             }
         } catch (error) {
-            message.error('Failed to disable challan');
+            notification.error({ message: 'Error', description: 'Failed to disable challan', duration: 0 });
         }
     };
 
     const handleSave = async (values: any) => {
         if (!currentCompany) return;
         try {
-            const customer = customers.find((c: any) => c.id === values.customer_id);
             const challanData = {
                 ...values,
                 company_id: currentCompany.id,
                 challan_number: values.challan_number?.trim?.() || undefined,
-                po_number: customer?.po_number ?? undefined,
+                po_number: values.po_number || null,
                 fiscal_year: fiscalYear,
                 challan_date: values.challan_date.format('YYYY-MM-DD'),
                 created_by: user?.id,
@@ -325,7 +357,7 @@ const DeliveryChallans: React.FC = () => {
                     setEditingChallan(null);
                     loadChallans();
                 } else {
-                    message.error(result.error || 'Failed to update challan');
+                    notification.error({ message: 'Error', description: result.error || 'Failed to update delivery challan', duration: 0 });
                 }
             } else {
                 const result = await (window as any).electronAPI.db.deliveryChallans.create(challanData);
@@ -335,12 +367,12 @@ const DeliveryChallans: React.FC = () => {
                     setEditingChallan(null);
                     loadChallans();
                 } else {
-                    message.error(result.error || 'Failed to create challan');
+                    notification.error({ message: 'Error', description: result.error || 'Failed to create challan', duration: 0 });
                 }
             }
         } catch (error: any) {
             console.error('Save error:', error);
-            message.error(error.message || 'Operation failed');
+            notification.error({ message: 'Error', description: error.message || 'Operation failed', duration: 0 });
         }
     };
 
@@ -349,15 +381,6 @@ const DeliveryChallans: React.FC = () => {
         { title: 'Customer', dataIndex: 'customer_name', key: 'customer' },
         { title: 'Date', dataIndex: 'challan_date', key: 'date', render: (d: string) => dayjs(d).format('DD/MM/YYYY') },
         { title: 'Total Qty', dataIndex: 'total_quantity', key: 'qty' },
-        {
-            title: 'Status',
-            dataIndex: 'status',
-            key: 'status',
-            render: (status: string) => {
-                if (status === 'cancelled') return <Tag color="red">Disabled</Tag>;
-                return <Tag color="default">{status || 'Active'}</Tag>;
-            },
-        },
         {
             title: 'Actions',
             key: 'actions',
@@ -402,6 +425,20 @@ const DeliveryChallans: React.FC = () => {
         (c.customer_name || '').toLowerCase().includes(searchQuery.toLowerCase())
     );
 
+    const handleExportExcel = () => {
+        const data = filteredChallans.map((c: any) => ({
+            'Challan #': c.challan_number || '',
+            'Customer': c.customer_name || '',
+            'Date': c.challan_date ? dayjs(c.challan_date).format('DD/MM/YYYY') : '',
+            'Total Qty': c.total_quantity || 0,
+        }));
+        const ws = XLSX.utils.json_to_sheet(data);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Delivery Challans');
+        XLSX.writeFile(wb, `DeliveryChallans_${dayjs().format('YYYYMMDD')}.xlsx`);
+        message.success('Exported to Excel');
+    };
+
     return (
         <div>
             <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
@@ -416,23 +453,61 @@ const DeliveryChallans: React.FC = () => {
                         allowClear
                     />
                 </div>
-                {!isReadOnlySection && (
-                    <Button type="primary" icon={<PlusOutlined />} onClick={handleNewChallan}>
-                        New Challan
-                    </Button>
-                )}
+                <Space>
+                    {!isReadOnlySection && (
+                        <Button type="primary" icon={<PlusOutlined />} onClick={handleNewChallan}>
+                            New Challan
+                        </Button>
+                    )}
+                    <Button onClick={handleExportExcel}>Export to Excel</Button>
+                </Space>
             </div>
 
             <Table columns={columns} dataSource={filteredChallans} loading={loading} rowKey="id" />
 
-            <Modal title={editingChallan ? 'Edit Delivery Challan' : 'New Delivery Challan'} open={modalVisible} onCancel={() => setModalVisible(false)} onOk={() => form.submit()} width={900}>
+            <Modal 
+                title={editingChallan ? 'Edit Delivery Challan' : 'New Delivery Challan'} 
+                open={modalVisible} 
+                onCancel={() => setModalVisible(false)} 
+                onOk={() => form.submit()} 
+                width={900} 
+                closeIcon={
+                  <Space>
+                    <MinusSquareOutlined 
+                      style={{ fontSize: 18, color: '#1890ff' }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setModalVisible(false);
+                        const values = form.getFieldsValue();
+                        const dcNum = values.challan_number || 'New DC';
+                        minimizeModal({
+                          id: editingChallan ? `dc-edit-${editingChallan.id}` : 'dc-new',
+                          title: editingChallan ? `Edit DC ${dcNum}` : `New DC ${dcNum}`,
+                          onRestore: () => setModalVisible(true)
+                        });
+                      }} 
+                    />
+                    <CloseOutlined style={{ fontSize: 18 }} onClick={() => setModalVisible(false)} />
+                  </Space>
+                }
+            >
                 <Form form={form} layout="vertical" onFinish={handleSave}>
-                    <Form.Item name="challan_number" label="Challan #" rules={[{ required: true, message: 'Required' }]} style={{ marginBottom: 16 }}>
-                        <Input placeholder="e.g. DC-0001/26" style={{ width: 160 }} />
-                    </Form.Item>
+                    <Space align="start" wrap>
+                        <Form.Item name="challan_number" label="Challan #" rules={[{ required: true, message: 'Required' }]} style={{ marginBottom: 16 }}>
+                            <Input placeholder="e.g. DC-0001/26" style={{ width: 160 }} />
+                        </Form.Item>
+                        <Form.Item name="po_number" label="PO #" style={{ marginBottom: 16 }}>
+                            <Input placeholder="PO Number" style={{ width: 160 }} />
+                        </Form.Item>
+                    </Space>
                     <Space align="start" wrap>
                         <Form.Item name="customer_id" label="Customer" rules={[{ required: true }]} style={{ width: 300 }}>
-                            <Select showSearch optionFilterProp="children">
+                             <Select 
+                                showSearch 
+                                filterOption={(input, option) =>
+                                    String(option?.children ?? '').toLowerCase().includes(input.toLowerCase())
+                                }
+                            >
                                 {customers.map(c => <Select.Option key={c.id} value={c.id}>{c.name}</Select.Option>)}
                             </Select>
                         </Form.Item>
@@ -483,7 +558,9 @@ const DeliveryChallans: React.FC = () => {
                                                     placeholder="Item"
                                                     style={{ width: 200 }}
                                                     showSearch
-                                                    optionFilterProp="children"
+                                                    filterOption={(input, option) =>
+                                                        String(option?.children ?? '').toLowerCase().includes(input.toLowerCase())
+                                                    }
                                                     onChange={(itemId) => {
                                                         const item = items.find((i: any) => i.id === itemId);
                                                         if (item) {
@@ -501,11 +578,11 @@ const DeliveryChallans: React.FC = () => {
                                                     {itemsForBrand.map((i: any) => <Select.Option key={i.id} value={i.id}>{i.name} ({i.code})</Select.Option>)}
                                                 </Select>
                                             </Form.Item>
-                                            <Form.Item {...restField} name={[name, 'unit_price']} label="Price" initialValue={0} style={{ marginBottom: 0, width: 100, flexShrink: 0 }}>
+                                             <Form.Item {...restField} name={[name, 'unit_price']} label="Price" initialValue={0} style={{ marginBottom: 0, width: 100, flexShrink: 0 }}>
                                                 <InputNumber placeholder="Price" min={0} style={{ width: 100 }} />
                                             </Form.Item>
                                             <Form.Item {...restField} name={[name, 'quantity']} label="Qty" rules={[{ required: true, message: 'Qty' }]} style={{ marginBottom: 0, width: 80, flexShrink: 0 }}>
-                                                <InputNumber placeholder="Qty" min={1} style={{ width: 80 }} />
+                                                <InputNumber placeholder="Qty" min={0} style={{ width: 80 }} />
                                             </Form.Item>
                                             <Button danger onClick={() => remove(name)} icon={<DeleteOutlined />} style={{ flexShrink: 0 }} />
                                         </div>

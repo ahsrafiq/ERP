@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Card, Row, Col, DatePicker, Button, Space,
-  Statistic, Divider, Typography, message, Table,
+  Statistic, Divider, Typography, notification, Table,
 } from 'antd';
 import {
   PrinterOutlined, ArrowLeftOutlined, FileExcelOutlined,
@@ -80,7 +80,7 @@ const BalanceSheetReport: React.FC = () => {
         setNetProfit(kpiRes.data.netProfit || 0);
       }
     } catch {
-      message.error('Failed to load Balance Sheet data');
+      notification.error({ message: 'Error', description: 'Failed to load Balance Sheet data', duration: 0 });
     } finally {
       setLoading(false);
     }
@@ -151,7 +151,7 @@ const BalanceSheetReport: React.FC = () => {
     const sTot    = { font: { bold: true }, border: { top: { style: 'thin' }, bottom: { style: 'double' }, left: { style: 'thin' }, right: { style: 'thin' } }, fill: { fgColor: { rgb: 'F0F4FF' } } };
     const sTotR   = { ...sTot, alignment: { horizontal: 'right' } };
     const sSection = { font: { bold: true, color: { rgb: '1890FF' } }, fill: { fgColor: { rgb: 'EDF5FF' } } };
-    const c = (v: any, s: any) => ({ v, s });
+    const c = (v: any, s: any = {}) => ({ v, s });
 
     const rows: any[][] = [];
     rows.push([c(compName, { font: { bold: true, sz: 14 } })]);
@@ -163,7 +163,7 @@ const BalanceSheetReport: React.FC = () => {
     bsRows.forEach((row) => {
       if (row.amount === null) {
         rows.push([c(row.label, sSection), c('', sSection)]);
-      } else if (row.isTotal) {
+      } else if ((row as any).isTotal) {
         rows.push([c(row.label, sTot), c(Number(row.amount).toLocaleString(), sTotR)]);
       } else {
         rows.push([c(row.label, sThin), c(Number(row.amount).toLocaleString(), sThinR)]);

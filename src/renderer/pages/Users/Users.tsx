@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Button, Space, Modal, Form, Input, Select, message, Popconfirm, Tag, Alert } from 'antd';
+import { Table, Button, Space, Modal, Form, Input, Select, notification, message, Popconfirm, Tag, Alert } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useApp } from '../../context/AppContext';
 
@@ -41,7 +41,7 @@ const Users: React.FC = () => {
         setUsers(result.data || []);
       }
     } catch (error) {
-      message.error('Failed to load users');
+      notification.error({ message: 'Error', description: 'Failed to load users', duration: 0 });
     } finally {
       setLoading(false);
     }
@@ -60,7 +60,7 @@ const Users: React.FC = () => {
       if (!isAdminUser) {
         const company_ids = Array.isArray(values.company_ids) ? values.company_ids.filter((id: number) => id != null) : [];
         if (company_ids.length === 0) {
-          message.error('Please assign at least one company');
+          notification.error({ message: 'Error', description: 'Please assign at least one company', duration: 0 });
           return;
         }
         dataToSave.company_ids = company_ids;
@@ -73,7 +73,7 @@ const Users: React.FC = () => {
         if (result.success) {
           message.success('User updated successfully');
         } else {
-          message.error(result.error || 'Failed to update user');
+          notification.error({ message: 'Error', description: result.error || 'Failed to update user', duration: 0 });
         }
       } else {
         const result = await (window as any).electronAPI.db.users.create({
@@ -83,7 +83,7 @@ const Users: React.FC = () => {
         if (result.success) {
           message.success('User created successfully');
         } else {
-          message.error(result.error || 'Failed to create user');
+          notification.error({ message: 'Error', description: result.error || 'Failed to create user', duration: 0 });
         }
       }
       setModalVisible(false);
@@ -91,7 +91,7 @@ const Users: React.FC = () => {
       form.resetFields();
       loadUsers();
     } catch (error) {
-      message.error('Operation failed');
+      notification.error({ message: 'Error', description: 'Operation failed', duration: 0 });
     }
   };
 
@@ -102,10 +102,10 @@ const Users: React.FC = () => {
         message.success('User deleted successfully');
         loadUsers();
       } else {
-        message.error(result.error || 'Failed to delete user');
+        notification.error({ message: 'Error', description: result.error || 'Failed to delete user', duration: 0 });
       }
     } catch (error) {
-      message.error('Failed to delete user');
+      notification.error({ message: 'Error', description: 'Failed to delete user', duration: 0 });
     }
   };
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Table, Card, Row, Col, Select, Button, Space,
-  Statistic, Divider, Typography, message, Input, Tag,
+  Statistic, Divider, Typography, notification, message, Input, Tag,
 } from 'antd';
 import {
   PrinterOutlined, ArrowLeftOutlined, FileExcelOutlined,
@@ -35,11 +35,10 @@ const InventoryReport: React.FC = () => {
       const res = await (window as any).electronAPI.db.items.getAll(currentCompany?.id);
       if (res.success) {
         setItems(res.data || []);
-      } else {
-        message.error('Failed to load items');
+        notification.error({ message: 'Error', description: 'Failed to load items', duration: 0 });
       }
     } catch {
-      message.error('Failed to load items');
+      notification.error({ message: 'Error', description: 'Failed to load items', duration: 0 });
     } finally {
       setLoading(false);
     }
@@ -223,7 +222,7 @@ const InventoryReport: React.FC = () => {
     const styleSummaryLabel = { font: { bold: true, sz: 10 }, fill: { fgColor: { rgb: 'DCE6F1' } }, alignment: { horizontal: 'left', vertical: 'center' }, border: thinBorder };
     const styleSummaryValue = { font: { bold: true, sz: 10 }, fill: { fgColor: { rgb: 'DCE6F1' } }, alignment: { horizontal: 'right', vertical: 'center' }, border: thinBorder };
 
-    const c = (v: any, s: any) => ({ v, s });
+    const c = (v: any, s: any = {}) => ({ v, s });
     const numCols = 12;
 
     const colHeaders = [

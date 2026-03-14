@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Button, Space, Modal, Form, Input, Switch, message, Popconfirm } from 'antd';
+import { Table, Button, Space, Modal, Form, Input, Switch, message, notification, Popconfirm } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useApp } from '../../context/AppContext';
 
@@ -26,7 +26,7 @@ const Warehouses: React.FC = () => {
         setWarehouses(result.data || []);
       }
     } catch (error) {
-      message.error('Failed to load warehouses');
+      notification.error({ message: 'Error', description: 'Failed to load warehouses', duration: 0 });
     } finally {
       setLoading(false);
     }
@@ -34,7 +34,7 @@ const Warehouses: React.FC = () => {
 
   const handleSave = async (values: any) => {
     if (!currentCompany) {
-      message.error('Please add a company first');
+      notification.error({ message: 'Error', description: 'Please add a company first', duration: 0 });
       return;
     }
     try {
@@ -43,7 +43,7 @@ const Warehouses: React.FC = () => {
         if (result.success) {
           message.success('Warehouse updated successfully');
         } else {
-          message.error(result.error || 'Failed to update warehouse');
+          notification.error({ message: 'Error', description: result.error || 'Failed to update warehouse', duration: 0 });
         }
       } else {
         const result = await (window as any).electronAPI.db.warehouses.create({
@@ -54,7 +54,7 @@ const Warehouses: React.FC = () => {
         if (result.success) {
           message.success('Warehouse created successfully');
         } else {
-          message.error(result.error || 'Failed to create warehouse');
+          notification.error({ message: 'Error', description: result.error || 'Failed to create warehouse', duration: 0 });
         }
       }
       setModalVisible(false);
@@ -62,7 +62,7 @@ const Warehouses: React.FC = () => {
       form.resetFields();
       loadWarehouses();
     } catch (error) {
-      message.error('Operation failed');
+      notification.error({ message: 'Error', description: 'Operation failed', duration: 0 });
     }
   };
 
@@ -73,10 +73,10 @@ const Warehouses: React.FC = () => {
         message.success('Warehouse deleted successfully');
         loadWarehouses();
       } else {
-        message.error(result.error || 'Failed to delete warehouse');
+        notification.error({ message: 'Error', description: result.error || 'Failed to delete warehouse', duration: 0 });
       }
     } catch (error) {
-      message.error('Failed to delete warehouse');
+      notification.error({ message: 'Error', description: 'Failed to delete warehouse', duration: 0 });
     }
   };
 

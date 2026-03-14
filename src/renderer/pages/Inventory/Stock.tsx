@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Button, Space, Modal, Form, Select, InputNumber, Input, message } from 'antd';
+import { Table, Button, Modal, Form, Select, InputNumber, Input, message, notification } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { useApp } from '../../context/AppContext';
 
@@ -27,7 +27,7 @@ const Stock: React.FC = () => {
       const result = await (window as any).electronAPI.db.stock.getBalances(currentCompany.id);
       if (result.success) setBalances(result.data || []);
     } catch (error) {
-      message.error('Failed to load stock');
+      notification.error({ message: 'Error', description: 'Failed to load stock', duration: 0 });
     } finally {
       setLoading(false);
     }
@@ -65,10 +65,10 @@ const Stock: React.FC = () => {
         form.resetFields();
         loadBalances();
       } else {
-        message.error(result.error || 'Failed to adjust stock');
+        notification.error({ message: 'Error', description: result.error || 'Failed to adjust stock', duration: 0 });
       }
     } catch (error: any) {
-      message.error(error.message || 'Operation failed');
+      notification.error({ message: 'Error', description: error.message || 'Operation failed', duration: 0 });
     }
   };
 

@@ -1,13 +1,11 @@
-import React, { useState, useEffect, useContext } from 'react';
-import { Table, Button, Modal, Form, Input, InputNumber, DatePicker, Select, message, Tag } from 'antd';
-import { DollarOutlined, FileTextOutlined } from '@ant-design/icons';
+import React, { useState, useEffect } from 'react';
+import { Table, Button, Modal, Form, Input, InputNumber, DatePicker, Select, message, notification, Tag, Space, Popconfirm } from 'antd';
+import { DollarOutlined, FileTextOutlined, DeleteOutlined, MinusSquareOutlined, CloseOutlined, EditOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { AppContext } from '../../context/AppContext';
+import { useApp } from '../../context/AppContext';
 
 const Receivables: React.FC = () => {
-  const appContext = useContext(AppContext);
-  const currentCompany = appContext?.currentCompany ?? null;
-  const user = appContext?.user ?? null;
+  const { currentCompany, user, minimizeModal } = useApp();
   const [customers, setCustomers] = useState<any[]>([]);
   const [invoices, setInvoices] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -16,6 +14,9 @@ const Receivables: React.FC = () => {
   const [receiptModalVisible, setReceiptModalVisible] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
   const [receiptForm] = Form.useForm();
+  const [payments, setPayments] = useState<any[]>([]);
+  const [paymentHistoryModalVisible, setPaymentHistoryModalVisible] = useState(false);
+  const [editingPayment, setEditingPayment] = useState<any>(null);
 
   const docLabel = (currentCompany && (currentCompany as any).is_gst_enabled) ? 'Invoice' : 'Bill';
 
@@ -39,7 +40,7 @@ const Receivables: React.FC = () => {
         setCustomers([]);
       }
     } catch {
-      message.error('Failed to load customers');
+      notification.error({ message: 'Error', description: 'Failed to load customers', duration: 0 });
       setCustomers([]);
     } finally {
       setLoading(false);
@@ -62,7 +63,7 @@ const Receivables: React.FC = () => {
         setInvoices([]);
       }
     } catch {
-      message.error('Failed to load invoices');
+      notification.error({ message: 'Error', description: 'Failed to load invoices', duration: 0 });
       setInvoices([]);
     }
   };
@@ -74,36 +75,48 @@ const Receivables: React.FC = () => {
     loadInvoicesForCustomer(record.id);
   };
 
-  const openReceiptForm = (invoice: any) => {
+  const openReceiptForm = (invoice: any, paymentToEdit?: any) => {
     setSelectedInvoice(invoice);
-    const bal = Number(invoice?.balance) || 0;
-    receiptForm.setFieldsValue({
-      amount: bal > 0 ? bal : undefined,
-      tax_deduction: 0,
-      payment_date: dayjs(),
-      payment_method: 'cash',
-      notes: '',
-    });
+    setEditingPayment(paymentToEdit || null);
+    
+    if (paymentToEdit) {
+      receiptForm.setFieldsValue({
+        amount: paymentToEdit.amount,
+        tax_deduction: paymentToEdit.tax_deduction || 0,
+        payment_date: dayjs(paymentToEdit.payment_date),
+        payment_method: paymentToEdit.payment_method || 'cash',
+        notes: paymentToEdit.notes || '',
+      });
+    } else {
+      const bal = Number(invoice?.balance) || 0;
+      receiptForm.setFieldsValue({
+        amount: bal > 0 ? bal : 0,
+        tax_deduction: 0,
+        payment_date: dayjs(),
+        payment_method: 'cash',
+        notes: '',
+      });
+    }
     setReceiptModalVisible(true);
   };
 
   const handleRecordReceipt = async (values: any) => {
     if (!currentCompany || !selectedCustomer || !selectedInvoice) return;
     const amount = Number(values.amount);
-    if (!amount || amount <= 0) {
-      message.error('Enter a valid amount received');
+    if (amount < 0) {
+      notification.error({ message: 'Error', description: 'Enter a valid amount received', duration: 0 });
       return;
     }
-    const outstanding = Number(selectedInvoice.balance) || 0;
+    const outstanding = (Number(selectedInvoice.balance) || 0) + (editingPayment ? Number(editingPayment.amount) : 0);
     if (amount > outstanding) {
-      message.error('Amount cannot exceed outstanding balance');
+      notification.error({ message: 'Error', description: 'Amount cannot exceed outstanding balance', duration: 0 });
       return;
     }
     try {
       const paymentDate = values.payment_date && typeof values.payment_date.format === 'function'
         ? values.payment_date.format('YYYY-MM-DD')
         : dayjs().format('YYYY-MM-DD');
-      const result = await (window as any).electronAPI.db.payments.create({
+      const paymentData = {
         company_id: currentCompany.id,
         payment_date: paymentDate,
         payment_type: 'in',
@@ -115,19 +128,60 @@ const Receivables: React.FC = () => {
         payment_method: values.payment_method || 'cash',
         notes: values.notes || null,
         created_by: user?.id,
-      });
+      };
+
+      let result;
+      if (editingPayment) {
+        result = await (window as any).electronAPI.db.payments.update(editingPayment.id, paymentData);
+      } else {
+        result = await (window as any).electronAPI.db.payments.create(paymentData);
+      }
       if (result?.success) {
-        message.success(`Receipt of ${amount.toLocaleString()} recorded`);
+        message.success(editingPayment ? 'Payment updated' : `Receipt of ${amount.toLocaleString()} recorded`);
         setReceiptModalVisible(false);
+        setEditingPayment(null);
         receiptForm.resetFields();
         setSelectedInvoice(null);
         loadInvoicesForCustomer(selectedCustomer.id);
         loadCustomers();
       } else {
-        message.error(result?.error || 'Failed to record receipt');
+        notification.error({ message: 'Error', description: result?.error || 'Failed to record receipt', duration: 0 });
       }
     } catch (e: any) {
-      message.error(e?.message || 'Failed to record receipt');
+      notification.error({ message: 'Error', description: e?.message || 'Failed to record receipt', duration: 0 });
+    }
+  };
+
+  const handleViewPayments = async (invoice: any) => {
+    setSelectedInvoice(invoice);
+    setLoading(true);
+    try {
+      const result = await (window as any).electronAPI.db.payments.getAll(currentCompany!.id);
+      if (result.success && Array.isArray(result.data)) {
+        const filtered = result.data.filter((p: any) => p.reference_id === invoice.id && p.reference_type === 'sales_invoice');
+        setPayments(filtered);
+        setPaymentHistoryModalVisible(true);
+      }
+    } catch (error) {
+      notification.error({ message: 'Error', description: 'Failed to load payments', duration: 0 });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeletePayment = async (paymentId: number) => {
+    try {
+      const result = await (window as any).electronAPI.db.payments.delete(paymentId);
+      if (result.success) {
+        message.success('Payment deleted');
+        if (selectedInvoice) handleViewPayments(selectedInvoice);
+        if (selectedCustomer) loadInvoicesForCustomer(selectedCustomer.id);
+        loadCustomers();
+      } else {
+        notification.error({ message: 'Error', description: result.error || 'Failed to delete payment', duration: 0 });
+      }
+    } catch {
+      notification.error({ message: 'Error', description: 'Failed to delete payment', duration: 0 });
     }
   };
 
@@ -195,20 +249,26 @@ const Receivables: React.FC = () => {
     {
       title: 'Action',
       key: 'action',
-      width: 140,
+      width: 280,
       render: (_: any, record: any) => {
         const balance = Number(record.balance) || 0;
-        if (balance <= 0) return <span style={{ color: '#888' }}>—</span>;
         return (
-          <Button type="primary" size="small" icon={<DollarOutlined />} onClick={() => openReceiptForm(record)}>
-            Record receipt
-          </Button>
+          <Space>
+            {balance > 0 && (
+              <Button type="primary" size="small" icon={<DollarOutlined />} onClick={() => openReceiptForm(record)}>
+                Receipt
+              </Button>
+            )}
+            <Button size="small" onClick={() => handleViewPayments(record)}>
+              Payments
+            </Button>
+          </Space>
         );
       },
     },
   ];
 
-  if (!appContext) {
+  if (!currentCompany && loading) {
     return (
       <div style={{ padding: 24 }}>
         <h1>Receivables</h1>
@@ -252,6 +312,28 @@ const Receivables: React.FC = () => {
           setSelectedCustomer(null);
           setInvoices([]);
         }}
+        closeIcon={
+          <Space>
+            <MinusSquareOutlined 
+              style={{ fontSize: 18, color: '#1890ff' }}
+              onClick={(e) => {
+                e.stopPropagation();
+                setCustomerModalVisible(false);
+                const title = selectedCustomer ? `Invoices — ${selectedCustomer.name}` : `Invoices & Bills`;
+                minimizeModal({
+                  id: selectedCustomer ? `receivable-cust-${selectedCustomer.id}` : 'receivable-cust-new',
+                  title,
+                  onRestore: () => setCustomerModalVisible(true)
+                });
+              }} 
+            />
+            <CloseOutlined style={{ fontSize: 18 }} onClick={() => {
+              setCustomerModalVisible(false);
+              setSelectedCustomer(null);
+              setInvoices([]);
+            }} />
+          </Space>
+        }
         footer={null}
         width={720}
       >
@@ -271,10 +353,34 @@ const Receivables: React.FC = () => {
         onCancel={() => {
           setReceiptModalVisible(false);
           setSelectedInvoice(null);
+          setEditingPayment(null);
           receiptForm.resetFields();
         }}
         onOk={() => receiptForm.submit()}
-        okText="Save receipt"
+        closeIcon={
+          <Space>
+            <MinusSquareOutlined 
+              style={{ fontSize: 18, color: '#1890ff' }}
+              onClick={(e) => {
+                e.stopPropagation();
+                setReceiptModalVisible(false);
+                const title = selectedInvoice ? `Receipt — ${selectedInvoice.invoice_number}` : 'Record Receipt';
+                minimizeModal({
+                  id: selectedInvoice ? `receivable-receipt-${selectedInvoice.id}` : 'receivable-receipt-new',
+                  title,
+                  onRestore: () => setReceiptModalVisible(true)
+                });
+              }} 
+            />
+            <CloseOutlined style={{ fontSize: 18 }} onClick={() => {
+              setReceiptModalVisible(false);
+              setSelectedInvoice(null);
+              setEditingPayment(null);
+              receiptForm.resetFields();
+            }} />
+          </Space>
+        }
+        okText={editingPayment ? "Update receipt" : "Save receipt"}
         destroyOnClose
       >
         {selectedInvoice && (
@@ -288,7 +394,7 @@ const Receivables: React.FC = () => {
             label="Amount received"
             rules={[{ required: true, message: 'Enter amount received' }]}
           >
-            <InputNumber min={0.01} style={{ width: '100%' }} placeholder="Amount" />
+            <InputNumber min={0} style={{ width: '100%' }} placeholder="Amount" />
           </Form.Item>
           <Form.Item name="tax_deduction" label="Tax deduction" initialValue={0}>
             <InputNumber min={0} style={{ width: '100%' }} placeholder="0" />
@@ -308,6 +414,44 @@ const Receivables: React.FC = () => {
             <Input.TextArea rows={2} placeholder="Optional" />
           </Form.Item>
         </Form>
+      </Modal>
+      <Modal
+        title={selectedInvoice ? `Payment History — ${selectedInvoice.invoice_number}` : 'Payment History'}
+        open={paymentHistoryModalVisible}
+        onCancel={() => setPaymentHistoryModalVisible(false)}
+        footer={null}
+        width={600}
+      >
+        <Table
+          dataSource={payments}
+          rowKey="id"
+          size="small"
+          pagination={false}
+          columns={[
+            { title: 'Date', dataIndex: 'payment_date', key: 'date', render: (d) => dayjs(d).format('DD/MM/YYYY') },
+            { title: 'Method', dataIndex: 'payment_method', key: 'method', render: (m) => <Tag>{m}</Tag> },
+            { title: 'Amount', dataIndex: 'amount', key: 'amount', align: 'right' as const, render: (v) => Number(v).toLocaleString() },
+            {
+              title: 'Action',
+              key: 'action',
+              render: (_, record) => (
+                <Space>
+                  <Button 
+                    size="small" 
+                    icon={<EditOutlined />} 
+                    onClick={() => {
+                      setPaymentHistoryModalVisible(false);
+                      openReceiptForm(selectedInvoice, record);
+                    }} 
+                  />
+                  <Popconfirm title="Delete this payment? This will restore the invoice balance." onConfirm={() => handleDeletePayment(record.id)}>
+                    <Button danger size="small" icon={<DeleteOutlined />} />
+                  </Popconfirm>
+                </Space>
+              )
+            }
+          ]}
+        />
       </Modal>
     </div>
   );

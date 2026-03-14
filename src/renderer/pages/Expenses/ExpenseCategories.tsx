@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Table, Button, Space, Modal, Form, Input, message } from 'antd';
-import { PlusOutlined, DeleteOutlined, LockOutlined } from '@ant-design/icons';
+import { Table, Button, Space, Modal, Form, Input, notification, message } from 'antd';
+import { PlusOutlined, DeleteOutlined, LockOutlined, MinusSquareOutlined, CloseOutlined } from '@ant-design/icons';
 import { useApp } from '../../context/AppContext';
 
 const ExpenseCategories: React.FC = () => {
-  const { currentCompany, user } = useApp();
+  const { currentCompany, user, minimizeModal } = useApp();
   const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
@@ -37,13 +37,12 @@ const ExpenseCategories: React.FC = () => {
       if (result.success) {
         setCategories(result.data || []);
       } else if (!loadErrorShown.current) {
-        loadErrorShown.current = true;
-        message.error(result.error || 'Failed to load categories');
+        notification.error({ message: 'Error', description: result.error || 'Failed to load categories', duration: 0 });
       }
     } catch (error) {
       if (!loadErrorShown.current) {
         loadErrorShown.current = true;
-        message.error('Failed to load categories');
+        notification.error({ message: 'Error', description: 'Failed to load categories', duration: 0 });
       }
     } finally {
       setLoading(false);
@@ -64,10 +63,10 @@ const ExpenseCategories: React.FC = () => {
         form.resetFields();
         loadCategories();
       } else {
-        message.error(result.error || 'Failed to add category');
+        notification.error({ message: 'Error', description: result.error || 'Failed to add category', duration: 0 });
       }
     } catch (error) {
-      message.error('Operation failed');
+      notification.error({ message: 'Error', description: 'Operation failed', duration: 0 });
     }
   };
 
@@ -80,7 +79,7 @@ const ExpenseCategories: React.FC = () => {
   const handleConfirmDelete = async () => {
     const verify = await (window as any).electronAPI.db.auth.verifyAdminPassword(adminPassword);
     if (!verify.success || !verify.data) {
-        message.error('Incorrect admin password');
+        notification.error({ message: 'Error', description: 'Incorrect admin password', duration: 0 });
         setAdminPassword('');
         return;
     }
@@ -91,10 +90,10 @@ const ExpenseCategories: React.FC = () => {
         message.success('Category deleted successfully');
         loadCategories();
       } else {
-        message.error(result.error || 'Failed to delete category');
+        notification.error({ message: 'Error', description: result.error || 'Failed to delete category', duration: 0 });
       }
     } catch {
-      message.error('Failed to delete category');
+      notification.error({ message: 'Error', description: 'Failed to delete category', duration: 0 });
     } finally {
       setDeletePasswordModal(false);
       setPendingDeleteId(null);
@@ -134,7 +133,35 @@ const ExpenseCategories: React.FC = () => {
         )}
       </div>
       <Table columns={columns} dataSource={categories} loading={loading} rowKey="id" pagination={{ pageSize: 20 }} />
-      <Modal title="Add Category" open={modalVisible} onCancel={() => setModalVisible(false)} onOk={() => form.submit()} destroyOnClose>
+      <Modal 
+        title="Add Category" 
+        open={modalVisible} 
+        onCancel={() => setModalVisible(false)} 
+        onOk={() => form.submit()} 
+        closeIcon={
+          <Space>
+            <MinusSquareOutlined 
+              style={{ fontSize: 18, color: '#1890ff' }}
+              onClick={(e) => {
+                e.stopPropagation();
+                setModalVisible(false);
+                const values = form.getFieldsValue();
+                const catName = values.name || 'New Category';
+                minimizeModal({
+                  id: 'exp-cat-new',
+                  title: `New Category ${catName}`,
+                  onRestore: () => setModalVisible(true)
+                });
+              }} 
+            />
+            <CloseOutlined style={{ fontSize: 18 }} onClick={() => {
+              setModalVisible(false);
+              form.resetFields();
+            }} />
+          </Space>
+        }
+        destroyOnClose
+      >
         <Form form={form} layout="vertical" onFinish={handleSave}>
           <Form.Item name="name" label="Name" rules={[{ required: true, message: 'Enter name' }]}>
             <Input placeholder="e.g. Travel, Office Supplies" />

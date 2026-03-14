@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Button, Space, Modal, Form, Input, message, Popconfirm, Switch, Upload } from 'antd';
+import { Table, Button, Space, Modal, Form, Input, message, notification, Popconfirm, Switch, Upload } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, UploadOutlined } from '@ant-design/icons';
 import { useApp } from '../../context/AppContext';
 
@@ -26,7 +26,7 @@ const Companies: React.FC = () => {
         return data;
       }
     } catch (error) {
-      message.error('Failed to load companies');
+      notification.error({ message: 'Error', description: 'Failed to load companies', duration: 0 });
     } finally {
       setLoading(false);
     }
@@ -49,7 +49,7 @@ const Companies: React.FC = () => {
 
       // Handle letterhead upload (PDF or image)
       if (!letterheadBase64 && !editingCompany?.letterhead_path) {
-        message.error('Please upload a letterhead (PDF or Image)');
+        notification.error({ message: 'Error', description: 'Please upload a letterhead (PDF or Image)', duration: 0 });
         return;
       }
 
@@ -67,7 +67,7 @@ const Companies: React.FC = () => {
         if (result.success) {
           message.success('Company updated successfully');
         } else {
-          message.error(result.error || 'Failed to update company');
+          notification.error({ message: 'Error', description: result.error || 'Failed to update company', duration: 0 });
         }
       } else {
         const wasFirstCompany = companies.length === 0;
@@ -79,7 +79,7 @@ const Companies: React.FC = () => {
             setCurrentCompany(refreshed[0]);
           }
         } else {
-          message.error(result.error || 'Failed to create company');
+          notification.error({ message: 'Error', description: result.error || 'Failed to create company', duration: 0 });
         }
       }
       setModalVisible(false);
@@ -89,7 +89,7 @@ const Companies: React.FC = () => {
       form.resetFields();
       loadCompanies();
     } catch (error) {
-      message.error('Operation failed');
+      notification.error({ message: 'Error', description: 'Operation failed', duration: 0 });
     }
   };
 
@@ -100,10 +100,10 @@ const Companies: React.FC = () => {
         message.success('Company deleted successfully');
         loadCompanies();
       } else {
-        message.error(result.error || 'Failed to delete company');
+        notification.error({ message: 'Error', description: result.error || 'Failed to delete company', duration: 0 });
       }
     } catch (error) {
-      message.error('Failed to delete company');
+      notification.error({ message: 'Error', description: 'Failed to delete company', duration: 0 });
     }
   };
 

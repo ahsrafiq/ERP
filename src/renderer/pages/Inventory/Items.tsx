@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Table, Button, Space, Modal, Form, Input, InputNumber, Select, AutoComplete, message, Alert } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, UploadOutlined, SearchOutlined, LockOutlined } from '@ant-design/icons';
+import { Table, Button, Space, Modal, Form, Input, InputNumber, Select, AutoComplete, message, notification, Alert } from 'antd';
+import { PlusOutlined, EditOutlined, DeleteOutlined, UploadOutlined, SearchOutlined, LockOutlined, MinusSquareOutlined, CloseOutlined } from '@ant-design/icons';
 import { useApp } from '../../context/AppContext';
 import { parseExcelToRows, getCol, getColNum } from '../../utils/excelImport';
 
 const Items: React.FC = () => {
-  const { currentCompany, user } = useApp();
+  const { currentCompany, user, minimizeModal } = useApp();
   const [items, setItems] = useState<any[]>([]);
   const [brands, setBrands] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -46,7 +46,7 @@ const Items: React.FC = () => {
         setItems([]);
       }
     } catch (error) {
-      message.error('Failed to load items');
+      notification.error({ message: 'Error', description: 'Failed to load items', duration: 0 });
       setItems([]);
     } finally {
       setLoading(false);
@@ -68,21 +68,48 @@ const Items: React.FC = () => {
   };
 
   const handleSave = async (values: any) => {
+    if (!currentCompany) return;
     try {
+      let code = editingItem ? editingItem.code : '';
+      if (!editingItem) {
+        // Auto-generate code
+        const allItemsResult = await (window as any).electronAPI.db.items.getAll(currentCompany.id);
+        let nextCodeNum = 1;
+        if (allItemsResult.success && Array.isArray(allItemsResult.data)) {
+          const codes = allItemsResult.data
+            .map((i: any) => {
+              const match = (i.code || '').match(/I-(\d+)/);
+              return match ? parseInt(match[1], 10) : 0;
+            })
+            .filter((n: number) => !isNaN(n));
+          nextCodeNum = codes.length > 0 ? Math.max(...codes) + 1 : 1;
+        }
+        code = `I-${String(nextCodeNum).padStart(4, '0')}`;
+      }
+
+      const itemData = {
+        ...values,
+        code,
+        company_id: currentCompany.id,
+        created_by: user?.id,
+      };
+
       if (editingItem) {
-        const { quantity: _q, purchase_price: _pp, selling_price: _sp, ...rest } = values;
-        const result = await (window as any).electronAPI.db.items.update(editingItem.id, rest);
+        // When editing, remove read-only fields that shouldn't be updated via this form if any
+        const result = await (window as any).electronAPI.db.items.update(editingItem.id, itemData);
         if (result.success) {
           message.success('Item updated successfully');
+          setModalVisible(false);
+          setEditingItem(null);
         } else {
-          message.error(result.error || 'Failed to update item');
+          notification.error({ message: 'Error', description: result.error || 'Failed to update item', duration: 0 });
         }
       } else {
-        const result = await (window as any).electronAPI.db.items.create({ ...values, quantity: 0, purchase_price: 0, selling_price: 0 });
+        const result = await (window as any).electronAPI.db.items.create(itemData);
         if (result.success) {
-          message.success('Item created successfully. It will appear for all companies.');
+          message.success('Item created successfully');
         } else {
-          message.error(result.error || 'Failed to create item');
+          notification.error({ message: 'Error', description: result.error || 'Failed to create item', duration: 0 });
         }
       }
       setModalVisible(false);
@@ -90,7 +117,7 @@ const Items: React.FC = () => {
       form.resetFields();
       loadItems();
     } catch (error) {
-      message.error('Operation failed');
+      notification.error({ message: 'Error', description: 'An unexpected error occurred while saving the item.', duration: 0 });
     }
   };
 
@@ -99,7 +126,7 @@ const Items: React.FC = () => {
     e.target.value = '';
     if (!file) return;
     if (!file.name.match(/\.(xlsx|xls)$/i)) {
-      message.error('Please select an Excel file (.xlsx or .xls)');
+      notification.error({ message: 'Error', description: 'Please select an Excel file (.xlsx or .xls)', duration: 0 });
       return;
     }
     setImporting(true);
@@ -176,7 +203,7 @@ const Items: React.FC = () => {
       message.success(`Import complete: ${created} created, ${failed} failed or skipped.`);
       loadItems();
     } catch (err: any) {
-      message.error(err?.message || 'Failed to import Excel');
+      notification.error({ message: 'Error', description: err?.message || 'Failed to import Excel', duration: 0 });
     } finally {
       setImporting(false);
     }
@@ -191,7 +218,7 @@ const Items: React.FC = () => {
   const handleConfirmDelete = async () => {
     const verify = await (window as any).electronAPI.db.auth.verifyAdminPassword(adminPassword);
     if (!verify.success || !verify.data) {
-      message.error('Incorrect admin password');
+      notification.error({ message: 'Error', description: 'Incorrect admin password', duration: 0 });
       setAdminPassword('');
       return;
     }
@@ -202,10 +229,10 @@ const Items: React.FC = () => {
         message.success('Item deleted successfully');
         loadItems();
       } else {
-        message.error(result.error || 'Failed to delete item');
+        notification.error({ message: 'Error', description: result.error || 'Failed to delete item', duration: 0 });
       }
     } catch {
-      message.error('Failed to delete item');
+      notification.error({ message: 'Error', description: 'Failed to delete item', duration: 0 });
     } finally {
       setDeletePasswordModal(false);
       setPendingDeleteId(null);
@@ -359,7 +386,7 @@ const Items: React.FC = () => {
       />
 
       <Modal
-        title={editingItem ? 'Edit Item' : 'Add Item'}
+        title={editingItem ? 'Edit Item' : 'Add New Item'}
         open={modalVisible}
         onCancel={() => {
           setModalVisible(false);
@@ -367,20 +394,33 @@ const Items: React.FC = () => {
           form.resetFields();
         }}
         onOk={() => form.submit()}
-        width={600}
+        width={800}
+        closeIcon={
+          <Space>
+            <MinusSquareOutlined 
+              style={{ fontSize: 18, color: '#1890ff' }}
+              onClick={(e) => {
+                e.stopPropagation();
+                setModalVisible(false);
+                const values = form.getFieldsValue();
+                const itemName = values.name || 'New Item';
+                minimizeModal({
+                  id: editingItem ? `item-edit-${editingItem.id}` : 'item-new',
+                  title: editingItem ? `Edit Item ${itemName}` : `New Item ${itemName}`,
+                  onRestore: () => setModalVisible(true)
+                });
+              }} 
+            />
+            <CloseOutlined style={{ fontSize: 18 }} onClick={() => {
+              setModalVisible(false);
+              setEditingItem(null);
+              form.resetFields();
+            }} />
+          </Space>
+        }
       >
         <Form form={form} layout="vertical" onFinish={handleSave}>
-          <Form.Item
-            name="code"
-            label="Item Code"
-            rules={[
-              { required: true, message: 'Please enter item code' },
-              { pattern: /^[0-9]+$/, message: 'Code must contain only numbers' }
-            ]}
-          >
-            <Input placeholder="e.g., 3001" />
-          </Form.Item>
-          <Form.Item name="name" label="Name" rules={[{ required: true }]}>
+          <Form.Item name="name" label="Item Name" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
           <Form.Item name="brand_id" label="Brand" rules={[{ required: true, message: 'Please select a brand' }]}>
@@ -388,14 +428,9 @@ const Items: React.FC = () => {
               placeholder="Type to search brand"
               showSearch
               optionFilterProp="children"
-              filterOption={(input, option) => {
-                const label = (option?.children ?? '') as string;
-                const search = (input || '').trim().toLowerCase();
-                if (!search) return true;
-                if (label.toLowerCase().includes(search)) return true;
-                const initials = label.split(/\s+/).map((w) => (w[0] || '').toLowerCase()).join('');
-                return initials.startsWith(search) || initials.includes(search);
-              }}
+              filterOption={(input, option) =>
+                String(option?.children ?? '').toLowerCase().includes(input.toLowerCase())
+              }
             >
               {(Array.isArray(brands) ? brands : []).filter((b) => b != null && b.id != null).map((b) => (
                 <Select.Option key={b.id} value={b.id}>{b.name ?? ''}</Select.Option>

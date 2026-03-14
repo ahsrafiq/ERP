@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Table, Card, Row, Col, DatePicker, Select, Button, Space,
-  Tag, Statistic, Divider, Typography, message,
+  Tag, Statistic, Divider, Typography, notification,
 } from 'antd';
 import {
   PrinterOutlined, ArrowLeftOutlined, FileExcelOutlined,
@@ -62,7 +62,7 @@ const ExpenseReport: React.FC = () => {
       });
       if (res.success) setExpenses(res.data || []);
     } catch {
-      message.error('Failed to load expenses');
+      notification.error({ message: 'Error', description: 'Failed to load expenses', duration: 0 });
     } finally {
       setLoading(false);
     }
@@ -115,7 +115,7 @@ const ExpenseReport: React.FC = () => {
     const sThinR = { ...sThin, alignment: { horizontal: 'right' } };
     const sTot = { font: { bold: true }, border: { top: { style: 'thin' }, bottom: { style: 'double' }, left: { style: 'thin' }, right: { style: 'thin' } }, fill: { fgColor: { rgb: 'F0F4FF' } } };
     const sTotR = { ...sTot, alignment: { horizontal: 'right' } };
-    const c = (v: any, s: any) => ({ v, s });
+    const c = (v: any, s: any = {}) => ({ v, s });
 
     const rows: any[][] = [];
     rows.push([c(compName, { font: { bold: true, sz: 14 } })]);

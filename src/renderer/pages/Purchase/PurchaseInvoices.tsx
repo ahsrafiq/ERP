@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Button, Space, Modal, Form, Input, InputNumber, Select, DatePicker, message, Tag, Popconfirm } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, LockOutlined, StopOutlined, EyeOutlined, SearchOutlined } from '@ant-design/icons';
+import { Table, Button, Space, Modal, Form, Input, InputNumber, Select, DatePicker, message, notification, Tag, Popconfirm } from 'antd';
+import { PlusOutlined, EditOutlined, DeleteOutlined, LockOutlined, StopOutlined, EyeOutlined, SearchOutlined, MinusSquareOutlined, CloseOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useApp } from '../../context/AppContext';
 
 const PurchaseInvoices: React.FC = () => {
-  const { currentCompany, user } = useApp();
+  const { currentCompany, user, minimizeModal } = useApp();
   const [invoices, setInvoices] = useState<any[]>([]);
   const [vendors, setVendors] = useState<any[]>([]);
   const [items, setItems] = useState<any[]>([]);
@@ -60,7 +60,7 @@ const PurchaseInvoices: React.FC = () => {
         setInvoices(result.data || []);
       }
     } catch (error) {
-      message.error('Failed to load invoices');
+      notification.error({ message: 'Error', description: 'Failed to load purchase invoices', duration: 0 });
     } finally {
       setLoading(false);
     }
@@ -125,14 +125,14 @@ const PurchaseInvoices: React.FC = () => {
         if (result.success) {
           message.success('Invoice updated successfully');
         } else {
-          message.error(result.error || 'Failed to update invoice');
+          notification.error({ message: 'Error', description: result.error || 'Failed to update invoice', duration: 0 });
         }
       } else {
         const result = await (window as any).electronAPI.db.purchaseInvoices.create(invoiceData);
         if (result.success) {
           message.success('Invoice created successfully');
         } else {
-          message.error(result.error || 'Failed to create invoice');
+          Modal.error({ title: 'Error', content: result.error || 'Failed to create invoice' });
         }
       }
       setModalVisible(false);
@@ -140,7 +140,7 @@ const PurchaseInvoices: React.FC = () => {
       form.resetFields();
       loadInvoices();
     } catch (error) {
-      message.error('Operation failed');
+      notification.error({ message: 'Error', description: 'Operation failed', duration: 0 });
     }
   };
 
@@ -165,10 +165,10 @@ const PurchaseInvoices: React.FC = () => {
         paymentForm.resetFields();
         loadInvoices();
       } else {
-        message.error(result.error || 'Failed to record payment');
+        notification.error({ message: 'Error', description: result.error || 'Failed to record payment', duration: 0 });
       }
     } catch (error) {
-      message.error('Operation failed');
+      notification.error({ message: 'Error', description: 'Operation failed', duration: 0 });
     }
   };
 
@@ -181,7 +181,7 @@ const PurchaseInvoices: React.FC = () => {
   const handleConfirmDelete = async () => {
         const verify = await (window as any).electronAPI.db.auth.verifyAdminPassword(adminPassword);
         if (!verify.success || !verify.data) {
-            message.error('Incorrect admin password');
+            notification.error({ message: 'Error', description: 'Incorrect admin password', duration: 0 });
             setAdminPassword('');
             return;
         }
@@ -192,10 +192,10 @@ const PurchaseInvoices: React.FC = () => {
         message.success('Invoice deleted successfully');
         loadInvoices();
       } else {
-        message.error(result.error || 'Failed to delete invoice');
+        notification.error({ message: 'Error', description: result.error || 'Failed to delete invoice', duration: 0 });
       }
     } catch (error) {
-      message.error('Failed to delete invoice');
+      notification.error({ message: 'Error', description: 'Failed to delete invoice', duration: 0 });
     } finally {
       setDeletePasswordModal(false);
       setPendingDeleteId(null);
@@ -257,15 +257,6 @@ const PurchaseInvoices: React.FC = () => {
           {balance.toFixed(2)}
         </span>
       ),
-    },
-    {
-      title: 'Status',
-      dataIndex: 'status',
-      key: 'status',
-      render: (status: string) => {
-        if (status === 'cancelled') return <Tag color="red">Disabled</Tag>;
-        return <Tag color="default">{status || 'Active'}</Tag>;
-      },
     },
     {
       title: 'Actions',
@@ -405,6 +396,29 @@ const PurchaseInvoices: React.FC = () => {
         }}
         onOk={() => form.submit()}
         width={900}
+        closeIcon={
+          <Space>
+            <MinusSquareOutlined 
+              style={{ fontSize: 18, color: '#1890ff' }}
+              onClick={(e) => {
+                e.stopPropagation();
+                setModalVisible(false);
+                const values = form.getFieldsValue();
+                const invNum = values.invoice_number || 'New PI';
+                minimizeModal({
+                  id: editingInvoice ? `pi-edit-${editingInvoice.id}` : 'pi-new',
+                  title: editingInvoice ? `Edit PI ${invNum}` : `New PI ${invNum}`,
+                  onRestore: () => setModalVisible(true)
+                });
+              }} 
+            />
+            <CloseOutlined style={{ fontSize: 18 }} onClick={() => {
+              setModalVisible(false);
+              setEditingInvoice(null);
+              form.resetFields();
+            }} />
+          </Space>
+        }
       >
         <Form form={form} layout="vertical" onFinish={handleSave}>
           <Form.Item name="vendor_id" label="Vendor" rules={[{ required: true }]}>
@@ -447,10 +461,10 @@ const PurchaseInvoices: React.FC = () => {
                         showSearch
                         optionFilterProp="children"
                         filterOption={(input, option) => {
-                          const label = (option?.children ?? '') as string;
+                          const label = (option?.children ?? '').toString().toLowerCase();
                           const search = (input || '').trim().toLowerCase();
                           if (!search) return true;
-                          if (label.toLowerCase().includes(search)) return true;
+                          if (label.includes(search)) return true;
                           const initials = label.split(/\s+/).map((w: string) => (w[0] || '').toLowerCase()).join('');
                           return initials.startsWith(search) || initials.includes(search);
                         }}
@@ -476,10 +490,9 @@ const PurchaseInvoices: React.FC = () => {
                         showSearch
                         optionFilterProp="children"
                         filterOption={(input, option) => {
-                          const label = (option?.children ?? '') as string;
+                          const label = (option?.children || []).toString().toLowerCase();
                           const search = (input || '').trim().toLowerCase();
-                          if (!search) return true;
-                          return label.toLowerCase().includes(search);
+                          return label.includes(search);
                         }}
                         onChange={(value) => {
                           const item = items.find((i: any) => i.id === value);
@@ -506,7 +519,7 @@ const PurchaseInvoices: React.FC = () => {
                       name={[name, 'quantity']}
                       rules={[{ required: true, message: 'Quantity' }]}
                     >
-                      <InputNumber placeholder="Qty" min={0.01} />
+                      <InputNumber placeholder="Qty" min={0} />
                     </Form.Item>
                     <Form.Item
                       {...restField}

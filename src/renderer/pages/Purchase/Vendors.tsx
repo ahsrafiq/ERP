@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Button, Space, Modal, Form, Input, message } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined, LockOutlined } from '@ant-design/icons';
+import { Table, Button, Space, Modal, Form, Input, message, notification } from 'antd';
+import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined, LockOutlined, MinusSquareOutlined, CloseOutlined } from '@ant-design/icons';
 import { useApp } from '../../context/AppContext';
 
 const Vendors: React.FC = () => {
-  const { currentCompany, user } = useApp();
+  const { currentCompany, user, minimizeModal } = useApp();
   const [vendors, setVendors] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
@@ -38,7 +38,7 @@ const Vendors: React.FC = () => {
         setVendors(result.data || []);
       }
     } catch (error) {
-      message.error('Failed to load vendors');
+      notification.error({ message: 'Error', description: 'Failed to load vendors', duration: 0 });
     } finally {
       setLoading(false);
     }
@@ -46,7 +46,7 @@ const Vendors: React.FC = () => {
 
   const handleSave = async (values: any) => {
     if (!currentCompany) {
-      message.error('Please add a company first');
+      notification.error({ message: 'Error', description: 'Please add a company first', duration: 0 });
       return;
     }
     try {
@@ -55,7 +55,7 @@ const Vendors: React.FC = () => {
         if (result.success) {
           message.success('Vendor updated successfully');
         } else {
-          message.error(result.error || 'Failed to update vendor');
+          notification.error({ message: 'Error', description: result.error || 'Failed to update vendor', duration: 0 });
         }
       } else {
         const result = await (window as any).electronAPI.db.vendors.create({
@@ -65,7 +65,7 @@ const Vendors: React.FC = () => {
         if (result.success) {
           message.success('Vendor created successfully');
         } else {
-          message.error(result.error || 'Failed to create vendor');
+          notification.error({ message: 'Error', description: result.error || 'Failed to create vendor', duration: 0 });
         }
       }
       setModalVisible(false);
@@ -73,7 +73,7 @@ const Vendors: React.FC = () => {
       form.resetFields();
       loadVendors();
     } catch (error) {
-      message.error('Operation failed');
+      notification.error({ message: 'Error', description: 'Operation failed', duration: 0 });
     }
   };
 
@@ -86,7 +86,7 @@ const Vendors: React.FC = () => {
   const handleConfirmDelete = async () => {
     const verify = await (window as any).electronAPI.db.auth.verifyAdminPassword(adminPassword);
     if (!verify.success || !verify.data) {
-        message.error('Incorrect admin password');
+        notification.error({ message: 'Error', description: 'Incorrect admin password', duration: 0 });
         setAdminPassword('');
         return;
     }
@@ -97,10 +97,10 @@ const Vendors: React.FC = () => {
         message.success('Vendor deleted successfully');
         loadVendors();
       } else {
-        message.error(result.error || 'Failed to delete vendor');
+        notification.error({ message: 'Error', description: result.error || 'Failed to delete vendor', duration: 0 });
       }
     } catch {
-      message.error('Failed to delete vendor');
+      notification.error({ message: 'Error', description: 'Failed to delete vendor', duration: 0 });
     } finally {
       setDeletePasswordModal(false);
       setPendingDeleteId(null);
@@ -215,6 +215,29 @@ const Vendors: React.FC = () => {
         }}
         onOk={() => form.submit()}
         width={600}
+        closeIcon={
+          <Space>
+            <MinusSquareOutlined 
+              style={{ fontSize: 18, color: '#1890ff' }}
+              onClick={(e) => {
+                e.stopPropagation();
+                setModalVisible(false);
+                const values = form.getFieldsValue();
+                const vendorName = values.name || 'New Vendor';
+                minimizeModal({
+                  id: editingVendor ? `vendor-edit-${editingVendor.id}` : 'vendor-new',
+                  title: editingVendor ? `Edit Vendor ${vendorName}` : `New Vendor ${vendorName}`,
+                  onRestore: () => setModalVisible(true)
+                });
+              }} 
+            />
+            <CloseOutlined style={{ fontSize: 18 }} onClick={() => {
+              setModalVisible(false);
+              setEditingVendor(null);
+              form.resetFields();
+            }} />
+          </Space>
+        }
       >
         <Form form={form} layout="vertical" onFinish={handleSave}>
           <Form.Item

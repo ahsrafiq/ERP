@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Table, Card, Row, Col, DatePicker, Select, Button, Space,
-  Tag, Statistic, Divider, Typography, message,
+  Tag, Statistic, Divider, Typography, notification, message,
 } from 'antd';
 import {
   PrinterOutlined, ArrowLeftOutlined, FileTextOutlined,
@@ -57,8 +57,8 @@ const PurchaseReport: React.FC = () => {
       if (dateRange[1]) filters.toDate   = dateRange[1].format('YYYY-MM-DD');
       const res = await (window as any).electronAPI.db.purchaseInvoices.getAll(currentCompany.id, filters);
       if (res.success) setInvoices(res.data || []);
-      else message.error('Failed to load purchase invoices');
-    } catch { message.error('Failed to load purchase invoices'); }
+      else notification.error({ message: 'Error', description: 'Failed to load purchase invoices', duration: 0 });
+    } catch { notification.error({ message: 'Error', description: 'Failed to load purchase invoices', duration: 0 }); }
     finally { setLoading(false); }
   };
 
@@ -130,7 +130,7 @@ const PurchaseReport: React.FC = () => {
     const sSumL     = { font: { bold: true, sz: 10 }, fill: { fgColor: { rgb: 'DCE6F1' } }, alignment: { horizontal: 'left', vertical: 'center' }, border: thin };
     const sSumV     = { font: { bold: true, sz: 10 }, fill: { fgColor: { rgb: 'DCE6F1' } }, alignment: { horizontal: 'right', vertical: 'center' }, border: thin };
 
-    const c = (v: any, s: any) => ({ v, s });
+    const c = (v: any, s: any = {}) => ({ v, s });
 
     const colHdrs = [
       c('Sr.', sHdr), c('Invoice #', sHdr), c('Date', sHdr), c('Vendor', sHdr),

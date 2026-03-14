@@ -149,7 +149,7 @@
 }
 
 .customer-name {
-    font-size: 18px;
+    font-size: 14px;
     font-weight: bold;
     margin: 10px 0 5px;
 }
@@ -315,6 +315,10 @@
 .items-table {
     margin-bottom: 30px;
 }
+.items-table .ant-table-tbody>tr>td,
+.items-table .ant-table-thead>tr>th {
+    font-size: 14px;
+}
 
 .items-table-invoice {
     width: 100%;
@@ -331,7 +335,7 @@
 .items-table-invoice .ant-table-thead>tr>th,
 .items-table-invoice .ant-table-tbody>tr>td {
     padding: 4px 6px;
-    font-size: 10px;
+    font-size: 14px;
     overflow: hidden;
     text-overflow: ellipsis;
     word-break: break-word;
@@ -425,7 +429,7 @@
     border-top: 2px solid #333;
     border-bottom: 2px solid #333;
     font-weight: bold;
-    font-size: 18px;
+    font-size: 14px;
     margin-top: 10px;
     padding: 10px 0;
 }
@@ -496,7 +500,7 @@
 .items-table-bill .ant-table-thead>tr>th,
 .items-table-bill .ant-table-tbody>tr>td {
     padding: 4px 6px;
-    font-size: 10px;
+    font-size: 14px;
     overflow: hidden;
     text-overflow: ellipsis;
     word-break: break-word;

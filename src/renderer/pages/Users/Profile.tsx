@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Card, Form, Input, Button, Typography, message } from 'antd';
+import { Card, Form, Input, Button, Typography, message, notification } from 'antd';
 import { UserOutlined, LockOutlined, SaveOutlined } from '@ant-design/icons';
 import { useApp } from '../../context/AppContext';
 
@@ -28,10 +28,10 @@ const Profile: React.FC = () => {
                 message.success('Profile updated successfully');
                 form.setFieldValue('password', ''); // Clear password field after update
             } else {
-                message.error(result.error || 'Failed to update profile');
+                notification.error({ message: 'Error', description: result.error || 'Failed to update profile', duration: 0 });
             }
         } catch (error) {
-            message.error('An error occurred during update');
+            notification.error({ message: 'Error', description: 'An error occurred during update', duration: 0 });
         } finally {
             setLoading(false);
         }

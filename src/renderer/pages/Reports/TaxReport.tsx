@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Table, Card, Row, Col, DatePicker, Select, Button, Space,
-  Statistic, Divider, Typography, message,
+  Statistic, Divider, Typography, notification, message,
 } from 'antd';
 import {
   PrinterOutlined, ArrowLeftOutlined, FileExcelOutlined,
@@ -52,8 +52,8 @@ const TaxReport: React.FC = () => {
       if (dateRange[1]) filters.toDate   = dateRange[1].format('YYYY-MM-DD');
       const res = await (window as any).electronAPI.db.salesInvoices.getAll(currentCompany.id, filters);
       if (res.success) setInvoices((res.data || []).filter((inv: any) => inv.status !== 'cancelled'));
-      else message.error('Failed to load invoices');
-    } catch { message.error('Failed to load invoices'); }
+      else notification.error({ message: 'Error', description: 'Failed to load invoices', duration: 0 });
+    } catch { notification.error({ message: 'Error', description: 'Failed to load invoices', duration: 0 }); }
     finally { setLoading(false); }
   };
 

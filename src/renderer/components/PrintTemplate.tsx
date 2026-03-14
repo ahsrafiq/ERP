@@ -177,7 +177,6 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
         { title: 'Brand', dataIndex: 'brand', key: 'brand', width: 100, render: (text: string) => (text != null && String(text).trim() !== '' ? text : '-') },
         { title: 'H.S Code', dataIndex: 'hs_code', key: 'hs_code', width: 100, align: 'center' as const, render: (v: string) => (v != null && String(v).trim() !== '' ? String(v) : '-') },
         { title: 'Qty', dataIndex: 'quantity', key: 'quantity', width: 60, align: 'right' as const },
-        { title: 'Remarks', dataIndex: 'availability', key: 'remarks', width: 120, render: (v: string) => (v != null && String(v).trim() !== '' ? String(v) : '-') },
     ];
 
     if (type !== 'challan' && !isInvoice && !isBill) {
@@ -185,6 +184,9 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
             { title: 'Unit Price', dataIndex: 'unit_price', key: 'unit_price', width: 90, align: 'right' as const, render: (price: number) => <span>{price?.toLocaleString()}</span> },
             { title: 'Total', dataIndex: 'line_total', key: 'line_total', width: 110, align: 'right' as const, render: (total: number) => <span>{total?.toLocaleString()}</span> }
         );
+    }
+    if (type !== 'challan') {
+        columns.push({ title: 'Remarks', dataIndex: 'availability', key: 'remarks', width: 120, render: (v: string) => (v != null && String(v).trim() !== '' ? String(v) : '-') });
     }
 
     const tableColumns = isInvoice ? invoiceColumns : isBill ? billColumns : columns;
@@ -263,8 +265,10 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
                         )}
                         {data.customer_gst_number && <p><strong>GST No:</strong> {data.customer_gst_number}</p>}
                         {data.customer_ntn_number && <p><strong>NTN:</strong> {data.customer_ntn_number}</p>}
-                        {/* Remove PR No from DC */}
-                        {type !== 'challan' && data.customer_pr_number && <p className="customer-pr"><strong>Customer PR No:</strong> {data.customer_pr_number}</p>}
+                        {/* Show PR No in header based on document type */}
+                        {type !== 'challan' && (data.pr_number || data.customer_pr_number) && (
+                            <p className="customer-pr"><strong>Customer PR No:</strong> {data.pr_number || data.customer_pr_number}</p>
+                        )}
                     </div>
                     <div className="doc-info">
                         <p><strong>{getNumberLabel()}</strong> {getNumber()}</p>
@@ -278,14 +282,12 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
                         {data.delivery_challan_number && (
                             <p><strong>DC No:</strong> {data.delivery_challan_number}</p>
                         )}
-                        {type === 'quotation'
-                            ? (data.customer_pr_number && (
-                                <p><strong>PR No:</strong> {data.customer_pr_number}</p>
-                              ))
-                            : ((type !== 'challan') && (data.customer_pr_number ?? data.po_number) && (
-                                <p><strong>PR No:</strong> {data.customer_pr_number || data.po_number}</p>
-                              ))}
                         {data.expiry_date && <p><strong>Valid Until:</strong> {formatDate(data.expiry_date)}</p>}
+                        
+                        {(data.pr_number || data.customer_pr_number) && (
+                            <p><strong>PR No:</strong> {data.pr_number || data.customer_pr_number}</p>
+                        )}
+
                         {type !== 'quotation' && data.customer_salesperson_name && (
                             <p><strong>Sales Person:</strong> {data.customer_salesperson_name}</p>
                         )}
@@ -454,7 +456,6 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
                             </div>
                         );
                     })()}
-                    <p style={{ fontSize: '10px', margin: '10px 0 10px 0' }}>{data.quotation_validity && `Validity: ${data.quotation_validity}`}</p>
                     <div className="quotation-personalized-footer" style={{ marginTop: '20px', fontSize: '12px' }}>
                         <p style={{ margin: '0 0 4px 0' }}>Thanks,</p>
                         <p style={{ margin: '0 0 4px 0' }}>Best Regards,</p>

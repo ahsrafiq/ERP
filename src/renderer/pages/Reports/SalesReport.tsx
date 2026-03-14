@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Table, Card, Row, Col, DatePicker, Select, Button, Space,
-  Tag, Statistic, Divider, Typography, message,
+  Tag, Statistic, Divider, Typography, notification, message,
 } from 'antd';
 import {
   PrinterOutlined, ArrowLeftOutlined, FileTextOutlined,
@@ -70,10 +70,10 @@ const SalesReport: React.FC = () => {
       if (res.success) {
         setInvoices(res.data || []);
       } else {
-        message.error('Failed to load invoices');
+        notification.error({ message: 'Error', description: 'Failed to load invoices', duration: 0 });
       }
     } catch {
-      message.error('Failed to load invoices');
+      notification.error({ message: 'Error', description: 'Failed to load invoices', duration: 0 });
     } finally {
       setLoading(false);
     }
@@ -259,7 +259,7 @@ const SalesReport: React.FC = () => {
       border:    thinBorder,
     };
 
-    const c = (v: any, s: any) => ({ v, s });
+    const c = (v: any, s: any = {}) => ({ v, s });
 
     // ── Column headers ────────────────────────────────────────────────────
     const colHeaders = [

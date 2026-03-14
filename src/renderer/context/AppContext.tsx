@@ -42,6 +42,10 @@ interface AppContextType {
   setFiscalYear: (year: number) => void;
   login: (username: string, password?: string) => Promise<boolean>;
   logout: () => void;
+  minimizedModals: any[];
+  minimizeModal: (modal: any) => void;
+  restoreModal: (id: string) => void;
+  removeMinimizedModal: (id: string) => void;
 }
 
 export const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -186,8 +190,32 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setUser(null);
   };
 
+  const [minimizedModals, setMinimizedModals] = useState<any[]>([]);
+
+  const minimizeModal = (modal: any) => {
+    setMinimizedModals(prev => [...prev.filter(m => m.id !== modal.id), modal]);
+  };
+
+  const restoreModal = (id: string) => {
+    setMinimizedModals(prev => {
+      const modal = prev.find(m => m.id === id);
+      if (modal && modal.onRestore) {
+        // Schedule the restore callback after state update
+        setTimeout(() => modal.onRestore(), 0);
+      }
+      return prev.filter(m => m.id !== id);
+    });
+  };
+
+  const removeMinimizedModal = (id: string) => {
+    setMinimizedModals(prev => prev.filter(m => m.id !== id));
+  };
+
   return (
-    <AppContext.Provider value={{ currentCompany, setCurrentCompany, companies, setCompanies, user, fiscalYear, setFiscalYear, login, logout }}>
+    <AppContext.Provider value={{
+      currentCompany, setCurrentCompany, companies, setCompanies, user, fiscalYear, setFiscalYear, login, logout,
+      minimizedModals, minimizeModal, restoreModal, removeMinimizedModal
+    }}>
       {serverStatus === 'offline' && (
         <Alert
           message="Database connection lost"

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Button, Space, Modal, Form, Input, message } from 'antd';
+import { Table, Button, Space, Modal, Form, Input, message, notification } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, LockOutlined } from '@ant-design/icons';
 import { useApp } from '../../context/AppContext';
 
@@ -35,7 +35,7 @@ const Brands: React.FC = () => {
         setBrands(result.data || []);
       }
     } catch (error) {
-      message.error('Failed to load brands');
+      notification.error({ message: 'Error', description: 'Failed to load brands', duration: 0 });
     } finally {
       setLoading(false);
     }
@@ -48,14 +48,14 @@ const Brands: React.FC = () => {
         if (result.success) {
           message.success('Brand updated successfully');
         } else {
-          message.error(result.error || 'Failed to update brand');
+          notification.error({ message: 'Error', description: result.error || 'Failed to update brand', duration: 0 });
         }
       } else {
         const result = await (window as any).electronAPI.db.brands.create(values);
         if (result.success) {
           message.success('Brand created successfully');
         } else {
-          message.error(result.error || 'Failed to create brand');
+          notification.error({ message: 'Error', description: result.error || 'Failed to create brand', duration: 0 });
         }
       }
       setModalVisible(false);
@@ -63,7 +63,7 @@ const Brands: React.FC = () => {
       form.resetFields();
       loadBrands();
     } catch (error) {
-      message.error('Operation failed');
+      notification.error({ message: 'Error', description: 'Operation failed', duration: 0 });
     }
   };
 
@@ -76,7 +76,7 @@ const Brands: React.FC = () => {
   const handleConfirmDelete = async () => {
     const verify = await (window as any).electronAPI.db.auth.verifyAdminPassword(adminPassword);
     if (!verify.success || !verify.data) {
-        message.error('Incorrect admin password');
+        notification.error({ message: 'Error', description: 'Incorrect admin password', duration: 0 });
         setAdminPassword('');
         return;
     }
@@ -87,10 +87,10 @@ const Brands: React.FC = () => {
         message.success('Brand deleted successfully');
         loadBrands();
       } else {
-        message.error(result.error || 'Failed to delete brand');
+        notification.error({ message: 'Error', description: result.error || 'Failed to delete brand', duration: 0 });
       }
     } catch (error) {
-      message.error('Failed to delete brand');
+      notification.error({ message: 'Error', description: 'Failed to delete brand', duration: 0 });
     } finally {
       setDeletePasswordModal(false);
       setPendingDeleteId(null);

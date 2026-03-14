@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Button, Space, Modal, Form, Input, InputNumber, Select, DatePicker, message, Tag } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined, LockOutlined } from '@ant-design/icons';
+import { Table, Button, Space, Modal, Form, Input, InputNumber, Select, DatePicker, message, notification } from 'antd';
+import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined, LockOutlined, MinusSquareOutlined, CloseOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useApp } from '../../context/AppContext';
 
 const Expenses: React.FC = () => {
-  const { currentCompany, user } = useApp();
+  const { currentCompany, user, minimizeModal } = useApp();
   const [expenses, setExpenses] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [vendors, setVendors] = useState<any[]>([]);
@@ -43,7 +43,7 @@ const Expenses: React.FC = () => {
         setExpenses(result.data || []);
       }
     } catch (error) {
-      message.error('Failed to load expenses');
+      notification.error({ message: 'Error', description: 'Failed to load expenses', duration: 0 });
     } finally {
       setLoading(false);
     }
@@ -88,14 +88,14 @@ const Expenses: React.FC = () => {
         if (result.success) {
           message.success('Expense updated successfully');
         } else {
-          message.error(result.error || 'Failed to update expense');
+          notification.error({ message: 'Error', description: result.error || 'Failed to update expense', duration: 0 });
         }
       } else {
         const result = await (window as any).electronAPI.db.expenses.create(expenseData);
         if (result.success) {
           message.success('Expense created successfully');
         } else {
-          message.error(result.error || 'Failed to create expense');
+          notification.error({ message: 'Error', description: result.error || 'Failed to create expense', duration: 0 });
         }
       }
       setModalVisible(false);
@@ -103,7 +103,7 @@ const Expenses: React.FC = () => {
       form.resetFields();
       loadExpenses();
     } catch (error) {
-      message.error('Operation failed');
+      notification.error({ message: 'Error', description: 'Operation failed', duration: 0 });
     }
   };
 
@@ -116,7 +116,7 @@ const Expenses: React.FC = () => {
   const handleConfirmDelete = async () => {
         const verify = await (window as any).electronAPI.db.auth.verifyAdminPassword(adminPassword);
         if (!verify.success || !verify.data) {
-            message.error('Incorrect admin password');
+            notification.error({ message: 'Error', description: 'Incorrect admin password', duration: 0 });
             setAdminPassword('');
             return;
         }
@@ -127,10 +127,10 @@ const Expenses: React.FC = () => {
         message.success('Expense deleted successfully');
         loadExpenses();
       } else {
-        message.error(result.error || 'Failed to delete expense');
+        notification.error({ message: 'Error', description: result.error || 'Failed to delete expense', duration: 0 });
       }
     } catch {
-      message.error('Failed to delete expense');
+      notification.error({ message: 'Error', description: 'Failed to delete expense', duration: 0 });
     } finally {
       setDeletePasswordModal(false);
       setPendingDeleteId(null);
@@ -138,14 +138,7 @@ const Expenses: React.FC = () => {
     }
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'approved': return 'green';
-      case 'pending': return 'orange';
-      case 'rejected': return 'red';
-      default: return 'default';
-    }
-  };
+
 
   const columns = [
     {
@@ -175,14 +168,7 @@ const Expenses: React.FC = () => {
       key: 'total_amount',
       render: (amount: number) => (amount != null ? Number(amount).toFixed(2) : '—'),
     },
-    {
-      title: 'Status',
-      dataIndex: 'status',
-      key: 'status',
-      render: (status: string) => (
-        <Tag color={getStatusColor(status)}>{status.toUpperCase()}</Tag>
-      ),
-    },
+
     {
       title: 'Actions',
       key: 'actions',
@@ -267,6 +253,29 @@ const Expenses: React.FC = () => {
         }}
         onOk={() => form.submit()}
         width={600}
+        closeIcon={
+          <Space>
+            <MinusSquareOutlined 
+              style={{ fontSize: 18, color: '#1890ff' }}
+              onClick={(e) => {
+                e.stopPropagation();
+                setModalVisible(false);
+                const values = form.getFieldsValue();
+                const expNum = values.expense_number || 'New Expense';
+                minimizeModal({
+                  id: editingExpense ? `expense-edit-${editingExpense.id}` : 'expense-new',
+                  title: editingExpense ? `Edit Expense ${expNum}` : `New Expense ${expNum}`,
+                  onRestore: () => setModalVisible(true)
+                });
+              }} 
+            />
+            <CloseOutlined style={{ fontSize: 18 }} onClick={() => {
+              setModalVisible(false);
+              setEditingExpense(null);
+              form.resetFields();
+            }} />
+          </Space>
+        }
       >
         <Form form={form} layout="vertical" onFinish={handleSave}>
           <Form.Item name="expense_date" label="Expense Date" rules={[{ required: true }]}>
@@ -297,13 +306,7 @@ const Expenses: React.FC = () => {
           <Form.Item name="description" label="Description">
             <Input.TextArea rows={3} />
           </Form.Item>
-          <Form.Item name="status" label="Status" initialValue="pending">
-            <Select>
-              <Select.Option value="pending">Pending</Select.Option>
-              <Select.Option value="approved">Approved</Select.Option>
-              <Select.Option value="rejected">Rejected</Select.Option>
-            </Select>
-          </Form.Item>
+
         </Form>
       </Modal>
 

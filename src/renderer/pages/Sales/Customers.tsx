@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Table, Button, Space, Modal, Form, Input, InputNumber, Select, DatePicker, message, Tag, Tooltip, Alert } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, DollarOutlined, WarningOutlined, MinusCircleOutlined, BoldOutlined, UploadOutlined, SearchOutlined, LockOutlined } from '@ant-design/icons';
+import { Table, Button, Space, Modal, Form, Input, InputNumber, Select, DatePicker, message, notification, Tag, Tooltip, Alert } from 'antd';
+import { PlusOutlined, EditOutlined, DeleteOutlined, DollarOutlined, WarningOutlined, MinusCircleOutlined, BoldOutlined, UploadOutlined, SearchOutlined, LockOutlined, MinusSquareOutlined, CloseOutlined } from '@ant-design/icons';
 import { useApp } from '../../context/AppContext';
 import dayjs from 'dayjs';
 import { parseExcelToRows, getCol, getColNum } from '../../utils/excelImport';
 
 const Customers: React.FC = () => {
-  const { currentCompany, user } = useApp();
+  const { currentCompany, user, minimizeModal } = useApp();
   const [customers, setCustomers] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
@@ -44,12 +44,12 @@ const Customers: React.FC = () => {
     try {
       const result = await (window as any).electronAPI.db.customers.getAll(currentCompany.id);
       if (result.success) setCustomers(result.data || []);
-    } catch { message.error('Failed to load customers'); }
+    } catch { notification.error({ message: 'Error', description: 'Failed to load customers', duration: 0 }); }
     finally { setLoading(false); }
   };
 
   const handleSave = async (values: any) => {
-    if (!currentCompany) { message.error('Please add a company first'); return; }
+    if (!currentCompany) { notification.error({ message: 'Error', description: 'Please add a company first', duration: 0 }); return; }
     try {
       const payload = {
         ...values,
@@ -58,17 +58,17 @@ const Customers: React.FC = () => {
       if (editingCustomer) {
         const result = await (window as any).electronAPI.db.customers.update(editingCustomer.id, payload);
         if (result.success) message.success('Customer updated successfully');
-        else message.error(result.error || 'Failed to update customer');
+        else notification.error({ message: 'Error', description: result.error || 'Failed to update customer', duration: 0 });
       } else {
         const result = await (window as any).electronAPI.db.customers.create({ ...payload, company_id: currentCompany.id });
         if (result.success) message.success('Customer created successfully');
-        else message.error(result.error || 'Failed to create customer');
+        else notification.error({ message: 'Error', description: result.error || 'Failed to create customer', duration: 0 });
       }
       setModalVisible(false);
       setEditingCustomer(null);
       form.resetFields();
       loadCustomers();
-    } catch { message.error('Operation failed'); }
+    } catch { notification.error({ message: 'Error', description: 'Operation failed', duration: 0 }); }
   };
 
   const handleRequestDelete = (id: number) => {
@@ -80,7 +80,7 @@ const Customers: React.FC = () => {
   const handleConfirmDelete = async () => {
     const verify = await (window as any).electronAPI.db.auth.verifyAdminPassword(adminPassword);
     if (!verify.success || !verify.data) {
-        message.error('Incorrect admin password');
+        notification.error({ message: 'Error', description: 'Incorrect admin password', duration: 0 });
         setAdminPassword('');
         return;
     }
@@ -91,10 +91,10 @@ const Customers: React.FC = () => {
         message.success('Customer deleted successfully');
         loadCustomers();
       } else {
-        message.error(result.error || 'Failed to delete customer');
+        notification.error({ message: 'Error', description: result.error || 'Failed to delete customer', duration: 0 });
       }
-    } catch {
-      message.error('Failed to delete customer');
+    } catch (error) {
+      notification.error({ message: 'Error', description: 'Failed to delete customer', duration: 0 });
     } finally {
       setDeletePasswordModal(false);
       setPendingDeleteId(null);
@@ -106,9 +106,9 @@ const Customers: React.FC = () => {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
-    if (!currentCompany) { message.error('Please select a company first'); return; }
+    if (!currentCompany) { notification.error({ message: 'Error', description: 'Please select a company first', duration: 0 }); return; }
     if (!file.name.match(/\.(xlsx|xls)$/i)) {
-      message.error('Please select an Excel file (.xlsx or .xls)');
+      notification.error({ message: 'Error', description: 'Please select an Excel file (.xlsx or .xls)', duration: 0 });
       return;
     }
     setImporting(true);
@@ -128,16 +128,18 @@ const Customers: React.FC = () => {
           return numeric ? Number(numeric) : NaN;
         })
         .filter((n) => !Number.isNaN(n));
-      let nextCode = existingCodes.length > 0 ? Math.max(...existingCodes) + 1 : 1;
+      let nextCodeNum = existingCodes.length > 0 ? Math.max(...existingCodes) + 1 : 1;
+
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
         const name = getCol(row, 'Name', 'name');
         const salesPerson = getCol(row, 'Sales Person', 'Salesperson Name', 'salesperson_name');
         if (!name || !salesPerson) { failed++; continue; }
+
         const payload = {
           company_id: currentCompany.id,
           name,
-          code: String(nextCode++),
+          code: `C-${String(nextCodeNum++).padStart(4, '0')}`,
           email: getCol(row, 'Email', 'email'),
           phone: getCol(row, 'Phone', 'phone'),
           address: getCol(row, 'Address', 'address'),
@@ -150,7 +152,7 @@ const Customers: React.FC = () => {
           attention_person: getCol(row, 'Attention Person', 'attention_person'),
           salesperson_name: salesPerson,
           gst_number: getCol(row, 'GST Number', 'gst_number'),
-          po_number: getCol(row, 'PO Number', 'po_number'),
+          opening_balance: getColNum(row, 'Opening Balance', 'opening_balance') || 0,
         };
         try {
           const result = await (window as any).electronAPI.db.customers.create(payload);
@@ -164,7 +166,7 @@ const Customers: React.FC = () => {
       message.success(`Import complete: ${created} created, ${failed} failed or skipped.`);
       loadCustomers();
     } catch (err: any) {
-      message.error(err?.message || 'Failed to import Excel');
+      notification.error({ message: 'Error', description: err?.message || 'Failed to import Excel', duration: 0 });
     } finally {
       setImporting(false);
     }
@@ -203,9 +205,9 @@ const Customers: React.FC = () => {
         advanceForm.resetFields();
         loadCustomers();
       } else {
-        message.error(result.error || 'Failed to record advance payment');
+        notification.error({ message: 'Error', description: result.error || 'Failed to record advance payment', duration: 0 });
       }
-    } catch { message.error('Failed to record advance payment'); }
+    } catch { notification.error({ message: 'Error', description: 'Failed to record advance payment', duration: 0 }); }
     finally { setAdvanceSaving(false); }
   };
 
@@ -214,7 +216,6 @@ const Customers: React.FC = () => {
     { title: 'Name',      dataIndex: 'name',      key: 'name' },
     { title: 'Email',     dataIndex: 'email',     key: 'email' },
     { title: 'Phone',     dataIndex: 'phone',     key: 'phone' },
-    { title: 'PO Number', dataIndex: 'po_number', key: 'po_number' },
     {
       title: 'Balance / Credit',
       key: 'balance_credit',
@@ -318,29 +319,60 @@ const Customers: React.FC = () => {
 
       {/* Add / Edit Customer Modal */}
       <Modal
-        title={editingCustomer ? 'Edit Customer' : 'Add Customer'}
+        title={editingCustomer ? 'Edit Customer' : 'Add New Customer'}
         open={modalVisible}
-        onCancel={() => { setModalVisible(false); setEditingCustomer(null); form.resetFields(); }}
+        onCancel={() => {
+          setModalVisible(false);
+          setEditingCustomer(null);
+          form.resetFields();
+        }}
         onOk={() => form.submit()}
-        width={600}
+        width={800}
+        closeIcon={
+          <Space>
+            <MinusSquareOutlined 
+              style={{ fontSize: 18, color: '#1890ff' }}
+              onClick={(e) => {
+                e.stopPropagation();
+                setModalVisible(false);
+                const values = form.getFieldsValue();
+                const custName = values.name || 'New Customer';
+                minimizeModal({
+                  id: editingCustomer ? `cust-edit-${editingCustomer.id}` : 'cust-new',
+                  title: editingCustomer ? `Edit Customer ${custName}` : `New Customer ${custName}`,
+                  onRestore: () => setModalVisible(true)
+                });
+              }} 
+            />
+            <CloseOutlined style={{ fontSize: 18 }} onClick={() => {
+              setModalVisible(false);
+              setEditingCustomer(null);
+              form.resetFields();
+            }} />
+          </Space>
+        }
       >
         <Form form={form} layout="vertical" onFinish={handleSave}>
-          <Form.Item name="code" label="Customer Code" rules={[{ required: true, message: 'Please enter customer code' }, { pattern: /^[0-9]+$/, message: 'Code must contain only numbers' }]}>
-            <Input placeholder="e.g., 1001" />
+          <Form.Item name="name" label="Customer Name" rules={[{ required: true }]}>
+            <Input />
           </Form.Item>
           <Form.Item name="credit_limit" label="Credit Limit (assigned at account opening)" rules={[{ required: true, message: 'Please set credit limit at customer opening' }]}>
             <InputNumber min={0} style={{ width: '100%' }} precision={2} placeholder="e.g. 50000" />
           </Form.Item>
-          <Form.Item name="name" label="Name" rules={[{ required: true, message: 'Please enter name' }]}><Input /></Form.Item>
+          <Form.Item name="opening_balance" label="Opening Balance" initialValue={0}>
+            <InputNumber style={{ width: '100%' }} min={0} />
+          </Form.Item>
           <Form.Item name="attention_person" label="Attention Person" rules={[{ required: true, message: 'Please enter attention person' }]} tooltip="This name will appear automatically on quotations for this customer.">
             <Input placeholder="e.g., Mr. Ali Khan" />
           </Form.Item>
           <Form.Item name="salesperson_name" label="Sales Person" rules={[{ required: true, message: 'Please enter sales person' }]} tooltip="Sales representative for this customer — shown on quotations.">
             <Input placeholder="e.g., Ahmed Raza" />
           </Form.Item>
-          <Form.Item name="email" label="Email" rules={[{ required: true, message: 'Please enter email' }, { type: 'email' }]}><Input /></Form.Item>
+          <Form.Item name="email" label="Email" rules={[{ type: 'email' }]}><Input /></Form.Item>
           <Form.Item name="phone" label="Phone" rules={[{ required: true, message: 'Please enter phone' }]}><Input /></Form.Item>
-          <Form.Item name="address" label="Address" rules={[{ required: true, message: 'Please enter address' }]}><Input.TextArea rows={2} /></Form.Item>
+          <Form.Item name="address" label="Address">
+            <Input.TextArea rows={2} />
+          </Form.Item>
           <Form.Item name="city" label="City" rules={[{ required: true, message: 'Please enter city' }]}><Input /></Form.Item>
           <Form.Item name="state" label="State" rules={[{ required: true, message: 'Please enter state' }]}><Input /></Form.Item>
           <Form.Item name="country" label="Country" rules={[{ required: true, message: 'Please enter country' }]}><Input /></Form.Item>
@@ -353,7 +385,6 @@ const Customers: React.FC = () => {
               <Input placeholder="e.g., 1234567-8" />
             </Form.Item>
           )}
-          <Form.Item name="po_number" label="PO Number"><Input placeholder="e.g. PO number" /></Form.Item>
           <div style={{ marginBottom: 16 }}>
             <label style={{ fontWeight: 500 }}>Terms and Conditions</label>
             <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>Wrap text with ** to make it bold (e.g. **This is bold**)</div>
