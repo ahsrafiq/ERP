@@ -534,6 +534,10 @@ ipcMain.handle('db:customers:getAll', async (event, companyId: number) => {
   return dbBridge.customers.getAll(companyId);
 });
 
+ipcMain.handle('db:customers:getUnpaidInvoices', async (event, customerId: number, companyId?: number) => {
+  return dbBridge.customers.getUnpaidInvoices(customerId, companyId);
+});
+
 ipcMain.handle('db:customers:getById', async (event, id: number) => {
   return dbBridge.customers.getById(id);
 });
@@ -708,8 +712,8 @@ ipcMain.handle('db:deliveryChallans:createFromInvoice', async (event, invoiceId:
   return dbBridge.deliveryChallans.createFromInvoice(invoiceId, createdBy);
 });
 
-ipcMain.handle('db:deliveryChallans:createFromQuotation', async (event, quotationId: number, createdBy?: number, selectedItemIds?: number[]) => {
-  return dbBridge.deliveryChallans.createFromQuotation(quotationId, createdBy, selectedItemIds);
+ipcMain.handle('db:deliveryChallans:createFromQuotation', async (event, quotationId: number, createdBy?: number, selectedItems?: any[], poNumber?: string) => {
+  return dbBridge.deliveryChallans.createFromQuotation(quotationId, createdBy, selectedItems, poNumber);
 });
 
 ipcMain.handle('db:purchaseInvoices:getAll', async (event, companyId: number, filters?: any) => {
@@ -770,6 +774,10 @@ ipcMain.handle('db:payments:getByInvoice', async (event, type: string, id: numbe
 
 ipcMain.handle('db:payments:create', async (event, payment: any) => {
   return dbBridge.payments.create(payment);
+});
+
+ipcMain.handle('db:payments:update', async (event, id: number, payment: any) => {
+  return dbBridge.payments.update(id, payment);
 });
 
 ipcMain.handle('db:payments:delete', async (event, id: number) => {

@@ -2,9 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { Table, Button, Space, Modal, Form, Input, message, notification } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined, LockOutlined, MinusSquareOutlined, CloseOutlined } from '@ant-design/icons';
 import { useApp } from '../../context/AppContext';
+import { useLocation } from 'react-router-dom';
 
 const Vendors: React.FC = () => {
   const { currentCompany, user, minimizeModal } = useApp();
+  const location = useLocation();
   const [vendors, setVendors] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
@@ -25,9 +27,13 @@ const Vendors: React.FC = () => {
 
   useEffect(() => {
     if (currentCompany) {
-      loadVendors();
+      if (location.pathname === '/purchases/vendors') {
+        loadVendors();
+      } else if (vendors.length === 0) {
+        loadVendors();
+      }
     }
-  }, [currentCompany]);
+  }, [currentCompany, location.pathname]);
 
   const loadVendors = async () => {
     if (!currentCompany) return;
@@ -227,7 +233,10 @@ const Vendors: React.FC = () => {
                 minimizeModal({
                   id: editingVendor ? `vendor-edit-${editingVendor.id}` : 'vendor-new',
                   title: editingVendor ? `Edit Vendor ${vendorName}` : `New Vendor ${vendorName}`,
-                  onRestore: () => setModalVisible(true)
+                  onRestore: () => {
+                    setEditingVendor(editingVendor);
+                    setModalVisible(true);
+                  }
                 });
               }} 
             />

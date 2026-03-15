@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import { Alert, Modal, Form, Input, Radio, message, Button } from 'antd';
 import { SettingOutlined } from '@ant-design/icons';
 
@@ -44,7 +44,7 @@ interface AppContextType {
   logout: () => void;
   minimizedModals: any[];
   minimizeModal: (modal: any) => void;
-  restoreModal: (id: string) => void;
+  restoreModal: (modal: { id: string; onRestore?: () => void }) => void;
   removeMinimizedModal: (id: string) => void;
 }
 
@@ -139,6 +139,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   }, [serverStatus]);
 
+  // Clear minimized modals when company changes to avoid conflicts
+  useEffect(() => {
+    setMinimizedModals([]);
+  }, [currentCompany?.id]);
+
   const loadCompanies = async () => {
     try {
       const result = await (window as any).electronAPI.db.companies.getAll();
@@ -191,21 +196,30 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const [minimizedModals, setMinimizedModals] = useState<any[]>([]);
+  const pendingRestoresRef = useRef<(() => void)[]>([]);
 
   const minimizeModal = (modal: any) => {
-    setMinimizedModals(prev => [...prev.filter(m => m.id !== modal.id), modal]);
+    const returnPath = window.location.hash.replace('#', '');
+    setMinimizedModals(prev => [...prev.filter(m => m.id !== modal.id), { ...modal, returnPath }]);
   };
 
-  const restoreModal = (id: string) => {
-    setMinimizedModals(prev => {
-      const modal = prev.find(m => m.id === id);
-      if (modal && modal.onRestore) {
-        // Schedule the restore callback after state update
-        setTimeout(() => modal.onRestore(), 0);
-      }
-      return prev.filter(m => m.id !== id);
-    });
+  const restoreModal = (modal: { id: string; onRestore?: () => void; returnPath?: string }) => {
+    if (modal?.onRestore) {
+      pendingRestoresRef.current = [...pendingRestoresRef.current, modal.onRestore];
+    }
+    setMinimizedModals(prev => prev.filter(m => m.id !== modal.id));
   };
+
+  useEffect(() => {
+    if (pendingRestoresRef.current.length === 0) return;
+    const fns = [...pendingRestoresRef.current];
+    pendingRestoresRef.current = [];
+    // Use a microtask/setTimeout to ensure state updates happen after the current render cycle if needed,
+    // but don't clear it in cleanup so we don't drop fns if minimizedModals updates again immediately.
+    setTimeout(() => {
+      fns.forEach(fn => fn());
+    }, 0);
+  }, [minimizedModals]);
 
   const removeMinimizedModal = (id: string) => {
     setMinimizedModals(prev => prev.filter(m => m.id !== id));
@@ -288,15 +302,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             <Input type="number" />
           </Form.Item>
 
-          {(user?.role === 'admin' || user?.role_id === 1 || user?.username === 'admin') && (
-            <Form.Item
-              name="backupPath"
-              label="Database backup folder (Drive sync path)"
-              tooltip="This folder should be inside your Drive/OneDrive/etc. Only admin can change it."
-            >
-              <Input placeholder="e.g. D:\MyDrive\ERP_Backups" />
-            </Form.Item>
-          )}
+          <Form.Item
+            noStyle
+            shouldUpdate={(prevValues, currentValues) => prevValues.mode !== currentValues.mode}
+          >
+            {({ getFieldValue }) =>
+              getFieldValue('mode') === 'MASTER' && (user?.role === 'admin' || user?.role_id === 1 || user?.username === 'admin') ? (
+                <Form.Item
+                  name="backupPath"
+                  label="Database backup folder (Drive sync path)"
+                  tooltip="This folder should be inside your Drive/OneDrive/etc. Only admin can change it."
+                >
+                  <Input placeholder="e.g. D:\MyDrive\ERP_Backups" />
+                </Form.Item>
+              ) : null
+            }
+          </Form.Item>
 
           <Form.Item>
             <Button type="primary" htmlType="submit" block>

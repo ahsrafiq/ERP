@@ -1,5 +1,5 @@
 import React from 'react';
-import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { HashRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { ConfigProvider } from 'antd';
 import Layout from './components/Layout/Layout';
 import Dashboard from './pages/Dashboard/Dashboard';
@@ -35,8 +35,28 @@ import Login from './pages/Login/Login';
 import Profile from './pages/Users/Profile';
 import { useApp } from './context/AppContext';
 
+const KeepAliveRoute = ({ path, element, currentPath }: { path: string; element: React.ReactElement; currentPath: string }) => {
+  const [hasVisited, setHasVisited] = React.useState(false);
+  const isMatch = currentPath === path || (path === '/dashboard' && currentPath === '/');
+
+  React.useEffect(() => {
+    if (isMatch && !hasVisited) {
+      setHasVisited(true);
+    }
+  }, [isMatch, hasVisited]);
+
+  if (!hasVisited && !isMatch) return null;
+
+  return (
+    <div style={{ display: isMatch ? 'block' : 'none', height: '100%' }}>
+      {element}
+    </div>
+  );
+};
+
 const AppContent: React.FC = () => {
   const { user } = useApp();
+  const location = useLocation();
 
   if (!user) {
     return (
@@ -50,35 +70,35 @@ const AppContent: React.FC = () => {
     <Layout>
       <Routes>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/profile" element={<Profile />} />
-        <Route path="/users" element={<Users />} />
-        <Route path="/companies" element={<Companies />} />
-        <Route path="/sales/customers" element={<Customers />} />
-        <Route path="/sales/quotations" element={<SalesQuotations />} />
-        <Route path="/sales/invoices" element={<SalesInvoices />} />
-        <Route path="/sales/delivery-challans" element={<DeliveryChallans />} />
-        <Route path="/receivables" element={<ErrorBoundary><Receivables /></ErrorBoundary>} />
-        <Route path="/purchase/vendors" element={<Vendors />} />
-        <Route path="/purchase/invoices" element={<PurchaseInvoices />} />
-        <Route path="/inventory/items" element={<Items />} />
-        <Route path="/inventory/brands" element={<Brands />} />
-        <Route path="/expenses" element={<Expenses />} />
-        <Route path="/expenses/categories" element={<ExpenseCategories />} />
-        <Route path="/hr/employees" element={<Employees />} />
-        <Route path="/reports" element={<Reports />} />
-        <Route path="/reports/sales" element={<SalesReport />} />
-        <Route path="/reports/inventory" element={<InventoryReport />} />
-        <Route path="/reports/purchase" element={<PurchaseReport />} />
-        <Route path="/reports/customer-ledger" element={<CustomerLedgerReport />} />
-        <Route path="/reports/tax" element={<TaxReport />} />
-        <Route path="/reports/recovery" element={<RecoveryReport />} />
-        <Route path="/reports/expenses" element={<ExpenseReport />} />
-        <Route path="/reports/vendor-ledger" element={<VendorLedgerReport />} />
-        <Route path="/reports/pl" element={<ProfitLossReport />} />
-        <Route path="/reports/balance" element={<BalanceSheetReport />} />
-        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        <Route path="*" element={null} />
       </Routes>
+      <KeepAliveRoute currentPath={location.pathname} path="/dashboard" element={<Dashboard />} />
+      <KeepAliveRoute currentPath={location.pathname} path="/profile" element={<Profile />} />
+      <KeepAliveRoute currentPath={location.pathname} path="/users" element={<Users />} />
+      <KeepAliveRoute currentPath={location.pathname} path="/companies" element={<Companies />} />
+      <KeepAliveRoute currentPath={location.pathname} path="/sales/customers" element={<Customers />} />
+      <KeepAliveRoute currentPath={location.pathname} path="/sales/quotations" element={<SalesQuotations />} />
+      <KeepAliveRoute currentPath={location.pathname} path="/sales/invoices" element={<SalesInvoices />} />
+      <KeepAliveRoute currentPath={location.pathname} path="/sales/delivery-challans" element={<DeliveryChallans />} />
+      <KeepAliveRoute currentPath={location.pathname} path="/receivables" element={<ErrorBoundary><Receivables /></ErrorBoundary>} />
+      <KeepAliveRoute currentPath={location.pathname} path="/purchase/vendors" element={<Vendors />} />
+      <KeepAliveRoute currentPath={location.pathname} path="/purchase/invoices" element={<PurchaseInvoices />} />
+      <KeepAliveRoute currentPath={location.pathname} path="/inventory/items" element={<Items />} />
+      <KeepAliveRoute currentPath={location.pathname} path="/inventory/brands" element={<Brands />} />
+      <KeepAliveRoute currentPath={location.pathname} path="/expenses" element={<Expenses />} />
+      <KeepAliveRoute currentPath={location.pathname} path="/expenses/categories" element={<ExpenseCategories />} />
+      <KeepAliveRoute currentPath={location.pathname} path="/hr/employees" element={<Employees />} />
+      <KeepAliveRoute currentPath={location.pathname} path="/reports" element={<Reports />} />
+      <KeepAliveRoute currentPath={location.pathname} path="/reports/sales" element={<SalesReport />} />
+      <KeepAliveRoute currentPath={location.pathname} path="/reports/inventory" element={<InventoryReport />} />
+      <KeepAliveRoute currentPath={location.pathname} path="/reports/purchase" element={<PurchaseReport />} />
+      <KeepAliveRoute currentPath={location.pathname} path="/reports/customer-ledger" element={<CustomerLedgerReport />} />
+      <KeepAliveRoute currentPath={location.pathname} path="/reports/tax" element={<TaxReport />} />
+      <KeepAliveRoute currentPath={location.pathname} path="/reports/recovery" element={<RecoveryReport />} />
+      <KeepAliveRoute currentPath={location.pathname} path="/reports/expenses" element={<ExpenseReport />} />
+      <KeepAliveRoute currentPath={location.pathname} path="/reports/vendor-ledger" element={<VendorLedgerReport />} />
+      <KeepAliveRoute currentPath={location.pathname} path="/reports/pl" element={<ProfitLossReport />} />
+      <KeepAliveRoute currentPath={location.pathname} path="/reports/balance" element={<BalanceSheetReport />} />
     </Layout>
   );
 };

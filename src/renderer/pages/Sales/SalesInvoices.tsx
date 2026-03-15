@@ -5,7 +5,7 @@ import { EditOutlined, DeleteOutlined, PrinterOutlined, LockOutlined, StopOutlin
 import dayjs from 'dayjs';
 import { useApp } from '../../context/AppContext';
 import PrintTemplate from '../../components/PrintTemplate';
-import * as XLSX from 'xlsx';
+import XLSX from 'xlsx-js-style';
 
 const SalesInvoices: React.FC = () => {
   const { currentCompany, companies, user, fiscalYear, minimizeModal } = useApp();
@@ -37,11 +37,17 @@ const SalesInvoices: React.FC = () => {
 
   useEffect(() => {
     if (currentCompany) {
-      loadInvoices();
-      loadCustomers();
-      loadItems();
+      if (location.pathname === '/sales/invoices') {
+        loadInvoices();
+        loadCustomers();
+        loadItems();
+      } else if (invoices.length === 0) {
+        loadInvoices();
+        loadCustomers();
+        loadItems();
+      }
     }
-  }, [currentCompany]);
+  }, [currentCompany, location.pathname]);
 
   const handleEdit = async (record: any) => {
     const hide = message.loading(`Fetching ${docLabel.toLowerCase()} details...`, 0);
@@ -457,18 +463,93 @@ const SalesInvoices: React.FC = () => {
     (inv.customer_name || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const handleExportExcel = () => {
-    const data = filteredInvoices.map((inv: any) => ({
-      [`${docLabel} #`]: inv.invoice_number || '',
-      'Customer': inv.customer_name || '',
-      'Date': inv.invoice_date ? dayjs(inv.invoice_date).format('DD/MM/YYYY') : '',
-      'Total Amount': inv.total_amount ? Number(inv.total_amount).toFixed(2) : '0.00',
-      'Balance': inv.balance ? Number(inv.balance).toFixed(2) : '0.00',
-    }));
-    const ws = XLSX.utils.json_to_sheet(data);
+  const handleExportExcelSingle = () => {
+    if (!printData) return;
+    
+    const company = (companies || []).find((c: any) => c.id === printData.company_id) || currentCompany;
+
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, docLabel + 's');
-    XLSX.writeFile(wb, `${docLabel}s_${dayjs().format('YYYYMMDD')}.xlsx`);
+
+    // Define styles
+    const titleStyle = { font: { bold: true, size: 16 } };
+    const labelStyle = { font: { bold: true } };
+    const headerStyle = {
+        font: { bold: true, color: { rgb: "FFFFFF" } },
+        fill: { fgColor: { rgb: "333333" } },
+        alignment: { horizontal: "center", vertical: "center" },
+        border: {
+            top: { style: "thin" },
+            bottom: { style: "thin" },
+            left: { style: "thin" },
+            right: { style: "thin" }
+        }
+    };
+    const itemStyle = {
+        alignment: { vertical: "center" },
+        border: {
+            top: { style: "thin" }, bottom: { style: "thin" },
+            left: { style: "thin" }, right: { style: "thin" }
+        }
+    };
+    const numberStyle = { ...itemStyle, alignment: { horizontal: "right", vertical: "center" } };
+    const footerStyle = { font: { bold: true }, alignment: { horizontal: "right" } };
+
+    const wsData: any[][] = [
+        [{ v: docLabel.toUpperCase(), s: titleStyle }],
+        [],
+        [{ v: 'Company:', s: labelStyle }, company?.name || ''],
+        [{ v: 'Date:', s: labelStyle }, dayjs(printData.invoice_date).format('DD/MM/YYYY')],
+        [{ v: `${docLabel} #:`, s: labelStyle }, printData.invoice_number],
+        [{ v: 'PO #:', s: labelStyle }, printData.dc_po_number || printData.po_number || ''],
+        [{ v: 'Customer:', s: labelStyle }, printData.customer_name || ''],
+        [],
+        [
+            { v: 'S.No', s: headerStyle },
+            { v: 'Brand', s: headerStyle },
+            { v: 'Item', s: headerStyle },
+            { v: 'Description', s: headerStyle },
+            { v: 'Qty', s: headerStyle },
+            { v: 'Unit Price', s: headerStyle },
+            { v: 'Total', s: headerStyle }
+        ]
+    ];
+
+    // Add items
+    (printData.items || []).forEach((it: any, index: number) => {
+        wsData.push([
+            { v: index + 1, s: itemStyle },
+            { v: it.brand || '', s: itemStyle },
+            { v: it.item_name || '', s: itemStyle },
+            { v: it.description || '', s: itemStyle },
+            { v: it.quantity || 0, s: numberStyle },
+            { v: it.unit_price || 0, s: numberStyle },
+            { v: (it.quantity || 0) * (it.unit_price || 0), s: numberStyle }
+        ]);
+    });
+
+    // Add footer
+    wsData.push([]);
+    wsData.push([
+        '', '', '', '', '', 
+        { v: 'Total Amount:', s: footerStyle }, 
+        { v: printData.total_amount || 0, s: { ...footerStyle, alignment: { horizontal: "right" } } }
+    ]);
+
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+    // Set column widths
+    ws['!cols'] = [
+        { wch: 6 },  // S.No
+        { wch: 15 }, // Brand
+        { wch: 25 }, // Item
+        { wch: 40 }, // Description
+        { wch: 10 }, // Qty
+        { wch: 12 }, // Unit Price
+        { wch: 15 }  // Total
+    ];
+
+    XLSX.utils.book_append_sheet(wb, ws, docLabel);
+    XLSX.writeFile(wb, `${printData.invoice_number}.xlsx`);
     message.success('Exported to Excel');
   };
 
@@ -488,7 +569,6 @@ const SalesInvoices: React.FC = () => {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <p style={{ margin: 0, color: '#666', fontSize: 13 }}>Create a {docLabel.toLowerCase()} from a Delivery Challan (Delivery Challans page).</p>
-          <Button onClick={handleExportExcel}>Export to Excel</Button>
         </div>
       </div>
 
@@ -523,7 +603,10 @@ const SalesInvoices: React.FC = () => {
                 minimizeModal({
                   id: editingInvoice ? `inv-edit-${editingInvoice.id}` : 'inv-new',
                   title: editingInvoice ? `Edit ${docLabel} ${invNum}` : `New ${docLabel} ${invNum}`,
-                  onRestore: () => setModalVisible(true)
+                  onRestore: () => {
+                    setEditingInvoice(editingInvoice);
+                    setModalVisible(true);
+                  }
                 });
               }} 
             />
@@ -540,6 +623,9 @@ const SalesInvoices: React.FC = () => {
           <Space align="start">
             <Form.Item name="invoice_number" label={`${docLabel} #`} rules={[{ required: true, message: 'Required' }]}>
               <Input placeholder={`e.g. ${docPlaceholder}`} style={{ width: 160 }} />
+            </Form.Item>
+            <Form.Item name="po_number" label="PO #" style={{ marginBottom: 16 }}>
+              <Input placeholder="PO Number" style={{ width: 160 }} />
             </Form.Item>
           </Space>
           <Form.Item name="customer_id" label="Customer" rules={[{ required: true }]}>
@@ -725,6 +811,9 @@ const SalesInvoices: React.FC = () => {
         footer={[
           <Button key="cancel" onClick={() => setIsPreviewVisible(false)}>
             Close
+          </Button>,
+          <Button key="excel" onClick={handleExportExcelSingle}>
+            Export to Excel
           </Button>,
           <Button
             key="pdf"

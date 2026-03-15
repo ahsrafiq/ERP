@@ -103,14 +103,24 @@
 
 .minimized-modal-item {
   background: #f0f2f5;
-  padding: 6px 16px;
+  padding: 6px 8px 6px 12px;
   border: 1px solid #d9d9d9;
   border-radius: 4px;
-  cursor: pointer;
+  cursor: default;
   transition: all 0.3s;
   display: flex;
   align-items: center;
   max-width: 220px;
+  gap: 8px;
+}
+
+.minimized-modal-item-restore {
+  flex: 1;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
 }
 
 .minimized-modal-item:hover {
@@ -126,11 +136,13 @@
   color: #262626;
 }
 
-.modal-close-icon {
+.minimized-modal-item .modal-close-icon {
   font-size: 12px;
   color: #8c8c8c;
   transition: color 0.3s;
-  margin-left: 8px;
+  flex-shrink: 0;
+  padding: 2px;
+  cursor: pointer;
 }
 
 .modal-close-icon:hover {

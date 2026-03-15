@@ -139,16 +139,23 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
 
     // GST Invoice columns â€” with tax columns + HS Code
     const invoiceColumns: any[] = isInvoice ? [
-        { title: 'Sr.', key: 'index', align: 'center' as const, render: (_: any, __: any, index: number) => index + 1 },
-        { title: 'Item', dataIndex: 'item_name', key: 'item_name', render: (t: string) => <span style={{ fontWeight: 600 }}>{t || '-'}</span> },
-        { title: 'Description', dataIndex: 'description', key: 'description', render: (t: string) => (t != null && String(t).trim() !== '' ? String(t) : '-') },
+        { title: 'Sr. No.', key: 'index', align: 'center' as const, width: 60, render: (_: any, __: any, index: number) => index + 1 },
+        { 
+            title: 'Item & Description', 
+            key: 'item_desc', 
+            render: (_: any, row: any) => (
+                <div>
+                    <div style={{ fontWeight: 600 }}>{row.item_name || '-'}</div>
+                    <div style={{ fontSize: '12px', color: '#666' }}>{row.description || ''}</div>
+                </div>
+            ) 
+        },
         { title: 'H.S Code', dataIndex: 'hs_code', key: 'hs_code', align: 'center' as const, render: (v: string) => (v != null && String(v).trim() !== '' ? String(v) : '-') },
-        { title: 'Quantity', dataIndex: 'quantity', key: 'quantity', align: 'right' as const },
+        { title: 'Qty', dataIndex: 'quantity', key: 'quantity', align: 'center' as const },
         { title: 'Unit Price', dataIndex: 'unit_price', key: 'unit_price', align: 'right' as const, render: (v: number) => (v != null && (v as any) !== '') ? Number(v).toLocaleString() : '-' },
-        { title: 'Amount (Excl. Tax)', key: 'amount_excl', align: 'right' as const, render: (_: any, row: any) => ((row.quantity || 0) * (row.unit_price || 0)).toLocaleString() },
-        { title: 'Sales Tax Rate', dataIndex: 'gst_rate', key: 'gst_rate', align: 'center' as const, render: (_: any, row: any) => (row.gst_rate != null && (row.gst_rate as any) !== '') ? `${Number(row.gst_rate)}%` : '0%' },
-        { title: 'Sales Tax Payable', dataIndex: 'gst_amount', key: 'gst_amount', align: 'right' as const, render: (_: any, row: any) => (row.gst_amount != null && (row.gst_amount as any) !== '') ? Number(row.gst_amount).toLocaleString() : '0' },
-        { title: 'Total Amount', dataIndex: 'line_total', key: 'line_total', align: 'right' as const, render: (_: any, row: any) => (row.line_total != null && (row.line_total as any) !== '') ? Number(row.line_total).toLocaleString() : '-' },
+        { title: 'Total Price Excl. Sales Tax', key: 'amount_excl', align: 'right' as const, render: (_: any, row: any) => ((row.quantity || 0) * (row.unit_price || 0)).toLocaleString() },
+        { title: 'Sales Tax Amount', dataIndex: 'gst_amount', key: 'gst_amount', align: 'right' as const, render: (_: any, row: any) => (row.gst_amount != null && (row.gst_amount as any) !== '') ? Number(row.gst_amount).toLocaleString() : '0' },
+        { title: 'Total Including Sales Tax', dataIndex: 'line_total', key: 'line_total', align: 'right' as const, render: (_: any, row: any) => (row.line_total != null && (row.line_total as any) !== '') ? Number(row.line_total).toLocaleString() : '-' },
     ] : [];
 
     // Bill columns â€” simple, no tax, with brand and HS Code
@@ -206,28 +213,26 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
             </div>
             {/* Content block - same in scaled and non-scaled render */}
             {isInvoice && (
-                <>
-                    <div className="inv-header-row">
-                        <div className="inv-block inv-bill-to">
-                            <div className="inv-block-label">Invoice to</div>
-                            <p className="inv-company-name">{data.customer_name}</p>
-                            {data.customer_address != null && String(data.customer_address).trim() !== '' && <p className="inv-address">{data.customer_address}</p>}
-                            {data.customer_tax_number != null && String(data.customer_tax_number).trim() !== '' && <p className="inv-tax"><strong>NTN #:</strong> {data.customer_tax_number}</p>}
-                            {(data.customer_gst_number != null && String(data.customer_gst_number).trim() !== '') && <p className="inv-tax"><strong>STN #:</strong> {data.customer_gst_number}</p>}
-                            {data.attention_person != null && String(data.attention_person).trim() !== '' && <p className="inv-contact"><strong>Contact Person:</strong> {data.attention_person}</p>}
-                        </div>
-
-                        <div className="inv-header-right">
-                            <div className="doc-info-box">
-                                <p><strong>Invoice Date:</strong> <span>{formatDate(getDate())}</span></p>
-                                <p><strong>Invoice Number:</strong> <span>{getNumber()}</span></p>
-                                {company.po_number != null && String(company.po_number).trim() !== '' && <p><strong>PO#:</strong> <span>{company.po_number}</span></p>}
-                                { (data.customer_salesperson_name || data.person_name) != null && String(data.customer_salesperson_name || data.person_name).trim() !== '' && <p><strong>Person:</strong> <span>{data.customer_salesperson_name || data.person_name}</span></p>}
-                                {data.delivery_challan_number && <p><strong>Ref D/C#:</strong> <span>{data.delivery_challan_number}</span></p>}
-                            </div>
-                        </div>
+                <div className="inv-header-container">
+                    <div className="inv-header-left">
+                        <strong>Invoice to:</strong>
+                        <p className="customer-name" style={{ marginTop: 5, marginBottom: 2 }}>{data.customer_name}</p>
+                        <p className="customer-details" style={{ margin: 0 }}>{data.customer_address || 'Address not provided'}</p>
+                        {data.customer_phone && <p className="customer-contact" style={{ margin: 0 }}>Ph: {data.customer_phone}</p>}
+                        {data.customer_gst_number && <p style={{ margin: 0 }}><strong>STRN #</strong> {data.customer_gst_number}</p>}
+                        {data.customer_ntn_number && <p style={{ margin: 0 }}><strong>NTN #</strong> {data.customer_ntn_number}</p>}
+                        {data.customer_attention_person && <p style={{ margin: 0 }}><strong>Attention:</strong> {data.customer_attention_person}</p>}
                     </div>
-                </>
+
+                    <div className="inv-header-right">
+                        <p><strong>Invoice #</strong> <span>{getNumber()}</span></p>
+                        <p><strong>Date:</strong> <span>{formatDate(getDate())}</span></p>
+                        <p><strong>PO#</strong> <span>{data.dc_po_number || data.po_number || company?.po_number || '-'}</span></p>
+                        {data.delivery_challan_number && <p><strong>Ref D/C #</strong> <span>{data.delivery_challan_number}</span></p>}
+                        {company.gst_registration_number && <p><strong>Our STRN #</strong> <span>{company.gst_registration_number}</span></p>}
+                        {company.tax_number && <p><strong>Our NTN #</strong> <span>{company.tax_number}</span></p>}
+                    </div>
+                </div>
             )}
             {isBill && (
                 <div className="bill-info-section">
@@ -244,8 +249,8 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
                         {data.person_name != null && String(data.person_name).trim() !== '' && (
                             <p><strong>Ref:</strong>  {data.person_name}</p>
                         )}
-                        {company.po_number != null && String(company.po_number).trim() !== '' && (
-                            <p><strong>PO No:</strong> {company.po_number}</p>
+                        {(data.dc_po_number ?? data.po_number) != null && String(data.dc_po_number || data.po_number).trim() !== '' && (
+                            <p><strong>PO No:</strong> {data.dc_po_number || data.po_number}</p>
                         )}
                         {data.customer_pr_number != null && String(data.customer_pr_number).trim() !== '' && (
                             <p><strong>PR No:</strong> {data.customer_pr_number}</p>
@@ -257,39 +262,26 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
                 <div className="info-section">
                     <div className="bill-to">
                         <strong>To:</strong>
-                        <p className="customer-name">{data.customer_name}</p>
-                        <p className="customer-details">{data.customer_address || 'Address not provided'}</p>
-                        <p className="customer-contact">{data.customer_phone}</p>
-                        {(data.customer_attention_person || data.attention_person) && (
-                            <p className="attention-person"><strong>Attention:</strong> {data.customer_attention_person || data.attention_person}</p>
-                        )}
-                        {data.customer_gst_number && <p><strong>GST No:</strong> {data.customer_gst_number}</p>}
-                        {data.customer_ntn_number && <p><strong>NTN:</strong> {data.customer_ntn_number}</p>}
-                        {/* Show PR No in header based on document type */}
-                        {type !== 'challan' && (data.pr_number || data.customer_pr_number) && (
-                            <p className="customer-pr"><strong>Customer PR No:</strong> {data.pr_number || data.customer_pr_number}</p>
-                        )}
+                        <p className="customer-name" style={{ marginTop: 5, marginBottom: 2 }}>{data.customer_name}</p>
+                        <p className="customer-details" style={{ margin: 0 }}>{data.customer_address || 'Address not provided'}</p>
+                        {data.customer_phone && <p className="customer-contact" style={{ margin: 0 }}>Ph: {data.customer_phone}</p>}
+                        {data.customer_gst_number && <p style={{ margin: 0 }}><strong>STRN #</strong> {data.customer_gst_number}</p>}
+                        {data.customer_ntn_number && <p style={{ margin: 0 }}><strong>NTN #</strong> {data.customer_ntn_number}</p>}
                     </div>
-                    <div className="doc-info">
-                        <p><strong>{getNumberLabel()}</strong> {getNumber()}</p>
-                        <p><strong>Date:</strong> {formatDate(getDate())}</p>
-                        {type === 'challan' && data.customer_salesperson_name && (
-                            <p><strong>Sales Person:</strong> {data.customer_salesperson_name}</p>
-                        )}
-                        {type === 'challan' && data.customer_po_number && (
-                            <p><strong>PO No:</strong> {data.customer_po_number}</p>
+                    <div className="doc-info" style={{ textAlign: 'right', minWidth: '220px' }}>
+                        <p><strong style={{ display: 'inline-block', width: '100px' }}>{getNumberLabel()}</strong> <span style={{ display: 'inline-block', width: '120px', textAlign: 'left' }}>{getNumber() || '-'}</span></p>
+                        <p><strong style={{ display: 'inline-block', width: '100px' }}>Date:</strong> <span style={{ display: 'inline-block', width: '120px', textAlign: 'left' }}>{getDate() ? formatDate(getDate()) : '-'}</span></p>
+                        {type === 'quotation' ? (
+                             <p><strong style={{ display: 'inline-block', width: '100px' }}>PR No:</strong> <span style={{ display: 'inline-block', width: '120px', textAlign: 'left' }}>{data.pr_number || '-'}</span></p>
+                        ) : (
+                             <p><strong style={{ display: 'inline-block', width: '100px' }}>PO No:</strong> <span style={{ display: 'inline-block', width: '120px', textAlign: 'left' }}>{data.po_number || ''}</span></p>
                         )}
                         {data.delivery_challan_number && (
-                            <p><strong>DC No:</strong> {data.delivery_challan_number}</p>
+                            <p><strong style={{ display: 'inline-block', width: '100px' }}>DC No:</strong> <span style={{ display: 'inline-block', width: '120px', textAlign: 'left' }}>{data.delivery_challan_number}</span></p>
                         )}
-                        {data.expiry_date && <p><strong>Valid Until:</strong> {formatDate(data.expiry_date)}</p>}
-                        
-                        {(data.pr_number || data.customer_pr_number) && (
-                            <p><strong>PR No:</strong> {data.pr_number || data.customer_pr_number}</p>
-                        )}
-
-                        {type !== 'quotation' && data.customer_salesperson_name && (
-                            <p><strong>Sales Person:</strong> {data.customer_salesperson_name}</p>
+                        {data.expiry_date && <p><strong style={{ display: 'inline-block', width: '100px' }}>Valid Until:</strong> <span style={{ display: 'inline-block', width: '120px', textAlign: 'left' }}>{formatDate(data.expiry_date)}</span></p>}
+                        {type === 'challan' && data.customer_salesperson_name && (
+                            <p><strong style={{ display: 'inline-block', width: '100px' }}>Sales Person:</strong> <span style={{ display: 'inline-block', width: '120px', textAlign: 'left' }}>{data.customer_salesperson_name}</span></p>
                         )}
                     </div>
                 </div>
@@ -315,26 +307,29 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
                         summary={(pageData) => {
                             if (!isInvoice) return null;
                             let totalQty = 0;
-                            let totalSub = 0;
+                            let totalUnitPrice = 0;
+                            let totalExcl = 0;
                             let totalTax = 0;
                             let totalGrand = 0;
 
                             (pageData as any[]).forEach(({ quantity, unit_price, gst_amount, line_total }) => {
-                                totalQty += Number(quantity) || 0;
-                                totalSub += (Number(quantity) || 0) * (Number(unit_price) || 0);
+                                const qty = Number(quantity) || 0;
+                                const up = Number(unit_price) || 0;
+                                totalQty += qty;
+                                totalUnitPrice += up;
+                                totalExcl += (qty * up);
                                 totalTax += Number(gst_amount) || 0;
                                 totalGrand += Number(line_total) || 0;
                             });
 
                             return (
-                                <Table.Summary.Row>
-                                    <Table.Summary.Cell index={0} colSpan={4}><strong>Totals</strong></Table.Summary.Cell>
-                                    <Table.Summary.Cell index={1} align="right"><strong>{totalQty}</strong></Table.Summary.Cell>
-                                    <Table.Summary.Cell index={2}></Table.Summary.Cell>
-                                    <Table.Summary.Cell index={3} align="right"><strong>{totalSub.toLocaleString()}</strong></Table.Summary.Cell>
-                                    <Table.Summary.Cell index={4}></Table.Summary.Cell>
-                                    <Table.Summary.Cell index={5} align="right"><strong>{totalTax.toLocaleString()}</strong></Table.Summary.Cell>
-                                    <Table.Summary.Cell index={6} align="right"><strong>{totalGrand.toLocaleString()}</strong></Table.Summary.Cell>
+                                <Table.Summary.Row style={{ background: '#fafafa', fontWeight: 'bold' }}>
+                                    <Table.Summary.Cell index={0} colSpan={3} align="right">TOTAL</Table.Summary.Cell>
+                                    <Table.Summary.Cell index={1} align="center">{totalQty}</Table.Summary.Cell>
+                                    <Table.Summary.Cell index={2} align="right">{totalUnitPrice.toLocaleString()}</Table.Summary.Cell>
+                                    <Table.Summary.Cell index={3} align="right">{totalExcl.toLocaleString()}</Table.Summary.Cell>
+                                    <Table.Summary.Cell index={4} align="right">{totalTax.toLocaleString()}</Table.Summary.Cell>
+                                    <Table.Summary.Cell index={5} align="right">{totalGrand.toLocaleString()}</Table.Summary.Cell>
                                 </Table.Summary.Row>
                             );
                         }}

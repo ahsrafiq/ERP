@@ -23,6 +23,8 @@ interface LedgerEntry {
   debit: number;
   credit: number;
   balance: number;
+  taxDeductionRate?: number;
+  taxDeductionAmount?: number;
 }
 
 const CustomerLedgerReport: React.FC = () => {
@@ -94,6 +96,8 @@ const CustomerLedgerReport: React.FC = () => {
           description: `Payment Received${p.payment_method ? ` (${p.payment_method})` : ''}${p.notes ? ' — ' + p.notes : ''}`,
           debit: 0,
           credit: Number(p.amount) || 0,
+          taxDeductionRate: Number(p.tax_deduction_rate) || 0,
+          taxDeductionAmount: Number(p.tax_deduction) || 0,
         })),
       ];
 
@@ -151,6 +155,16 @@ const CustomerLedgerReport: React.FC = () => {
       render: (v: number) => v > 0
         ? <Text style={{ color: '#389e0d' }}>{Number(v).toLocaleString()}</Text>
         : <Text type="secondary">—</Text>,
+    },
+    {
+      title: 'Tax Ded %',
+      dataIndex: 'taxDeductionRate', key: 'taxDeductionRate', align: 'right' as const,
+      render: (v: number, row: LedgerEntry) => row.type === 'payment' && v ? `${v}%` : '—',
+    },
+    {
+      title: 'Tax Ded Amt',
+      dataIndex: 'taxDeductionAmount', key: 'taxDeductionAmount', align: 'right' as const,
+      render: (v: number, row: LedgerEntry) => row.type === 'payment' && v ? <Text style={{ color: '#fa8c16' }}>{Number(v).toLocaleString()}</Text> : '—',
     },
     {
       title: 'Balance',

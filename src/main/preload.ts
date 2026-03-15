@@ -27,6 +27,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     customers: {
       getAll: (companyId: number) => ipcRenderer.invoke('db:customers:getAll', companyId),
       getById: (id: number) => ipcRenderer.invoke('db:customers:getById', id),
+      getUnpaidInvoices: (customerId: number, companyId?: number) => ipcRenderer.invoke('db:customers:getUnpaidInvoices', customerId, companyId),
       create: (customer: any) => ipcRenderer.invoke('db:customers:create', customer),
       update: (id: number, customer: any) => ipcRenderer.invoke('db:customers:update', id, customer),
       delete: (id: number) => ipcRenderer.invoke('db:customers:delete', id),
@@ -82,8 +83,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       update: (id: number, challan: any) => ipcRenderer.invoke('db:deliveryChallans:update', id, challan),
       delete: (id: number) => ipcRenderer.invoke('db:deliveryChallans:delete', id),
       createFromInvoice: (invoiceId: number, createdBy?: number) => ipcRenderer.invoke('db:deliveryChallans:createFromInvoice', invoiceId, createdBy),
-      createFromQuotation: (quotationId: number, createdBy?: number, selectedItemIds?: number[]) =>
-        ipcRenderer.invoke('db:deliveryChallans:createFromQuotation', quotationId, createdBy, selectedItemIds),
+      createFromQuotation: (quotationId: number, createdBy?: number, selectedItems?: any[], poNumber?: string) =>
+        ipcRenderer.invoke('db:deliveryChallans:createFromQuotation', quotationId, createdBy, selectedItems, poNumber),
     },
     purchaseInvoices: {
       getAll: (companyId: number, filters?: any) => ipcRenderer.invoke('db:purchaseInvoices:getAll', companyId, filters),
@@ -105,6 +106,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       getAll: (companyId: number, filters?: any) => ipcRenderer.invoke('db:payments:getAll', companyId, filters),
       getByInvoice: (type: string, id: number) => ipcRenderer.invoke('db:payments:getByInvoice', type, id),
       create: (payment: any) => ipcRenderer.invoke('db:payments:create', payment),
+      update: (id: number, payment: any) => ipcRenderer.invoke('db:payments:update', id, payment),
       delete: (id: number) => ipcRenderer.invoke('db:payments:delete', id),
     },
     dashboard: {

@@ -3,12 +3,13 @@ import { Table, Button, Space, Modal, Form, Input, InputNumber, Select, DatePick
 import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined, LockOutlined, MinusSquareOutlined, CloseOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useApp } from '../../context/AppContext';
+import { useLocation } from 'react-router-dom';
 
 const Expenses: React.FC = () => {
   const { currentCompany, user, minimizeModal } = useApp();
+  const location = useLocation();
   const [expenses, setExpenses] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
-  const [vendors, setVendors] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingExpense, setEditingExpense] = useState<any>(null);
@@ -28,11 +29,15 @@ const Expenses: React.FC = () => {
 
   useEffect(() => {
     if (currentCompany) {
-      loadExpenses();
-      loadCategories();
-      loadVendors();
+      if (location.pathname === '/expenses/list') {
+        loadExpenses();
+        loadCategories();
+      } else if (expenses.length === 0) {
+        loadExpenses();
+        loadCategories();
+      }
     }
-  }, [currentCompany]);
+  }, [currentCompany, location.pathname]);
 
   const loadExpenses = async () => {
     if (!currentCompany) return;
@@ -61,17 +66,6 @@ const Expenses: React.FC = () => {
     }
   };
 
-  const loadVendors = async () => {
-    if (!currentCompany) return;
-    try {
-      const result = await (window as any).electronAPI.db.vendors.getAll(currentCompany.id);
-      if (result.success) {
-        setVendors(result.data || []);
-      }
-    } catch (error) {
-      console.error('Failed to load vendors');
-    }
-  };
 
   const handleSave = async (values: any) => {
     if (!currentCompany) return;
@@ -80,7 +74,7 @@ const Expenses: React.FC = () => {
         ...values,
         company_id: currentCompany.id,
         expense_date: values.expense_date?.format?.('YYYY-MM-DD') || values.expense_date,
-        total_amount: (Number(values.amount) || 0) + (Number(values.tax_amount) || 0),
+        total_amount: Number(values.amount) || 0,
       };
 
       if (editingExpense) {
@@ -265,7 +259,10 @@ const Expenses: React.FC = () => {
                 minimizeModal({
                   id: editingExpense ? `expense-edit-${editingExpense.id}` : 'expense-new',
                   title: editingExpense ? `Edit Expense ${expNum}` : `New Expense ${expNum}`,
-                  onRestore: () => setModalVisible(true)
+                  onRestore: () => {
+                    setEditingExpense(editingExpense);
+                    setModalVisible(true);
+                  }
                 });
               }} 
             />
@@ -288,19 +285,7 @@ const Expenses: React.FC = () => {
               ))}
             </Select>
           </Form.Item>
-          <Form.Item name="vendor_id" label="Vendor">
-            <Select allowClear>
-              {vendors.map(vendor => (
-                <Select.Option key={vendor.id} value={vendor.id}>
-                  {vendor.name}
-                </Select.Option>
-              ))}
-            </Select>
-          </Form.Item>
           <Form.Item name="amount" label="Amount" rules={[{ required: true }]}>
-            <InputNumber min={0} style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item name="tax_amount" label="Tax Amount" initialValue={0}>
             <InputNumber min={0} style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item name="description" label="Description">

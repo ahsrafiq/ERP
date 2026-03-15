@@ -27,7 +27,7 @@ interface LayoutProps {
 }
 
 const Layout: React.FC<LayoutProps> = ({ children }) => {
-  const [collapsed, setCollapsed] = useState(true);
+  const [collapsed, setCollapsed] = useState(false);
   const [fiscalYearInput, setFiscalYearInput] = useState<string | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
@@ -261,18 +261,25 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         {minimizedModals.length > 0 && (
           <div className="minimized-modals-bar">
             {minimizedModals.map((modal) => (
-              <div key={modal.id} className="minimized-modal-item" onClick={() => restoreModal(modal.id)}>
-                <Space>
+              <div key={modal.id} className="minimized-modal-item">
+                <span className="minimized-modal-item-restore" onClick={() => {
+                  if (modal.returnPath && modal.returnPath !== location.pathname) {
+                    navigate(modal.returnPath);
+                    setTimeout(() => restoreModal(modal), 10);
+                  } else {
+                    restoreModal(modal);
+                  }
+                }}>
                   <FileTextOutlined style={{ color: '#1890ff' }} />
                   <span className="modal-title">{modal.title}</span>
-                  <CloseOutlined 
-                    className="modal-close-icon"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      removeMinimizedModal(modal.id);
-                    }} 
-                  />
-                </Space>
+                </span>
+                <CloseOutlined 
+                  className="modal-close-icon"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    removeMinimizedModal(modal.id);
+                  }} 
+                />
               </div>
             ))}
           </div>

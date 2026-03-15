@@ -2,11 +2,13 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Table, Button, Space, Modal, Form, Input, InputNumber, Select, DatePicker, message, notification, Tag, Tooltip, Alert } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, DollarOutlined, WarningOutlined, MinusCircleOutlined, BoldOutlined, UploadOutlined, SearchOutlined, LockOutlined, MinusSquareOutlined, CloseOutlined } from '@ant-design/icons';
 import { useApp } from '../../context/AppContext';
+import { useLocation } from 'react-router-dom';
 import dayjs from 'dayjs';
 import { parseExcelToRows, getCol, getColNum } from '../../utils/excelImport';
 
 const Customers: React.FC = () => {
   const { currentCompany, user, minimizeModal } = useApp();
+  const location = useLocation();
   const [customers, setCustomers] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
@@ -35,8 +37,14 @@ const Customers: React.FC = () => {
   const isReadOnlySection = !isAdminUser && salesPerm === 'read';
 
   useEffect(() => {
-    if (currentCompany) loadCustomers();
-  }, [currentCompany]);
+    if (currentCompany) {
+      if (location.pathname === '/sales/customers') {
+        loadCustomers();
+      } else if (customers.length === 0) {
+        loadCustomers();
+      }
+    }
+  }, [currentCompany, location.pathname]);
 
   const loadCustomers = async () => {
     if (!currentCompany) return;
@@ -340,7 +348,10 @@ const Customers: React.FC = () => {
                 minimizeModal({
                   id: editingCustomer ? `cust-edit-${editingCustomer.id}` : 'cust-new',
                   title: editingCustomer ? `Edit Customer ${custName}` : `New Customer ${custName}`,
-                  onRestore: () => setModalVisible(true)
+                  onRestore: () => {
+                    setEditingCustomer(editingCustomer);
+                    setModalVisible(true);
+                  }
                 });
               }} 
             />
@@ -479,7 +490,7 @@ const Customers: React.FC = () => {
         <p><strong>Optional columns:</strong></p>
         <ul style={{ marginBottom: 0, paddingLeft: 20 }}>
           <li>Email, Phone, Address, City, State, Country, Postal Code</li>
-          <li>Tax Number (NTN), Attention Person, Sales Person, GST Number, PO Number</li>
+          <li>Tax Number (NTN), Attention Person, Sales Person, GST Number, Opening Balance</li>
         </ul>
       </Modal>
 

@@ -5,7 +5,7 @@ import dayjs from 'dayjs';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import PrintTemplate from '../../components/PrintTemplate';
-import * as XLSX from 'xlsx';
+import XLSX from 'xlsx-js-style';
 
 const DeliveryChallans: React.FC = () => {
     const { currentCompany, companies, user, fiscalYear, minimizeModal } = useApp();
@@ -81,12 +81,21 @@ const DeliveryChallans: React.FC = () => {
 
     useEffect(() => {
         if (currentCompany) {
-            loadChallans();
-            loadCustomers();
-            loadItems();
-            loadBrands();
+            // If we navigated to this page, reload the latest data
+            if (location.pathname === '/sales/delivery-challans') {
+                loadChallans();
+                loadCustomers();
+                loadItems();
+                loadBrands();
+            } else if (challans.length === 0) {
+                // Initial background load
+                loadChallans();
+                loadCustomers();
+                loadItems();
+                loadBrands();
+            }
         }
-    }, [currentCompany]);
+    }, [currentCompany, location.pathname]);
 
     useEffect(() => {
         if (location.state?.editChallanId && customers.length > 0 && items.length > 0) {
@@ -232,6 +241,7 @@ const DeliveryChallans: React.FC = () => {
                 items: itemsWithBrandId,
                 challan_date: dayjs(result.data.challan_date),
                 terms_and_conditions: terms,
+                po_number: result.data.po_number ?? '',
             });
             setModalVisible(true);
         } else {
@@ -378,6 +388,7 @@ const DeliveryChallans: React.FC = () => {
 
     const columns = [
         { title: 'Challan #', dataIndex: 'challan_number', key: 'challan_number' },
+        { title: 'PO #', dataIndex: 'po_number', key: 'po_number' },
         { title: 'Customer', dataIndex: 'customer_name', key: 'customer' },
         { title: 'Date', dataIndex: 'challan_date', key: 'date', render: (d: string) => dayjs(d).format('DD/MM/YYYY') },
         { title: 'Total Qty', dataIndex: 'total_quantity', key: 'qty' },
@@ -425,17 +436,90 @@ const DeliveryChallans: React.FC = () => {
         (c.customer_name || '').toLowerCase().includes(searchQuery.toLowerCase())
     );
 
-    const handleExportExcel = () => {
-        const data = filteredChallans.map((c: any) => ({
-            'Challan #': c.challan_number || '',
-            'Customer': c.customer_name || '',
-            'Date': c.challan_date ? dayjs(c.challan_date).format('DD/MM/YYYY') : '',
-            'Total Qty': c.total_quantity || 0,
-        }));
-        const ws = XLSX.utils.json_to_sheet(data);
+    const handleExportExcelSingle = () => {
+        if (!printData) return;
+        
+        const company = (companies || []).find((c: any) => c.id === printData.company_id) || currentCompany;
+
         const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, 'Delivery Challans');
-        XLSX.writeFile(wb, `DeliveryChallans_${dayjs().format('YYYYMMDD')}.xlsx`);
+
+        // Define styles
+        const titleStyle = { font: { bold: true, size: 16 } };
+        const labelStyle = { font: { bold: true } };
+        const headerStyle = {
+            font: { bold: true, color: { rgb: "FFFFFF" } },
+            fill: { fgColor: { rgb: "333333" } },
+            alignment: { horizontal: "center", vertical: "center" },
+            border: {
+                top: { style: "thin" },
+                bottom: { style: "thin" },
+                left: { style: "thin" },
+                right: { style: "thin" }
+            }
+        };
+        const itemStyle = {
+            alignment: { vertical: "center" },
+            border: {
+                top: { style: "thin" }, bottom: { style: "thin" },
+                left: { style: "thin" }, right: { style: "thin" }
+            }
+        };
+        const numberStyle = { ...itemStyle, alignment: { horizontal: "right", vertical: "center" } };
+
+        const wsData: any[][] = [
+            [{ v: 'DELIVERY CHALLAN', s: titleStyle }],
+            [],
+            [{ v: 'Company:', s: labelStyle }, company?.name || ''],
+            [{ v: 'Date:', s: labelStyle }, dayjs(printData.challan_date).format('DD/MM/YYYY')],
+            [{ v: 'Challan #:', s: labelStyle }, printData.challan_number],
+            [{ v: 'PO #:', s: labelStyle }, printData.po_number || ''],
+            [{ v: 'Customer:', s: labelStyle }, printData.customer_name || ''],
+            [],
+            [
+                { v: 'S.No', s: headerStyle },
+                { v: 'Brand', s: headerStyle },
+                { v: 'Item', s: headerStyle },
+                { v: 'Description', s: headerStyle },
+                { v: 'Qty', s: headerStyle }
+            ]
+        ];
+
+        // Add items
+        let totalQty = 0;
+        (printData.items || []).forEach((it: any, index: number) => {
+            const qty = Number(it.quantity || 0);
+            totalQty += qty;
+            wsData.push([
+                { v: index + 1, s: itemStyle },
+                { v: it.brand || '', s: itemStyle },
+                { v: it.item_name || '', s: itemStyle },
+                { v: it.description || '', s: itemStyle },
+                { v: qty, s: numberStyle }
+            ]);
+        });
+
+        // Add footer for total quantity
+        const footerStyle = { font: { bold: true }, alignment: { horizontal: "right" } };
+        wsData.push([]);
+        wsData.push([
+            '', '', '', 
+            { v: 'Total Quantity:', s: footerStyle }, 
+            { v: totalQty, s: { ...footerStyle, alignment: { horizontal: "right" } } }
+        ]);
+
+        const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+        // Set column widths
+        ws['!cols'] = [
+            { wch: 6 },  // S.No
+            { wch: 15 }, // Brand
+            { wch: 25 }, // Item
+            { wch: 45 }, // Description
+            { wch: 10 }  // Qty
+        ];
+
+        XLSX.utils.book_append_sheet(wb, ws, 'Delivery Challan');
+        XLSX.writeFile(wb, `${printData.challan_number}.xlsx`);
         message.success('Exported to Excel');
     };
 
@@ -459,7 +543,6 @@ const DeliveryChallans: React.FC = () => {
                             New Challan
                         </Button>
                     )}
-                    <Button onClick={handleExportExcel}>Export to Excel</Button>
                 </Space>
             </div>
 
@@ -483,7 +566,10 @@ const DeliveryChallans: React.FC = () => {
                         minimizeModal({
                           id: editingChallan ? `dc-edit-${editingChallan.id}` : 'dc-new',
                           title: editingChallan ? `Edit DC ${dcNum}` : `New DC ${dcNum}`,
-                          onRestore: () => setModalVisible(true)
+                          onRestore: () => {
+                            setEditingChallan(editingChallan);
+                            setModalVisible(true);
+                          }
                         });
                       }} 
                     />
@@ -645,6 +731,7 @@ const DeliveryChallans: React.FC = () => {
                         </div>
                         <Space>
                             <Button onClick={() => { setIsPreviewVisible(false); setPrintData(null); }}>Close</Button>
+                            <Button key="excel" onClick={handleExportExcelSingle}>Export to Excel</Button>
                             <Button icon={<PrinterOutlined />} onClick={handleSavePDF}>Save as PDF</Button>
                             <Button type="primary" onClick={actualPrint}>Print</Button>
                         </Space>

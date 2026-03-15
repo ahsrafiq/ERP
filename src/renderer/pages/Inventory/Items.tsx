@@ -2,10 +2,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Table, Button, Space, Modal, Form, Input, InputNumber, Select, AutoComplete, message, notification, Alert } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, UploadOutlined, SearchOutlined, LockOutlined, MinusSquareOutlined, CloseOutlined } from '@ant-design/icons';
 import { useApp } from '../../context/AppContext';
+import { useLocation } from 'react-router-dom';
 import { parseExcelToRows, getCol, getColNum } from '../../utils/excelImport';
 
 const Items: React.FC = () => {
   const { currentCompany, user, minimizeModal } = useApp();
+  const location = useLocation();
   const [items, setItems] = useState<any[]>([]);
   const [brands, setBrands] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -33,8 +35,14 @@ const Items: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    loadItems();
-  }, [currentCompany?.id]);
+    if (currentCompany?.id) {
+      if (location.pathname === '/inventory/items') {
+        loadItems();
+      } else if (items.length === 0) {
+        loadItems();
+      }
+    }
+  }, [currentCompany?.id, location.pathname]);
 
   const loadItems = async () => {
     setLoading(true);
@@ -407,7 +415,10 @@ const Items: React.FC = () => {
                 minimizeModal({
                   id: editingItem ? `item-edit-${editingItem.id}` : 'item-new',
                   title: editingItem ? `Edit Item ${itemName}` : `New Item ${itemName}`,
-                  onRestore: () => setModalVisible(true)
+                  onRestore: () => {
+                    setEditingItem(editingItem);
+                    setModalVisible(true);
+                  }
                 });
               }} 
             />

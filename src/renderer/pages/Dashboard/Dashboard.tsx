@@ -27,6 +27,7 @@ import {
 } from 'recharts';
 import dayjs, { Dayjs } from 'dayjs';
 import { useApp } from '../../context/AppContext';
+import { useLocation } from 'react-router-dom';
 import './Dashboard.css';
 
 const { RangePicker } = DatePicker;
@@ -34,6 +35,7 @@ const { Option } = Select;
 
 const Dashboard: React.FC = () => {
   const { currentCompany } = useApp();
+  const location = useLocation();
   const [loading, setLoading] = useState(false);
   const [dateRange, setDateRange] = useState<[Dayjs, Dayjs]>([
     dayjs().startOf('month'),
@@ -52,9 +54,13 @@ const Dashboard: React.FC = () => {
 
   useEffect(() => {
     if (currentCompany) {
-      loadDashboardData();
+      if (location.pathname === '/') {
+        loadDashboardData();
+      } else if (Object.keys(kpis).length === 0) {
+        loadDashboardData();
+      }
     }
-  }, [currentCompany, dateRange, period]);
+  }, [currentCompany, dateRange, period, location.pathname]);
 
   const loadDashboardData = async () => {
     if (!currentCompany) return;

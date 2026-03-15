@@ -5,7 +5,7 @@ import dayjs from 'dayjs';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import PrintTemplate from '../../components/PrintTemplate';
-import * as XLSX from 'xlsx';
+import XLSX from 'xlsx-js-style';
 
 const VALIDITY_STORAGE_KEY = 'erp_validity_suggestions';
 const REMARKS_STORAGE_KEY = 'erp_remarks_suggestions';
@@ -62,6 +62,7 @@ const SalesQuotations: React.FC = () => {
     const [dcSourceQuotation, setDcSourceQuotation] = useState<any>(null);
     const [dcSelectedItems, setDcSelectedItems] = useState<React.Key[]>([]);
     const [dcItemQuantities, setDcItemQuantities] = useState<{ [key: number]: number }>({});
+    const [dcPoNumber, setDcPoNumber] = useState('');
 
     // Autocomplete suggestions
     const [validitySuggestions, setValiditySuggestions] = useState<string[]>([]);
@@ -84,12 +85,19 @@ const SalesQuotations: React.FC = () => {
 
     useEffect(() => {
         if (currentCompany) {
-            loadQuotations();
-            loadCustomers();
-            loadItems();
-            loadBrands();
+            if (location.pathname === '/sales/quotations') {
+                loadQuotations();
+                loadCustomers();
+                loadItems();
+                loadBrands();
+            } else if (quotations.length === 0) {
+                loadQuotations();
+                loadCustomers();
+                loadItems();
+                loadBrands();
+            }
         }
-    }, [currentCompany]);
+    }, [currentCompany, location.pathname]);
 
     useEffect(() => {
         if (location.state?.editQuotationId && customers.length > 0) {
@@ -273,7 +281,10 @@ const SalesQuotations: React.FC = () => {
                     const initialQuants: any = {};
                     result.data.items.forEach((it: any, i: number) => { initialQuants[i] = it.quantity; });
                     setDcItemQuantities(initialQuants);
-                    setDcSelectionModal(true);
+                    if (result.data.items.length > 0) {
+                        setDcPoNumber('');
+                        setDcSelectionModal(true);
+                    }
                 } else {
                     notification.error({ message: 'Error', description: 'Quotation has no items', duration: 0 });
                 }
@@ -317,7 +328,8 @@ const SalesQuotations: React.FC = () => {
                     description: it.description,
                     unit_price: it.unit_price,
                     brand_id: it.brand_id, // backend should handle this
-                }))
+                })),
+                dcPoNumber?.trim()
             );
             if (result.success && result.data) {
                 message.success(`Delivery Challan ${result.data.challan_number} created`);
@@ -553,18 +565,93 @@ const SalesQuotations: React.FC = () => {
         (q.customer_name || '').toLowerCase().includes(searchQuery.toLowerCase())
     );
 
-    const handleExportExcel = () => {
-        const data = filteredQuotations.map((q: any) => ({
-            'Quotation #': q.quotation_number || '',
-            'PR #': q.pr_number || '',
-            'Customer': q.customer_name || '',
-            'Date': q.quotation_date ? dayjs(q.quotation_date).format('DD/MM/YYYY') : '',
-            'Total Amount': q.total_amount ? Number(q.total_amount).toFixed(2) : '0.00',
-        }));
-        const ws = XLSX.utils.json_to_sheet(data);
+    const handleExportExcelSingle = () => {
+        if (!printData) return;
+        
+        const company = (companies || []).find((c: any) => c.id === printData.company_id) || currentCompany;
+
         const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, 'Quotations');
-        XLSX.writeFile(wb, `Quotations_${dayjs().format('YYYYMMDD')}.xlsx`);
+        
+        // Define styles
+        const titleStyle = { font: { bold: true, size: 16 } };
+        const labelStyle = { font: { bold: true } };
+        const headerStyle = {
+            font: { bold: true, color: { rgb: "FFFFFF" } },
+            fill: { fgColor: { rgb: "333333" } },
+            alignment: { horizontal: "center", vertical: "center" },
+            border: {
+                top: { style: "thin" },
+                bottom: { style: "thin" },
+                left: { style: "thin" },
+                right: { style: "thin" }
+            }
+        };
+        const itemStyle = {
+            alignment: { vertical: "center" },
+            border: {
+                top: { style: "thin" }, bottom: { style: "thin" },
+                left: { style: "thin" }, right: { style: "thin" }
+            }
+        };
+        const numberStyle = { ...itemStyle, alignment: { horizontal: "right", vertical: "center" } };
+        const footerStyle = { font: { bold: true }, alignment: { horizontal: "right" } };
+
+        const wsData: any[][] = [
+            [{ v: 'SALES QUOTATION', s: titleStyle }],
+            [],
+            [{ v: 'Company:', s: labelStyle }, company?.name || ''],
+            [{ v: 'Date:', s: labelStyle }, dayjs(printData.quotation_date).format('DD/MM/YYYY')],
+            [{ v: 'Quotation #:', s: labelStyle }, printData.quotation_number],
+            [{ v: 'PR #:', s: labelStyle }, printData.pr_number || ''],
+            [{ v: 'Customer:', s: labelStyle }, printData.customer_name || ''],
+            [],
+            [
+                { v: 'S.No', s: headerStyle },
+                { v: 'Brand', s: headerStyle },
+                { v: 'Item', s: headerStyle },
+                { v: 'Description', s: headerStyle },
+                { v: 'Qty', s: headerStyle },
+                { v: 'Unit Price', s: headerStyle },
+                { v: 'Total', s: headerStyle }
+            ]
+        ];
+
+        // Add items
+        (printData.items || []).forEach((it: any, index: number) => {
+            wsData.push([
+                { v: index + 1, s: itemStyle },
+                { v: it.brand || '', s: itemStyle },
+                { v: it.item_name || '', s: itemStyle },
+                { v: it.description || '', s: itemStyle },
+                { v: it.quantity || 0, s: numberStyle },
+                { v: it.unit_price || 0, s: numberStyle },
+                { v: (it.quantity || 0) * (it.unit_price || 0), s: numberStyle }
+            ]);
+        });
+
+        // Add footer
+        wsData.push([]);
+        wsData.push([
+            '', '', '', '', '', 
+            { v: 'Total Amount:', s: footerStyle }, 
+            { v: printData.total_amount || 0, s: { ...footerStyle, alignment: { horizontal: "right" } } }
+        ]);
+
+        const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+        // Set column widths
+        ws['!cols'] = [
+            { wch: 6 },  // S.No
+            { wch: 15 }, // Brand
+            { wch: 25 }, // Item
+            { wch: 40 }, // Description
+            { wch: 10 }, // Qty
+            { wch: 12 }, // Unit Price
+            { wch: 15 }  // Total
+        ];
+
+        XLSX.utils.book_append_sheet(wb, ws, 'Quotation');
+        XLSX.writeFile(wb, `${printData.quotation_number}.xlsx`);
         message.success('Exported to Excel');
     };
 
@@ -593,7 +680,6 @@ const SalesQuotations: React.FC = () => {
                             New Quotation
                         </Button>
                     )}
-                    <Button onClick={handleExportExcel}>Export to Excel</Button>
                 </Space>
             </div>
 
@@ -618,7 +704,10 @@ const SalesQuotations: React.FC = () => {
                         minimizeModal({
                           id: editingQuotation ? `quo-edit-${editingQuotation.id}` : 'quo-new',
                           title: editingQuotation ? `Edit Quotation ${quoNum}` : `New Quotation ${quoNum}`,
-                          onRestore: () => setModalVisible(true)
+                          onRestore: () => {
+                            setEditingQuotation(editingQuotation);
+                            setModalVisible(true);
+                          }
                         });
                       }} 
                     />
@@ -837,6 +926,15 @@ const SalesQuotations: React.FC = () => {
                 okText="Create DC"
                 width={700}
             >
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ fontWeight: 500, display: 'block', marginBottom: 4 }}>PO Number (Optional)</label>
+                  <Input 
+                    placeholder="Enter PO Number" 
+                    value={dcPoNumber} 
+                    onChange={e => setDcPoNumber(e.target.value)} 
+                    style={{ width: '100%' }}
+                  />
+                </div>
                 {dcSourceQuotation?.items && (
                     <div style={{ maxHeight: 400, overflowY: 'auto' }}>
                         <Table
@@ -885,6 +983,7 @@ const SalesQuotations: React.FC = () => {
                 width={900}
                 footer={[
                     <Button key="cancel" onClick={() => setIsPreviewVisible(false)}>Close</Button>,
+                    <Button key="excel" onClick={handleExportExcelSingle}>Export to Excel</Button>,
                     <Button key="pdf" icon={<PrinterOutlined />} onClick={handleSavePDF}>Save as PDF</Button>,
                     <Button key="print" type="primary" onClick={actualPrint}>Print</Button>
                 ]}

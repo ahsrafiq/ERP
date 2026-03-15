@@ -202,9 +202,6 @@ const Companies: React.FC = () => {
               <Form.Item name="currency" label="Currency" initialValue="PKR" rules={[{ required: true, message: 'Currency is required' }]}>
                 <Input />
               </Form.Item>
-              <Form.Item name="po_number" label="PO Number" rules={[{ required: true, message: 'PO Number is required' }]}>
-                <Input placeholder="e.g. 2602000229" />
-              </Form.Item>
             </div>
             <div style={{ width: 320 }}>
               <Form.Item label="Letterhead (PDF or Image)" required>

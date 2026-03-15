@@ -3,9 +3,11 @@ import { Table, Button, Space, Modal, Form, Input, InputNumber, Select, DatePick
 import { PlusOutlined, EditOutlined, DeleteOutlined, LockOutlined, StopOutlined, EyeOutlined, SearchOutlined, MinusSquareOutlined, CloseOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useApp } from '../../context/AppContext';
+import { useLocation } from 'react-router-dom';
 
 const PurchaseInvoices: React.FC = () => {
   const { currentCompany, user, minimizeModal } = useApp();
+  const location = useLocation();
   const [invoices, setInvoices] = useState<any[]>([]);
   const [vendors, setVendors] = useState<any[]>([]);
   const [items, setItems] = useState<any[]>([]);
@@ -32,12 +34,19 @@ const PurchaseInvoices: React.FC = () => {
 
   useEffect(() => {
     if (currentCompany) {
-      loadInvoices();
-      loadVendors();
-      loadItems();
-      loadBrands();
+      if (location.pathname === '/purchases/invoices') {
+        loadInvoices();
+        loadVendors();
+        loadItems();
+        loadBrands();
+      } else if (invoices.length === 0) {
+        loadInvoices();
+        loadVendors();
+        loadItems();
+        loadBrands();
+      }
     }
-  }, [currentCompany]);
+  }, [currentCompany, location.pathname]);
 
   const loadBrands = async () => {
     try {
@@ -408,7 +417,10 @@ const PurchaseInvoices: React.FC = () => {
                 minimizeModal({
                   id: editingInvoice ? `pi-edit-${editingInvoice.id}` : 'pi-new',
                   title: editingInvoice ? `Edit PI ${invNum}` : `New PI ${invNum}`,
-                  onRestore: () => setModalVisible(true)
+                  onRestore: () => {
+                    setEditingInvoice(editingInvoice);
+                    setModalVisible(true);
+                  }
                 });
               }} 
             />
