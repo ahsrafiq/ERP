@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Table, Card, Row, Col, DatePicker, Select, Button, Space,
-  Tag, Statistic, Divider, Typography, notification, message,
+  Tag, Statistic, Divider, Typography, notification, message, Input,
 } from 'antd';
 import {
   PrinterOutlined, ArrowLeftOutlined, FileTextOutlined,
@@ -37,6 +37,8 @@ const SalesReport: React.FC = () => {
   ]);
   const [selectedCustomer, setSelectedCustomer] = useState<number | null>(null);
   const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
+  const [itemName, setItemName] = useState('');
+  const [poNumber, setPoNumber] = useState('');
 
   useEffect(() => {
     if (currentCompany) {
@@ -44,11 +46,12 @@ const SalesReport: React.FC = () => {
     }
   }, [currentCompany]);
 
-  useEffect(() => {
-    if (currentCompany) {
-      loadInvoices();
-    }
-  }, [currentCompany, dateRange]);
+  // REMOVED AUTO-LOAD ON dateRange CHANGE
+  // useEffect(() => {
+  //   if (currentCompany) {
+  //     loadInvoices();
+  //   }
+  // }, [currentCompany, dateRange]);
 
   const loadCustomers = async () => {
     try {
@@ -66,14 +69,17 @@ const SalesReport: React.FC = () => {
       const filters: any = {};
       if (dateRange[0]) filters.fromDate = dateRange[0].format('YYYY-MM-DD');
       if (dateRange[1]) filters.toDate = dateRange[1].format('YYYY-MM-DD');
+      if (itemName) filters.itemName = itemName;
+      if (poNumber) filters.poNumber = poNumber;
+
       const res = await (window as any).electronAPI.db.salesInvoices.getAll(currentCompany.id, filters);
       if (res.success) {
         setInvoices(res.data || []);
       } else {
-        notification.error({ message: 'Error', description: 'Failed to load invoices', duration: 0 });
+        notification.error({ message: 'Error', description: 'Failed to load invoices' });
       }
     } catch {
-      notification.error({ message: 'Error', description: 'Failed to load invoices', duration: 0 });
+      notification.error({ message: 'Error', description: 'Failed to load invoices' });
     } finally {
       setLoading(false);
     }
@@ -432,7 +438,7 @@ const SalesReport: React.FC = () => {
             <Select
               allowClear
               placeholder="All Customers"
-              style={{ width: 200 }}
+              style={{ width: 180 }}
               value={selectedCustomer}
               onChange={setSelectedCustomer}
               options={customers.map((c: any) => ({ label: c.name, value: c.id }))}
@@ -442,7 +448,7 @@ const SalesReport: React.FC = () => {
             <Select
               allowClear
               placeholder="All Statuses"
-              style={{ width: 150 }}
+              style={{ width: 120 }}
               value={selectedStatus}
               onChange={setSelectedStatus}
               options={[
@@ -453,7 +459,21 @@ const SalesReport: React.FC = () => {
                 { label: 'Cancelled', value: 'cancelled' },
               ]}
             />
-            <Button onClick={loadInvoices}>Refresh</Button>
+            <Input
+              placeholder="Item Name"
+              style={{ width: 130 }}
+              value={itemName}
+              onChange={(e) => setItemName(e.target.value)}
+              allowClear
+            />
+            <Input
+              placeholder="P.O Number"
+              style={{ width: 130 }}
+              value={poNumber}
+              onChange={(e) => setPoNumber(e.target.value)}
+              allowClear
+            />
+            <Button type="primary" onClick={loadInvoices}>Search</Button>
           </Space>
         </Card>
 

@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Table, Card, Row, Col, Select, Button, Space,
   Statistic, Divider, Typography, notification, message, Input, Tag,
 } from 'antd';
 import {
   PrinterOutlined, ArrowLeftOutlined, FileExcelOutlined,
-  DatabaseOutlined, DollarOutlined, AppstoreOutlined, WarningOutlined,
+  DatabaseOutlined, AppstoreOutlined, WarningOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
@@ -25,9 +25,10 @@ const InventoryReport: React.FC = () => {
   const [selectedBrand, setSelectedBrand] = useState<string | null>(null);
   const [lowStockOnly, setLowStockOnly] = useState(false);
 
-  useEffect(() => {
-    loadItems();
-  }, [currentCompany]);
+  // REMOVED AUTO-LOAD ON MOUNT AS PER REQUEST
+  // useEffect(() => {
+  //   loadItems();
+  // }, [currentCompany]);
 
   const loadItems = async () => {
     setLoading(true);
@@ -35,10 +36,11 @@ const InventoryReport: React.FC = () => {
       const res = await (window as any).electronAPI.db.items.getAll(currentCompany?.id);
       if (res.success) {
         setItems(res.data || []);
-        notification.error({ message: 'Error', description: 'Failed to load items', duration: 0 });
+      } else {
+        notification.error({ message: 'Error', description: 'Failed to load items' });
       }
     } catch {
-      notification.error({ message: 'Error', description: 'Failed to load items', duration: 0 });
+      notification.error({ message: 'Error', description: 'Failed to load items' });
     } finally {
       setLoading(false);
     }
@@ -65,8 +67,6 @@ const InventoryReport: React.FC = () => {
 
   const totalItems = filtered.length;
   const totalQty = filtered.reduce((s, i) => s + (Number(i.quantity) || 0), 0);
-  const totalPurchaseValue = filtered.reduce((s, i) => s + (Number(i.quantity) || 0) * (Number(i.purchase_price) || 0), 0);
-  const totalSellingValue = filtered.reduce((s, i) => s + (Number(i.quantity) || 0) * (Number(i.selling_price) || 0), 0);
   const lowStockCount = filtered.filter((i) => Number(i.quantity) <= Number(i.reorder_level || 0) && Number(i.reorder_level || 0) > 0).length;
 
   const columns = [
@@ -77,29 +77,10 @@ const InventoryReport: React.FC = () => {
       render: (_: any, __: any, index: number) => index + 1,
     },
     {
-      title: 'Code',
-      dataIndex: 'code',
-      key: 'code',
-    },
-    {
-      title: 'Name',
+      title: 'Item Name',
       dataIndex: 'name',
       key: 'name',
       render: (v: string) => <Text strong>{v}</Text>,
-    },
-    {
-      title: 'Brand',
-      dataIndex: 'brand_name',
-      key: 'brand_name',
-      render: (v: string) => v || '—',
-    },
-    {
-      title: 'Location',
-      dataIndex: 'location',
-      key: 'location',
-      render: (v: string) => v
-        ? <Tag color="blue" style={{ fontWeight: 600 }}>{v}</Tag>
-        : '—',
     },
     {
       title: 'Description',
@@ -108,10 +89,17 @@ const InventoryReport: React.FC = () => {
       render: (v: string) => v || '—',
     },
     {
-      title: 'Qty',
+      title: 'Brand',
+      dataIndex: 'brand_name',
+      key: 'brand_name',
+      render: (v: string) => v || '—',
+    },
+    {
+      title: 'Quantity',
       dataIndex: 'quantity',
       key: 'quantity',
       align: 'right' as const,
+      width: 100,
       render: (v: number, row: any) => {
         const qty = Number(v) || 0;
         const reorder = Number(row.reorder_level) || 0;
@@ -125,58 +113,24 @@ const InventoryReport: React.FC = () => {
       },
     },
     {
-      title: 'Reorder Level',
-      dataIndex: 'reorder_level',
-      key: 'reorder_level',
-      align: 'right' as const,
-      render: (v: number) => Number(v) || 0,
-    },
-    {
-      title: 'Purchase Price',
-      dataIndex: 'purchase_price',
-      key: 'purchase_price',
-      align: 'right' as const,
-      render: (v: number) => Number(v || 0).toLocaleString(),
-    },
-    {
-      title: 'Selling Price',
-      dataIndex: 'selling_price',
-      key: 'selling_price',
-      align: 'right' as const,
-      render: (v: number) => Number(v || 0).toLocaleString(),
-    },
-    {
-      title: 'Purchase Value',
-      key: 'purchase_value',
-      align: 'right' as const,
-      render: (_: any, row: any) => ((Number(row.quantity) || 0) * (Number(row.purchase_price) || 0)).toLocaleString(),
-    },
-    {
-      title: 'Selling Value',
-      key: 'selling_value',
-      align: 'right' as const,
-      render: (_: any, row: any) => (
-        <Text strong>
-          {((Number(row.quantity) || 0) * (Number(row.selling_price) || 0)).toLocaleString()}
-        </Text>
-      ),
+      title: 'Location',
+      dataIndex: 'location',
+      key: 'location',
+      width: 150,
+      render: (v: string) => v
+        ? <Tag color="blue" style={{ fontWeight: 600 }}>{v}</Tag>
+        : '—',
     },
   ];
 
   const summaryRow = () => (
     <Table.Summary fixed>
       <Table.Summary.Row style={{ fontWeight: 700, background: '#fafafa' }}>
-        <Table.Summary.Cell index={0} colSpan={6} align="right">
+        <Table.Summary.Cell index={0} colSpan={4} align="right">
           <Text strong>Total ({totalItems} items)</Text>
         </Table.Summary.Cell>
         <Table.Summary.Cell index={1} align="right">{totalQty}</Table.Summary.Cell>
         <Table.Summary.Cell index={2} />
-        <Table.Summary.Cell index={3} />
-        <Table.Summary.Cell index={4} />
-        <Table.Summary.Cell index={5} align="right">{totalPurchaseValue.toLocaleString()}</Table.Summary.Cell>
-        <Table.Summary.Cell index={6} align="right">
-          <Text strong>{totalSellingValue.toLocaleString()}</Text>
-        </Table.Summary.Cell>
       </Table.Summary.Row>
     </Table.Summary>
   );
@@ -223,58 +177,36 @@ const InventoryReport: React.FC = () => {
     const styleSummaryValue = { font: { bold: true, sz: 10 }, fill: { fgColor: { rgb: 'DCE6F1' } }, alignment: { horizontal: 'right', vertical: 'center' }, border: thinBorder };
 
     const c = (v: any, s: any = {}) => ({ v, s });
-    const numCols = 12;
-
     const colHeaders = [
       c('Sr.',            styleColHeader),
-      c('Code',           styleColHeader),
-      c('Name',           styleColHeader),
-      c('Brand',          styleColHeader),
-      c('Location',       styleColHeader),
+      c('Item Name',      styleColHeader),
       c('Description',    styleColHeader),
-      c('Qty',            styleColHeaderRight),
-      c('Reorder Level',  styleColHeaderRight),
-      c('Purchase Price', styleColHeaderRight),
-      c('Selling Price',  styleColHeaderRight),
-      c('Purchase Value', styleColHeaderRight),
-      c('Selling Value',  styleColHeaderRight),
+      c('Brand',          styleColHeader),
+      c('Quantity',       styleColHeaderRight),
+      c('Location',       styleColHeader),
     ];
 
     const dataRows = filtered.map((item, i) => {
       const qty     = Number(item.quantity) || 0;
       const reorder = Number(item.reorder_level) || 0;
       const isLow   = reorder > 0 && qty <= reorder;
-      const purchaseVal = qty * (Number(item.purchase_price) || 0);
-      const sellingVal  = qty * (Number(item.selling_price)  || 0);
       return [
         c(i + 1,                     styleData),
-        c(item.code || '',           styleData),
         c(item.name || '',           styleData),
-        c(item.brand_name || '',     styleData),
-        c(item.location || '',       styleData),
         c(item.description || '',    styleData),
+        c(item.brand_name || '',     styleData),
         c(qty,                       isLow ? styleDataLowStock : styleDataRight),
-        c(reorder,                   styleDataRight),
-        c(Number(item.purchase_price) || 0, styleDataRight),
-        c(Number(item.selling_price)  || 0, styleDataRight),
-        c(purchaseVal,               styleDataRight),
-        c(sellingVal,                styleDataBoldRight),
+        c(item.location || '',       styleData),
       ];
     });
 
     const totalsRow = [
       c('',                        styleTotals),
-      c('',                        styleTotals),
       c('TOTAL',                   styleTotals),
-      c('',                        styleTotals),
       c('',                        styleTotals),
       c(`${totalItems} items`,     styleTotals),
       c(totalQty,                  styleTotals),
       c('',                        styleTotals),
-      c('',                        styleTotals),
-      c('',                        styleTotals),
-      c(totalPurchaseValue,        styleTotals),
-      c(totalSellingValue,         styleTotals),
     ];
 
     const summaryRows: any[][] = [
@@ -282,11 +214,10 @@ const InventoryReport: React.FC = () => {
       [c('Summary', { font: { bold: true, sz: 11 } })],
       [c('Total Items',           styleSummaryLabel), c(''), c(''), c(totalItems,          styleSummaryValue)],
       [c('Total Quantity',        styleSummaryLabel), c(''), c(''), c(totalQty,            styleSummaryValue)],
-      [c('Total Purchase Value',  styleSummaryLabel), c(''), c(''), c(totalPurchaseValue,  styleSummaryValue)],
-      [c('Total Selling Value',   styleSummaryLabel), c(''), c(''), c(totalSellingValue,   styleSummaryValue)],
       [c('Low Stock Items',       styleSummaryLabel), c(''), c(''), c(lowStockCount,       styleSummaryValue)],
     ];
 
+    const numCols = 6;
     const wsData: any[][] = [
       [c(companyName, styleTitle)],
       [c('Inventory Report', styleSubTitle)],
@@ -307,18 +238,12 @@ const InventoryReport: React.FC = () => {
     ];
 
     ws['!cols'] = [
-      { wch: 25 }, // Sr. / summary labels
-      { wch: 10 }, // Code
-      { wch: 28 }, // Name
-      { wch: 16 }, // Brand
-      { wch: 12 }, // Location
-      { wch: 30 }, // Description
-      { wch: 8  }, // Qty
-      { wch: 13 }, // Reorder
-      { wch: 15 }, // Purchase Price
-      { wch: 14 }, // Selling Price
-      { wch: 16 }, // Purchase Value
-      { wch: 15 }, // Selling Value
+      { wch: 10 }, // Sr.
+      { wch: 30 }, // Item Name
+      { wch: 35 }, // Description
+      { wch: 18 }, // Brand
+      { wch: 12 }, // Quantity
+      { wch: 15 }, // Location
     ];
 
     ws['!rows'] = [
@@ -398,39 +323,17 @@ const InventoryReport: React.FC = () => {
 
         {/* KPI Cards */}
         <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-          <Col xs={12} sm={8} md={4}>
+          <Col xs={12} sm={8} md={6}>
             <Card size="small">
               <Statistic title="Total Items" value={totalItems} prefix={<AppstoreOutlined />} />
             </Card>
           </Col>
-          <Col xs={12} sm={8} md={4}>
+          <Col xs={12} sm={8} md={6}>
             <Card size="small">
               <Statistic title="Total Quantity" value={totalQty} prefix={<DatabaseOutlined />} formatter={(v) => Number(v).toLocaleString()} />
             </Card>
           </Col>
-          <Col xs={12} sm={8} md={5}>
-            <Card size="small">
-              <Statistic
-                title="Purchase Stock Value"
-                value={totalPurchaseValue}
-                prefix={<DollarOutlined />}
-                valueStyle={{ color: '#1890ff' }}
-                formatter={(v) => Number(v).toLocaleString()}
-              />
-            </Card>
-          </Col>
-          <Col xs={12} sm={8} md={5}>
-            <Card size="small">
-              <Statistic
-                title="Selling Stock Value"
-                value={totalSellingValue}
-                prefix={<DollarOutlined />}
-                valueStyle={{ color: '#52c41a' }}
-                formatter={(v) => Number(v).toLocaleString()}
-              />
-            </Card>
-          </Col>
-          <Col xs={12} sm={8} md={4}>
+          <Col xs={12} sm={8} md={6}>
             <Card size="small">
               <Statistic
                 title="Low Stock Items"
@@ -455,11 +358,9 @@ const InventoryReport: React.FC = () => {
         </Text>
         <Divider style={{ margin: '8px 0' }} />
         <Row gutter={[24, 4]} style={{ marginBottom: 12 }}>
-          <Col span={4}><Text>Items: <strong>{totalItems}</strong></Text></Col>
-          <Col span={4}><Text>Total Qty: <strong>{totalQty}</strong></Text></Col>
-          <Col span={6}><Text>Purchase Value: <strong>{totalPurchaseValue.toLocaleString()}</strong></Text></Col>
-          <Col span={6}><Text>Selling Value: <strong>{totalSellingValue.toLocaleString()}</strong></Text></Col>
-          <Col span={4}><Text>Low Stock: <strong style={{ color: lowStockCount > 0 ? '#ff4d4f' : undefined }}>{lowStockCount}</strong></Text></Col>
+          <Col span={6}><Text>Items: <strong>{totalItems}</strong></Text></Col>
+          <Col span={6}><Text>Total Qty: <strong>{totalQty}</strong></Text></Col>
+          <Col span={6}><Text>Low Stock: <strong style={{ color: lowStockCount > 0 ? '#ff4d4f' : undefined }}>{lowStockCount}</strong></Text></Col>
         </Row>
       </div>
 

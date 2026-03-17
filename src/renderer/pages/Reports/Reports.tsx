@@ -97,6 +97,14 @@ const Reports: React.FC = () => {
       route: '/reports/recovery',
       available: true,
     },
+    {
+      title: 'Stock Movement',
+      description: 'Track item inbound/outbound history — purchase vs delivery challans',
+      icon: <PrinterOutlined />,
+      type: 'stock_movement',
+      route: '/reports/stock-movement',
+      available: true,
+    },
   ];
 
   const handleGenerateReport = (report: any) => {

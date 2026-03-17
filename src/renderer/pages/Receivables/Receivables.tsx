@@ -28,6 +28,17 @@ const Receivables: React.FC = () => {
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
   const [adminPassword, setAdminPassword] = useState('');
 
+  // Form watchers for dynamic calculations
+  const receiptAmount = Form.useWatch('amount', receiptForm);
+  const receiptTaxRate = Form.useWatch('tax_deduction_rate', receiptForm);
+  const receiptTaxAmount = (Number(receiptAmount) || 0) * ((Number(receiptTaxRate) || 0) / 100);
+  const receiptNetAmount = (Number(receiptAmount) || 0) - receiptTaxAmount;
+
+  const editAmount = Form.useWatch('amount', editForm);
+  const editTaxRate = Form.useWatch('tax_deduction_rate', editForm);
+  const editTaxAmount = (Number(editAmount) || 0) * ((Number(editTaxRate) || 0) / 100);
+  const editNetAmount = (Number(editAmount) || 0) - editTaxAmount;
+
   useEffect(() => {
     if (currentCompany?.id) loadCustomers();
   }, [currentCompany?.id]);
@@ -466,11 +477,23 @@ const Receivables: React.FC = () => {
                 label="Amount received"
                 rules={[{ required: true, message: 'Enter amount received' }]}
               >
-                <InputNumber min={0.01} style={{ width: '100%' }} placeholder="Amount" />
+                <InputNumber min={1} precision={0} style={{ width: '100%' }} placeholder="Amount" />
               </Form.Item>
               <Form.Item name="tax_deduction_rate" label="Tax deduction %" initialValue={0} required tooltip="Percentage of tax deducted (0-100)">
                 <InputNumber min={0} max={100} style={{ width: '100%' }} placeholder="%" addonAfter="%" />
               </Form.Item>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24, background: '#fafafa', padding: 12, borderRadius: 4, border: '1px solid #f0f0f0' }}>
+                <div>
+                  <div style={{ fontSize: 12, color: '#888' }}>Tax Amount</div>
+                  <div style={{ fontWeight: 600, color: '#cf1322' }}>{receiptTaxAmount.toLocaleString()}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 12, color: '#888' }}>Net Received</div>
+                  <div style={{ fontWeight: 700, color: '#52c41a' }}>{receiptNetAmount.toLocaleString()}</div>
+                </div>
+              </div>
+
               <Form.Item name="payment_date" label="Payment date" rules={[{ required: true }]} initialValue={dayjs()}>
                 <DatePicker style={{ width: '100%' }} />
               </Form.Item>
@@ -529,6 +552,7 @@ const Receivables: React.FC = () => {
         onCancel={() => setEditModalVisible(false)}
         onOk={() => editForm.submit()}
         width={400}
+        zIndex={1100}
       >
         <Form form={editForm} layout="vertical" onFinish={handleEditPayment}>
           <Form.Item
@@ -536,11 +560,23 @@ const Receivables: React.FC = () => {
             label="Amount"
             rules={[{ required: true, message: 'Enter amount' }]}
           >
-            <InputNumber min={0.01} style={{ width: '100%' }} />
+            <InputNumber min={1} precision={0} style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item name="tax_deduction_rate" label="Tax deduction %">
             <InputNumber min={0} max={100} style={{ width: '100%' }} addonAfter="%" />
           </Form.Item>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24, background: '#fafafa', padding: 12, borderRadius: 4, border: '1px solid #f0f0f0' }}>
+            <div>
+              <div style={{ fontSize: 12, color: '#888' }}>Tax Amount</div>
+              <div style={{ fontWeight: 600, color: '#cf1322' }}>{editTaxAmount.toLocaleString()}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: '#888' }}>Net Received</div>
+              <div style={{ fontWeight: 700, color: '#52c41a' }}>{editNetAmount.toLocaleString()}</div>
+            </div>
+          </div>
+
           <Form.Item name="payment_date" label="Payment date" rules={[{ required: true }]}>
             <DatePicker style={{ width: '100%' }} />
           </Form.Item>
@@ -566,6 +602,7 @@ const Receivables: React.FC = () => {
         onOk={handleConfirmDelete}
         okText="Delete"
         okButtonProps={{ danger: true }}
+        zIndex={1200}
       >
         <p>Enter admin password to delete this payment record:</p>
         <Input.Password

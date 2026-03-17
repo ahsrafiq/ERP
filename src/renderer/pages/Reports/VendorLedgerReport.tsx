@@ -40,8 +40,8 @@ const VendorLedgerReport: React.FC = () => {
   }, [currentCompany]);
 
   useEffect(() => {
-    if (selectedVendorId) loadLedger(selectedVendorId);
-    else { setLedger([]); setVendorInfo(null); }
+    setLedger([]);
+    setVendorInfo(null);
   }, [selectedVendorId]);
 
   const loadVendors = async () => {
@@ -239,6 +239,7 @@ const VendorLedgerReport: React.FC = () => {
             filterOption={(input, option) => String(option?.label || '').toLowerCase().includes(input.toLowerCase())}
             allowClear
           />
+          <Button type="primary" onClick={() => selectedVendorId && loadLedger(selectedVendorId)} disabled={!selectedVendorId}>Search</Button>
           {vendorInfo && (
             <Space>
               {vendorInfo.phone && <Text type="secondary"><ShopOutlined /> {vendorInfo.phone}</Text>}

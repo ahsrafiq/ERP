@@ -19,6 +19,7 @@ interface LedgerEntry {
   date: string;
   type: 'invoice' | 'payment';
   reference: string;
+  customer_name?: string;
   description: string;
   debit: number;
   credit: number;
@@ -33,6 +34,7 @@ const CustomerLedgerReport: React.FC = () => {
 
   const [customers, setCustomers] = useState<any[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null);
+  const [overdueOnly, setOverdueOnly] = useState(false);
   const [ledger, setLedger] = useState<LedgerEntry[]>([]);
   const [customerInfo, setCustomerInfo] = useState<any>(null);
   const [loading, setLoading] = useState(false);
@@ -42,8 +44,8 @@ const CustomerLedgerReport: React.FC = () => {
   }, [currentCompany]);
 
   useEffect(() => {
-    if (selectedCustomerId) loadLedger(selectedCustomerId);
-    else { setLedger([]); setCustomerInfo(null); }
+    setLedger([]);
+    setCustomerInfo(null);
   }, [selectedCustomerId]);
 
   const loadCustomers = async () => {
@@ -53,29 +55,42 @@ const CustomerLedgerReport: React.FC = () => {
     } catch { /* ignore */ }
   };
 
-  const loadLedger = async (customerId: number) => {
+  const loadLedger = async () => {
     setLoading(true);
+    setLedger([]);
     try {
-      const customer = customers.find((c) => c.id === customerId);
+      const customer = selectedCustomerId ? customers.find((c) => c.id === selectedCustomerId) : null;
       setCustomerInfo(customer);
 
-      // Load all sales invoices for this customer
+      // Load all sales invoices
       const invRes = await (window as any).electronAPI.db.salesInvoices.getAll(
         currentCompany!.id,
         {}
       );
-      const invoices = ((invRes.success ? invRes.data : []) || []).filter(
-        (inv: any) => inv.customer_id === customerId
-      );
+      let invoices = (invRes.success ? invRes.data : []) || [];
+      if (selectedCustomerId) {
+        invoices = invoices.filter((inv: any) => inv.customer_id === selectedCustomerId);
+      }
 
-      // Load all payments for this customer
+      // Apply Overdue filter if requested
+      if (overdueOnly) {
+        const today = dayjs().format('YYYY-MM-DD');
+        invoices = invoices.filter((inv: any) => 
+          inv.status !== 'paid' && 
+          inv.due_date && 
+          inv.due_date < today
+        );
+      }
+
+      // Load all payments
       const payRes = await (window as any).electronAPI.db.payments.getAll(
         currentCompany!.id,
         { type: 'in' }
       );
-      const payments = ((payRes.success ? payRes.data : []) || []).filter(
-        (p: any) => p.customer_id === customerId
-      );
+      let payments = (payRes.success ? payRes.data : []) || [];
+      if (selectedCustomerId) {
+        payments = payments.filter((p: any) => p.customer_id === selectedCustomerId);
+      }
 
       // Combine into unified ledger entries
       const entries: Omit<LedgerEntry, 'balance'>[] = [
@@ -84,21 +99,23 @@ const CustomerLedgerReport: React.FC = () => {
           date: inv.invoice_date,
           type: 'invoice' as const,
           reference: inv.invoice_number,
-          description: `Sales Invoice`,
+          customer_name: inv.customer_name,
+          description: `Sales Invoice${inv.due_date ? ` (Due: ${dayjs(inv.due_date).format('DD-MM-YYYY')})` : ''}`,
           debit: Number(inv.total_amount) || 0,
           credit: 0,
         })),
-        ...payments.map((p: any) => ({
+        ...(!overdueOnly ? payments.map((p: any) => ({
           id: `pay-${p.id}`,
           date: p.payment_date,
           type: 'payment' as const,
           reference: p.payment_number,
-          description: `Payment Received${p.payment_method ? ` (${p.payment_method})` : ''}${p.notes ? ' — ' + p.notes : ''}`,
+          customer_name: p.customer_name,
+          description: `Payment Received (Net)${p.payment_method ? ` (${p.payment_method})` : ''}${p.notes ? ' — ' + p.notes : ''}`,
           debit: 0,
           credit: Number(p.amount) || 0,
           taxDeductionRate: Number(p.tax_deduction_rate) || 0,
           taxDeductionAmount: Number(p.tax_deduction) || 0,
-        })),
+        })) : []),
       ];
 
       // Sort by date ascending, then by type (invoice before payment on same day)
@@ -113,12 +130,16 @@ const CustomerLedgerReport: React.FC = () => {
       // Calculate running balance
       let runningBalance = 0;
       const ledgerRows: LedgerEntry[] = entries.map((entry) => {
-        runningBalance += entry.debit - entry.credit;
-        return { ...entry, balance: runningBalance };
+        // Balance = Previous + Debit - (Credit + Tax)
+        // For payments, credit is net amount, taxDeductionAmount is withheld tax
+        const creditImpact = (entry.credit || 0) + (entry.taxDeductionAmount || 0);
+        runningBalance += (entry.debit || 0) - creditImpact;
+        return { ...entry, balance: runningBalance } as LedgerEntry;
       });
 
       setLedger(ledgerRows);
     } catch (err) {
+      console.error('Ledger Load Error:', err);
       notification.error({ message: 'Error', description: 'Failed to load ledger', duration: 0 });
     } finally {
       setLoading(false);
@@ -134,6 +155,7 @@ const CustomerLedgerReport: React.FC = () => {
   const columns = [
     { title: 'Sr.',       key: 'sr',          width: 50, render: (_: any, __: any, i: number) => i + 1 },
     { title: 'Date',      dataIndex: 'date',  key: 'date', render: (d: string) => d ? dayjs(d).format('DD-MM-YYYY') : '—' },
+    ...(selectedCustomerId ? [] : [{ title: 'Customer', dataIndex: 'customer_name', key: 'customer_name' }]),
     {
       title: 'Type', dataIndex: 'type', key: 'type',
       render: (t: string) => t === 'invoice'
@@ -180,18 +202,19 @@ const CustomerLedgerReport: React.FC = () => {
   const summaryRow = () => (
     <Table.Summary fixed>
       <Table.Summary.Row style={{ fontWeight: 700, background: '#fafafa' }}>
-        <Table.Summary.Cell index={0} colSpan={5} align="right"><Text strong>Total</Text></Table.Summary.Cell>
+        <Table.Summary.Cell index={0} colSpan={selectedCustomerId ? 5 : 6} align="right"><Text strong>Total</Text></Table.Summary.Cell>
         <Table.Summary.Cell index={1} align="right"><Text style={{ color: '#cf1322' }} strong>{totalDebit.toLocaleString()}</Text></Table.Summary.Cell>
         <Table.Summary.Cell index={2} align="right"><Text style={{ color: '#389e0d' }} strong>{totalCredit.toLocaleString()}</Text></Table.Summary.Cell>
-        <Table.Summary.Cell index={3} align="right"><Text strong type={closingBal > 0 ? 'danger' : closingBal < 0 ? 'success' : undefined}>{closingBal.toLocaleString()}</Text></Table.Summary.Cell>
+        <Table.Summary.Cell index={3} colSpan={2} align="right" />
+        <Table.Summary.Cell index={4} align="right"><Text strong type={closingBal > 0 ? 'danger' : closingBal < 0 ? 'success' : undefined}>{closingBal.toLocaleString()}</Text></Table.Summary.Cell>
       </Table.Summary.Row>
     </Table.Summary>
   );
 
   const handleExportExcel = () => {
-    if (!customerInfo) return;
+    if (ledger.length === 0) return;
     const companyName = currentCompany?.name || 'Company';
-    const custName    = customerInfo.name || 'Customer';
+    const custName    = customerInfo?.name || 'All Customers';
     const dateStr     = new Date().toLocaleDateString('en-GB');
 
     const thin  = { top: { style: 'thin', color: { rgb: 'AAAAAA' } }, bottom: { style: 'thin', color: { rgb: 'AAAAAA' } }, left: { style: 'thin', color: { rgb: 'AAAAAA' } }, right: { style: 'thin', color: { rgb: 'AAAAAA' } } };
@@ -212,16 +235,27 @@ const CustomerLedgerReport: React.FC = () => {
     const sSumV   = { font: { bold: true, sz: 10 }, fill: { fgColor: { rgb: 'DCE6F1' } }, alignment: { horizontal: 'right', vertical: 'center' }, border: thin };
 
     const c = (v: any, s: any = {}) => ({ v, s });
-    const numCols = 8;
+    
+    // Define columns based on whether a specific customer is selected
+    const hasCust = !!selectedCustomerId;
+    const numCols = hasCust ? 8 : 9;
 
     const colHdrs = [
-      c('Sr.', sHdr), c('Date', sHdr), c('Type', sHdr), c('Reference', sHdr),
-      c('Description', sHdr), c('Debit (Invoice)', sHdrR), c('Credit (Payment)', sHdrR), c('Balance', sHdrR),
+      c('Sr.', sHdr), 
+      c('Date', sHdr), 
+      ...(hasCust ? [] : [c('Customer', sHdr)]),
+      c('Type', sHdr), 
+      c('Reference', sHdr),
+      c('Description', sHdr), 
+      c('Debit (Invoice)', sHdrR), 
+      c('Credit (Payment)', sHdrR), 
+      c('Balance', sHdrR),
     ];
 
     const dataRows = ledger.map((row, i) => [
       c(i + 1,                                     sData),
       c(row.date ? dayjs(row.date).format('DD-MM-YYYY') : '', sData),
+      ...(hasCust ? [] : [c(row.customer_name || '—', sData)]),
       c(row.type === 'invoice' ? 'Invoice' : 'Payment', sData),
       c(row.reference,                             sData),
       c(row.description,                           sData),
@@ -231,7 +265,7 @@ const CustomerLedgerReport: React.FC = () => {
     ]);
 
     const totalsRow = [
-      c('', sTot), c('', sTot), c('', sTot), c('', sTot), c('TOTAL', sTot),
+      c('', sTot), c('', sTot), ...(hasCust ? [] : [c('', sTot)]), c('', sTot), c('', sTot), c('TOTAL', sTot),
       c(totalDebit, sTot), c(totalCredit, sTot), c(closingBal, sTot),
     ];
 
@@ -263,8 +297,12 @@ const CustomerLedgerReport: React.FC = () => {
       { s: { r: 1, c: 0 }, e: { r: 1, c: numCols - 1 } },
       { s: { r: 2, c: 0 }, e: { r: 2, c: numCols - 1 } },
     ];
-    ws['!cols'] = [
-      { wch: 25 }, { wch: 13 }, { wch: 10 }, { wch: 16 },
+    
+    ws['!cols'] = hasCust ? [
+      { wch: 8 }, { wch: 13 }, { wch: 10 }, { wch: 16 },
+      { wch: 35 }, { wch: 18 }, { wch: 18 }, { wch: 16 },
+    ] : [
+      { wch: 8 }, { wch: 13 }, { wch: 25 }, { wch: 10 }, { wch: 16 },
       { wch: 35 }, { wch: 18 }, { wch: 18 }, { wch: 16 },
     ];
     ws['!rows'] = [{ hpt: 26 }, { hpt: 20 }, { hpt: 16 }, { hpt: 6 }, { hpt: 22 }];
@@ -287,12 +325,12 @@ const CustomerLedgerReport: React.FC = () => {
             <Button
               icon={<FileExcelOutlined />}
               style={{ color: '#217346', borderColor: '#217346' }}
-              disabled={!selectedCustomerId}
+              disabled={ledger.length === 0}
               onClick={handleExportExcel}
             >
               Export Excel
             </Button>
-            <Button type="primary" icon={<PrinterOutlined />} disabled={!selectedCustomerId} onClick={() => window.print()}>
+            <Button type="primary" icon={<PrinterOutlined />} disabled={ledger.length === 0} onClick={() => window.print()}>
               Print
             </Button>
           </Space>
@@ -313,6 +351,14 @@ const CustomerLedgerReport: React.FC = () => {
               options={customers.map((c: any) => ({ label: `${c.name}${c.code ? ' (' + c.code + ')' : ''}`, value: c.id }))}
               allowClear
             />
+            <Button
+              type={overdueOnly ? 'primary' : 'default'}
+              danger={overdueOnly}
+              onClick={() => setOverdueOnly(!overdueOnly)}
+            >
+              Overdue Only
+            </Button>
+            <Button type="primary" onClick={loadLedger}>Search</Button>
             {customerInfo && (
               <Space size="large" style={{ marginLeft: 16 }}>
                 {customerInfo.phone && <Text type="secondary">📞 {customerInfo.phone}</Text>}
@@ -342,11 +388,11 @@ const CustomerLedgerReport: React.FC = () => {
       </div>
 
       {/* Print header */}
-      {selectedCustomerId && (
+      {ledger.length > 0 && (
         <div className="print-only" style={{ marginBottom: 16 }}>
           <Title level={3} style={{ textAlign: 'center', margin: 0 }}>{currentCompany?.name}</Title>
           <Title level={5} style={{ textAlign: 'center', margin: 0, color: '#666' }}>Customer Ledger</Title>
-          <Text style={{ display: 'block', textAlign: 'center' }}>Customer: <strong>{customerInfo?.name}</strong></Text>
+          <Text style={{ display: 'block', textAlign: 'center' }}>Customer: <strong>{customerInfo?.name || 'All Customers'}</strong></Text>
           {customerInfo?.address && <Text style={{ display: 'block', textAlign: 'center', color: '#888' }}>{customerInfo.address}</Text>}
           <Divider style={{ margin: '8px 0' }} />
           <Row gutter={[24, 8]} style={{ marginBottom: 12 }}>
@@ -359,8 +405,8 @@ const CustomerLedgerReport: React.FC = () => {
         </div>
       )}
 
-      {!selectedCustomerId ? (
-        <Empty description="Select a customer above to view their ledger" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+      {ledger.length === 0 && !loading ? (
+        <Empty description="Select a customer or click Search to view all ledger data" image={Empty.PRESENTED_IMAGE_SIMPLE} />
       ) : (
         <Table
           dataSource={ledger}

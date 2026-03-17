@@ -32,9 +32,10 @@ const TaxReport: React.FC = () => {
     if (currentCompany) { loadCustomers(); }
   }, [currentCompany]);
 
-  useEffect(() => {
-    if (currentCompany) { loadInvoices(); }
-  }, [currentCompany, dateRange]);
+  // REMOVED AUTO-LOAD ON dateRange CHANGE
+  // useEffect(() => {
+  //   if (currentCompany) { loadInvoices(); }
+  // }, [currentCompany, dateRange]);
 
   const loadCustomers = async () => {
     try {
@@ -134,7 +135,7 @@ const TaxReport: React.FC = () => {
     const sSumL   = { font: { bold: true, sz: 10 }, fill: { fgColor: { rgb: 'DCE6F1' } }, alignment: { horizontal: 'left', vertical: 'center' }, border: thin };
     const sSumV   = { font: { bold: true, sz: 10 }, fill: { fgColor: { rgb: 'DCE6F1' } }, alignment: { horizontal: 'right', vertical: 'center' }, border: thin };
 
-    const c = (v: any, s: any) => ({ v, s });
+    const c = (v: any, s: any = {}) => ({ v, s });
 
     const colHdrs = [
       c('Sr.', sHdr), c('Invoice #', sHdr), c('Date', sHdr), c('Customer', sHdr),
@@ -219,7 +220,7 @@ const TaxReport: React.FC = () => {
             <RangePicker value={dateRange} onChange={(d) => d && d[0] && d[1] && setDateRange([d[0], d[1]])} format="DD-MM-YYYY" />
             <Select allowClear placeholder="All Customers" style={{ width: 220 }} value={selectedCustomer} onChange={setSelectedCustomer}
               options={customers.map((c: any) => ({ label: c.name, value: c.id }))} showSearch optionFilterProp="label" />
-            <Button onClick={loadInvoices}>Refresh</Button>
+            <Button type="primary" onClick={loadInvoices}>Search</Button>
           </Space>
         </Card>
 

@@ -25,6 +25,7 @@ import ExpenseReport from './pages/Reports/ExpenseReport';
 import VendorLedgerReport from './pages/Reports/VendorLedgerReport';
 import ProfitLossReport from './pages/Reports/ProfitLossReport';
 import BalanceSheetReport from './pages/Reports/BalanceSheetReport';
+import StockMovementReport from './pages/Reports/StockMovementReport';
 import SalesQuotations from './pages/Sales/SalesQuotations';
 import DeliveryChallans from './pages/Sales/DeliveryChallans';
 import Receivables from './pages/Receivables/Receivables';
@@ -99,6 +100,7 @@ const AppContent: React.FC = () => {
       <KeepAliveRoute currentPath={location.pathname} path="/reports/vendor-ledger" element={<VendorLedgerReport />} />
       <KeepAliveRoute currentPath={location.pathname} path="/reports/pl" element={<ProfitLossReport />} />
       <KeepAliveRoute currentPath={location.pathname} path="/reports/balance" element={<BalanceSheetReport />} />
+      <KeepAliveRoute currentPath={location.pathname} path="/reports/stock-movement" element={<StockMovementReport />} />
     </Layout>
   );
 };

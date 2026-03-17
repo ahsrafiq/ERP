@@ -182,7 +182,6 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
         { title: 'Item', dataIndex: 'item_name', key: 'item_name', width: 150, render: (text: string) => <div style={{ fontWeight: 'bold' }}>{text}</div> },
         { title: 'Description', dataIndex: 'description', key: 'description', width: 250 },
         { title: 'Brand', dataIndex: 'brand', key: 'brand', width: 100, render: (text: string) => (text != null && String(text).trim() !== '' ? text : '-') },
-        { title: 'H.S Code', dataIndex: 'hs_code', key: 'hs_code', width: 100, align: 'center' as const, render: (v: string) => (v != null && String(v).trim() !== '' ? String(v) : '-') },
         { title: 'Qty', dataIndex: 'quantity', key: 'quantity', width: 60, align: 'right' as const },
     ];
 
@@ -221,7 +220,6 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
                         {data.customer_phone && <p className="customer-contact" style={{ margin: 0 }}>Ph: {data.customer_phone}</p>}
                         {data.customer_gst_number && <p style={{ margin: 0 }}><strong>STRN #</strong> {data.customer_gst_number}</p>}
                         {data.customer_ntn_number && <p style={{ margin: 0 }}><strong>NTN #</strong> {data.customer_ntn_number}</p>}
-                        {data.customer_attention_person && <p style={{ margin: 0 }}><strong>Attention:</strong> {data.customer_attention_person}</p>}
                     </div>
 
                     <div className="inv-header-right">
@@ -390,7 +388,7 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
     /* Content below table: terms, footer, disclaimer (not scaled) */
     const contentBelowTable = (
             <>
-            {(isInvoice || isBill) && (
+            {isBill && (
                 <div className="bill-totals-section">
                     {data.terms_and_conditions != null && String(data.terms_and_conditions).trim() !== '' && (() => {
                         let terms: string[] = [];
@@ -428,6 +426,18 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
                         <p>Thanks for your business</p>
                         <p className="bill-footer-company"><strong>{company.name}</strong></p>
                         {company.phone && <p>{company.phone}</p>}
+                    </div>
+                </div>
+            )}
+            {isInvoice && !showLetterhead && (
+                <div className="dc-footer" style={{ marginTop: 40, paddingBottom: 20 }}>
+                    <div className="dc-stamp-box">
+                        <div className="dc-stamp-line" />
+                        <p>Stamp/Signature</p>
+                    </div>
+                    <div className="dc-signature-box">
+                        <div className="dc-stamp-line" />
+                        <p>Customer Signature</p>
                     </div>
                 </div>
             )}

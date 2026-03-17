@@ -37,9 +37,10 @@ const PurchaseReport: React.FC = () => {
     if (currentCompany) { loadVendors(); }
   }, [currentCompany]);
 
-  useEffect(() => {
-    if (currentCompany) { loadInvoices(); }
-  }, [currentCompany, dateRange]);
+  // REMOVED AUTO-LOAD ON dateRange CHANGE
+  // useEffect(() => {
+  //   if (currentCompany) { loadInvoices(); }
+  // }, [currentCompany, dateRange]);
 
   const loadVendors = async () => {
     try {
@@ -227,7 +228,7 @@ const PurchaseReport: React.FC = () => {
                 { label: 'Partial', value: 'partial' }, { label: 'Paid', value: 'paid' },
                 { label: 'Cancelled', value: 'cancelled' },
               ]} />
-            <Button onClick={loadInvoices}>Refresh</Button>
+            <Button type="primary" onClick={loadInvoices}>Search</Button>
           </Space>
         </Card>
 

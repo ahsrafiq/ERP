@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Table, Card, Row, Col, Button, Space,
+  Table, Card, Row, Col, Button, Space, DatePicker,
   Statistic, Divider, Typography, notification, message, Tag, Progress,
 } from 'antd';
 import {
@@ -20,7 +20,9 @@ interface CustomerRecovery {
   name: string;
   phone: string;
   totalInvoiced: number;
-  totalPaid: number;
+  totalPaid: number;      // Total settled (including tax)
+  taxDeducted: number;    // Total tax withheld
+  netReceived: number;    // Actual cash/bank received
   balance: number;
   current: number;       // not yet overdue
   days1_30: number;
@@ -36,7 +38,7 @@ const agingBucket = (invoiceDate: string, dueDate: string | null, balance: numbe
   const refDate = dueDate || invoiceDate;
   const days = dayjs().diff(dayjs(refDate), 'day');
   if (days <= 0)  return { current: balance, days1_30: 0,       days31_60: 0,       days61_90: 0,       days90plus: 0 };
-  if (days <= 30) return { current: 0,       days1_30: balance, days31_60: 0,       days61_60: 0,       days90plus: 0 } as any;
+  if (days <= 30) return { current: 0,       days1_30: balance, days31_60: 0,       days61_90: 0,       days90plus: 0 } as any;
   if (days <= 60) return { current: 0,       days1_30: 0,       days31_60: balance, days61_90: 0,       days90plus: 0 };
   if (days <= 90) return { current: 0,       days1_30: 0,       days31_60: 0,       days61_90: balance, days90plus: 0 };
   return               { current: 0,       days1_30: 0,       days31_60: 0,       days61_90: 0,       days90plus: balance };
@@ -49,29 +51,38 @@ const RecoveryReport: React.FC = () => {
   const [recoveryData, setRecoveryData] = useState<CustomerRecovery[]>([]);
   const [loading, setLoading] = useState(false);
   const [showAll, setShowAll] = useState(false);
+  const [dateRange, setDateRange] = useState<[any, any] | null>(null);
 
   useEffect(() => {
-    if (currentCompany) loadData();
+    // loadData(); // Removed auto-load
   }, [currentCompany]);
 
   const loadData = async () => {
     if (!currentCompany) return;
     setLoading(true);
     try {
-      const [custRes, invRes] = await Promise.all([
+      const filters: any = {};
+      if (dateRange && dateRange[0] && dateRange[1]) {
+        filters.fromDate = dateRange[0].format('YYYY-MM-DD');
+        filters.toDate = dateRange[1].format('YYYY-MM-DD');
+      }
+
+      const [custRes, invRes, payRes] = await Promise.all([
         (window as any).electronAPI.db.customers.getAll(currentCompany.id),
-        (window as any).electronAPI.db.salesInvoices.getAll(currentCompany.id, {}),
+        (window as any).electronAPI.db.salesInvoices.getAll(currentCompany.id, filters),
+        (window as any).electronAPI.db.payments.getAll(currentCompany.id, { type: 'in' }),
       ]);
 
       const customers = custRes.success ? (custRes.data || []) : [];
       const invoices  = invRes.success  ? (invRes.data  || []) : [];
+      const payments  = payRes.success  ? (payRes.data  || []) : [];
 
       const map: Record<number, CustomerRecovery> = {};
 
       customers.forEach((c: any) => {
         map[c.id] = {
           id: c.id, code: c.code || '', name: c.name || '', phone: c.phone || '',
-          totalInvoiced: 0, totalPaid: 0, balance: 0,
+          totalInvoiced: 0, totalPaid: 0, taxDeducted: 0, netReceived: 0, balance: 0,
           current: 0, days1_30: 0, days31_60: 0, days61_90: 0, days90plus: 0,
           lastInvoiceDate: '', invoiceCount: 0,
         };
@@ -85,8 +96,8 @@ const RecoveryReport: React.FC = () => {
         const tot = Number(inv.total_amount) || 0;
 
         r.totalInvoiced += tot;
-        r.totalPaid     += tot - bal;
         r.balance       += bal;
+        r.totalPaid     += tot - bal;
         r.invoiceCount  += 1;
         if (!r.lastInvoiceDate || inv.invoice_date > r.lastInvoiceDate) r.lastInvoiceDate = inv.invoice_date;
 
@@ -100,22 +111,45 @@ const RecoveryReport: React.FC = () => {
         }
       });
 
+      // Aggregate payments for tax/net received
+      payments.forEach((p: any) => {
+        const cid = p.customer_id;
+        if (!map[cid]) return;
+        const r = map[cid];
+        
+        // Apply date filters to payments too if active
+        if (dateRange && dateRange[0] && dateRange[1]) {
+           const pDate = p.payment_date;
+           const from = dateRange[0].format('YYYY-MM-DD');
+           const to = dateRange[1].format('YYYY-MM-DD');
+           if (pDate < from || pDate > to) return;
+        }
+
+        r.netReceived += Number(p.amount) || 0;
+        r.taxDeducted += Number(p.tax_deduction) || 0;
+      });
+
       setRecoveryData(Object.values(map).sort((a, b) => b.balance - a.balance));
-    } catch { notification.error({ message: 'Error', description: 'Failed to load recovery data', duration: 0 }); }
+    } catch (err) { 
+      console.error(err);
+      notification.error({ message: 'Error', description: 'Failed to load recovery data', duration: 0 }); 
+    }
     finally { setLoading(false); }
   };
 
   const displayed = showAll ? recoveryData : recoveryData.filter((r) => r.balance > 0);
 
-  const totalInvoiced = displayed.reduce((s, r) => s + r.totalInvoiced, 0);
-  const totalPaid     = displayed.reduce((s, r) => s + r.totalPaid,     0);
-  const totalBalance  = displayed.reduce((s, r) => s + r.balance,       0);
-  const totalCurrent  = displayed.reduce((s, r) => s + r.current,       0);
-  const total1_30     = displayed.reduce((s, r) => s + r.days1_30,      0);
-  const total31_60    = displayed.reduce((s, r) => s + r.days31_60,     0);
-  const total61_90    = displayed.reduce((s, r) => s + r.days61_90,     0);
-  const total90plus   = displayed.reduce((s, r) => s + r.days90plus,    0);
-  const withBalance   = displayed.filter((r) => r.balance > 0).length;
+  const totalInvoiced    = displayed.reduce((s, r) => s + r.totalInvoiced, 0);
+  const totalTaxDeducted = displayed.reduce((s, r) => s + r.taxDeducted,    0);
+  const totalNetReceived = displayed.reduce((s, r) => s + r.netReceived,    0);
+  const totalPaid        = displayed.reduce((s, r) => s + r.totalPaid,      0);
+  const totalBalance     = displayed.reduce((s, r) => s + r.balance,        0);
+  const totalCurrent     = displayed.reduce((s, r) => s + r.current,        0);
+  const total1_30        = displayed.reduce((s, r) => s + r.days1_30,       0);
+  const total31_60       = displayed.reduce((s, r) => s + r.days31_60,      0);
+  const total61_90       = displayed.reduce((s, r) => s + r.days61_90,      0);
+  const total90plus      = displayed.reduce((s, r) => s + r.days90plus,     0);
+  const withBalance      = displayed.filter((r) => r.balance > 0).length;
 
   const columns = [
     { title: 'Sr.', key: 'sr', width: 50, render: (_: any, __: any, i: number) => i + 1 },
@@ -136,7 +170,8 @@ const RecoveryReport: React.FC = () => {
       render: (d: string) => d ? dayjs(d).format('DD-MM-YYYY') : '—',
     },
     { title: 'Total Invoiced', dataIndex: 'totalInvoiced', key: 'totalInvoiced', align: 'right' as const, render: (v: number) => Number(v).toLocaleString() },
-    { title: 'Total Paid',    dataIndex: 'totalPaid',     key: 'totalPaid',     align: 'right' as const, render: (v: number) => <Text style={{ color: '#389e0d' }}>{Number(v).toLocaleString()}</Text> },
+    { title: 'Tax Deducted', dataIndex: 'taxDeducted', key: 'taxDeducted', align: 'right' as const, render: (v: number) => <Text style={{ color: '#fa8c16' }}>{Number(v).toLocaleString()}</Text> },
+    { title: 'Net Received', dataIndex: 'netReceived', key: 'netReceived', align: 'right' as const, render: (v: number) => <Text style={{ color: '#389e0d' }}>{Number(v).toLocaleString()}</Text> },
     {
       title: 'Outstanding', dataIndex: 'balance', key: 'balance', align: 'right' as const,
       render: (v: number) => v > 0
@@ -155,13 +190,14 @@ const RecoveryReport: React.FC = () => {
       <Table.Summary.Row style={{ fontWeight: 700, background: '#fafafa' }}>
         <Table.Summary.Cell index={0} colSpan={5} align="right"><Text strong>Total ({displayed.length} customers)</Text></Table.Summary.Cell>
         <Table.Summary.Cell index={1} align="right">{totalInvoiced.toLocaleString()}</Table.Summary.Cell>
-        <Table.Summary.Cell index={2} align="right"><Text style={{ color: '#389e0d' }} strong>{totalPaid.toLocaleString()}</Text></Table.Summary.Cell>
-        <Table.Summary.Cell index={3} align="right"><Text strong style={{ color: '#cf1322' }}>{totalBalance.toLocaleString()}</Text></Table.Summary.Cell>
-        <Table.Summary.Cell index={4} align="right">{totalCurrent > 0 ? totalCurrent.toLocaleString() : '—'}</Table.Summary.Cell>
-        <Table.Summary.Cell index={5} align="right">{total1_30   > 0 ? total1_30.toLocaleString()   : '—'}</Table.Summary.Cell>
-        <Table.Summary.Cell index={6} align="right">{total31_60  > 0 ? total31_60.toLocaleString()  : '—'}</Table.Summary.Cell>
-        <Table.Summary.Cell index={7} align="right">{total61_90  > 0 ? total61_90.toLocaleString()  : '—'}</Table.Summary.Cell>
-        <Table.Summary.Cell index={8} align="right">{total90plus > 0 ? total90plus.toLocaleString() : '—'}</Table.Summary.Cell>
+        <Table.Summary.Cell index={2} align="right"><Text style={{ color: '#fa8c16' }} strong>{totalTaxDeducted.toLocaleString()}</Text></Table.Summary.Cell>
+        <Table.Summary.Cell index={3} align="right"><Text style={{ color: '#389e0d' }} strong>{totalNetReceived.toLocaleString()}</Text></Table.Summary.Cell>
+        <Table.Summary.Cell index={4} align="right"><Text strong style={{ color: '#cf1322' }}>{totalBalance.toLocaleString()}</Text></Table.Summary.Cell>
+        <Table.Summary.Cell index={5} align="right">{totalCurrent > 0 ? totalCurrent.toLocaleString() : '—'}</Table.Summary.Cell>
+        <Table.Summary.Cell index={6} align="right">{total1_30   > 0 ? total1_30.toLocaleString()   : '—'}</Table.Summary.Cell>
+        <Table.Summary.Cell index={7} align="right">{total31_60  > 0 ? total31_60.toLocaleString()  : '—'}</Table.Summary.Cell>
+        <Table.Summary.Cell index={8} align="right">{total61_90  > 0 ? total61_90.toLocaleString()  : '—'}</Table.Summary.Cell>
+        <Table.Summary.Cell index={9} align="right">{total90plus > 0 ? total90plus.toLocaleString() : '—'}</Table.Summary.Cell>
       </Table.Summary.Row>
     </Table.Summary>
   );
@@ -193,7 +229,7 @@ const RecoveryReport: React.FC = () => {
 
     const colHdrs = [
       c('Sr.', sHdr), c('Code', sHdr), c('Customer', sHdr), c('Phone', sHdr), c('Invoices', sHdrR), c('Last Invoice', sHdr),
-      c('Total Invoiced', sHdrR), c('Total Paid', sHdrR), c('Outstanding', sHdrR),
+      c('Total Invoiced', sHdrR), c('Tax Deducted', sHdrR), c('Net Received', sHdrR), c('Outstanding', sHdrR),
       c('Current', sHdrR), c('1–30 Days', sHdrR), c('31–60 Days', sHdrR), c('61–90 Days', sHdrR), c('90+ Days', sHdrR),
     ];
 
@@ -205,7 +241,8 @@ const RecoveryReport: React.FC = () => {
       c(row.invoiceCount, sDataR),
       c(row.lastInvoiceDate ? dayjs(row.lastInvoiceDate).format('DD-MM-YYYY') : '', sData),
       c(row.totalInvoiced, sDataR),
-      c(row.totalPaid,     sGreen),
+      c(row.taxDeducted,   sOrange),
+      c(row.netReceived,   sGreen),
       c(row.balance > 0 ? row.balance : 0, row.balance > 0 ? sRed : sDataR),
       c(row.current   > 0 ? row.current   : '', sDataR),
       c(row.days1_30  > 0 ? row.days1_30  : '', sOrange),
@@ -217,7 +254,7 @@ const RecoveryReport: React.FC = () => {
     const totalsRow = [
       c('', sTot), c('', sTot), c('TOTAL', sTot), c('', sTot),
       c(`${displayed.length}`, sTot), c('', sTot),
-      c(totalInvoiced, sTot), c(totalPaid, sTot), c(totalBalance, sTot),
+      c(totalInvoiced, sTot), c(totalTaxDeducted, sTot), c(totalNetReceived, sTot), c(totalBalance, sTot),
       c(totalCurrent, sTot), c(total1_30, sTot), c(total31_60, sTot), c(total61_90, sTot), c(total90plus, sTot),
     ];
 
@@ -227,7 +264,8 @@ const RecoveryReport: React.FC = () => {
       [c('Total Customers',      sSumL), c(''), c(''), c(displayed.length,  sSumV)],
       [c('Customers with Balance', sSumL), c(''), c(''), c(withBalance,     sSumV)],
       [c('Total Invoiced',       sSumL), c(''), c(''), c(totalInvoiced,     sSumV)],
-      [c('Total Received',       sSumL), c(''), c(''), c(totalPaid,         sSumV)],
+      [c('Total Tax Deducted',   sSumL), c(''), c(''), c(totalTaxDeducted,   sSumV)],
+      [c('Total Net Received',   sSumL), c(''), c(''), c(totalNetReceived,   sSumV)],
       [c('Total Outstanding',    sSumL), c(''), c(''), c(totalBalance,      sSumV)],
       [c('Current (Not Due)',    sSumL), c(''), c(''), c(totalCurrent,      sSumV)],
       [c('1–30 Days Overdue',   sSumL), c(''), c(''), c(total1_30,         sSumV)],
@@ -249,13 +287,13 @@ const RecoveryReport: React.FC = () => {
 
     const ws: any = XLSXStyle.utils.aoa_to_sheet(wsData);
     ws['!merges'] = [
-      { s: { r: 0, c: 0 }, e: { r: 0, c: numCols - 1 } },
-      { s: { r: 1, c: 0 }, e: { r: 1, c: numCols - 1 } },
-      { s: { r: 2, c: 0 }, e: { r: 2, c: numCols - 1 } },
+      { s: { r: 0, c: 0 }, e: { r: 0, c: numCols + 1 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: numCols + 1 } },
+      { s: { r: 2, c: 0 }, e: { r: 2, c: numCols + 1 } },
     ];
     ws['!cols'] = [
-      { wch: 25 }, { wch: 8 }, { wch: 26 }, { wch: 14 }, { wch: 9 }, { wch: 13 },
-      { wch: 15 }, { wch: 13 }, { wch: 14 },
+      { wch: 6 }, { wch: 8 }, { wch: 26 }, { wch: 14 }, { wch: 9 }, { wch: 13 },
+      { wch: 15 }, { wch: 14 }, { wch: 14 }, { wch: 14 },
       { wch: 12 }, { wch: 12 }, { wch: 13 }, { wch: 13 }, { wch: 12 },
     ];
     ws['!rows'] = [{ hpt: 26 }, { hpt: 20 }, { hpt: 16 }, { hpt: 6 }, { hpt: 22 }];
@@ -277,6 +315,13 @@ const RecoveryReport: React.FC = () => {
             <Title level={4} style={{ margin: 0 }}>Recovery Report — {currentCompany?.name}</Title>
           </Space>
           <Space>
+            <DatePicker.RangePicker
+              picker="month"
+              value={dateRange}
+              onChange={(dates: any) => setDateRange(dates)}
+              format="MMM-YYYY"
+            />
+            <Button type="primary" onClick={loadData}>Search</Button>
             <Button
               type={showAll ? 'primary' : 'default'}
               onClick={() => setShowAll(!showAll)}
@@ -306,7 +351,8 @@ const RecoveryReport: React.FC = () => {
               style={{ width: 300 }}
             />
             <Text>Total Invoiced: <strong>{totalInvoiced.toLocaleString()}</strong></Text>
-            <Text>Received: <strong style={{ color: '#389e0d' }}>{totalPaid.toLocaleString()}</strong></Text>
+            <Text>Tax Deducted: <strong style={{ color: '#fa8c16' }}>{totalTaxDeducted.toLocaleString()}</strong></Text>
+            <Text>Net Received: <strong style={{ color: '#389e0d' }}>{totalNetReceived.toLocaleString()}</strong></Text>
             <Text>Outstanding: <strong style={{ color: '#cf1322' }}>{totalBalance.toLocaleString()}</strong></Text>
           </Space>
         </Card>
@@ -319,9 +365,10 @@ const RecoveryReport: React.FC = () => {
         <Divider style={{ margin: '8px 0' }} />
         <Row gutter={[24, 8]} style={{ marginBottom: 12 }}>
           <Col span={4}><Text>Customers: <strong>{withBalance}</strong></Text></Col>
-          <Col span={6}><Text>Total Invoiced: <strong>{totalInvoiced.toLocaleString()}</strong></Text></Col>
-          <Col span={6}><Text>Total Received: <strong>{totalPaid.toLocaleString()}</strong></Text></Col>
-          <Col span={6}><Text>Outstanding: <strong style={{ color: '#cf1322' }}>{totalBalance.toLocaleString()}</strong></Text></Col>
+          <Col span={5}><Text>Invoices: <strong>{totalInvoiced.toLocaleString()}</strong></Text></Col>
+          <Col span={5}><Text>Tax Deducted: <strong>{totalTaxDeducted.toLocaleString()}</strong></Text></Col>
+          <Col span={5}><Text>Net Received: <strong>{totalNetReceived.toLocaleString()}</strong></Text></Col>
+          <Col span={5}><Text>Outstanding: <strong style={{ color: '#cf1322' }}>{totalBalance.toLocaleString()}</strong></Text></Col>
         </Row>
       </div>
 

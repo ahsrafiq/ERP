@@ -43,7 +43,7 @@ const ExpenseReport: React.FC = () => {
   }, [currentCompany]);
 
   useEffect(() => {
-    if (currentCompany) loadExpenses();
+    // loadExpenses(); // Removed auto-load
   }, [currentCompany, dateRange]);
 
   const loadMeta = async () => {
@@ -192,7 +192,7 @@ const ExpenseReport: React.FC = () => {
             options={categories.map((c: any) => ({ label: c.name, value: c.id }))} />
           <Select allowClear placeholder="All Statuses" style={{ width: 150 }} value={selectedStatus} onChange={setSelectedStatus}
             options={[{ label: 'Approved', value: 'approved' }, { label: 'Pending', value: 'pending' }, { label: 'Rejected', value: 'rejected' }]} />
-          <Button type="primary" onClick={loadExpenses}>Refresh</Button>
+          <Button type="primary" onClick={loadExpenses}>Search</Button>
         </Space>
       </Card>
 
