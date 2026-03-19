@@ -9,7 +9,7 @@ import { useApp } from '../../context/AppContext';
 const { Text } = Typography;
 
 const Dashboard: React.FC = () => {
-  const { currentCompany } = useApp();
+  const { currentCompany, fiscalYear } = useApp();
   const [loading, setLoading] = useState(false);
   const [kpis, setKpis] = useState<any>({});
   const [history, setHistory] = useState<any>({ sales: [], recovery: [] });
@@ -18,7 +18,7 @@ const Dashboard: React.FC = () => {
     if (currentCompany) {
       loadDashboardData();
     }
-  }, [currentCompany]);
+  }, [currentCompany, fiscalYear]);
 
   const loadDashboardData = async () => {
     if (!currentCompany) return;
@@ -26,11 +26,11 @@ const Dashboard: React.FC = () => {
     setLoading(true);
     try {
       // Load KPIs (Outstanding, Overdue)
-      const kpiResult = await (window as any).electronAPI.db.dashboard.getKPIs(currentCompany.id, {});
+      const kpiResult = await (window as any).electronAPI.db.dashboard.getKPIs(currentCompany.id, { fiscalYear });
       if (kpiResult.success) setKpis(kpiResult.data || {});
 
       // Load 6-month History (Sales, Recovery)
-      const histResult = await (window as any).electronAPI.db.dashboard.getHistory(currentCompany.id);
+      const histResult = await (window as any).electronAPI.db.dashboard.getHistory(currentCompany.id, { fiscalYear });
       if (histResult.success) setHistory(histResult.data || { sales: [], recovery: [] });
     } catch (error) {
       console.error('Error loading dashboard data:', error);

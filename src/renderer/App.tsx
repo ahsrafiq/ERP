@@ -14,6 +14,7 @@ import Brands from './pages/Inventory/Brands';
 import Expenses from './pages/Expenses/Expenses';
 import ExpenseCategories from './pages/Expenses/ExpenseCategories';
 import Employees from './pages/HR/Employees';
+import AdjustmentNotes from './pages/Inventory/AdjustmentNotes';
 import Reports from './pages/Reports/Reports';
 import SalesReport from './pages/Reports/SalesReport';
 import InventoryReport from './pages/Reports/InventoryReport';
@@ -86,6 +87,7 @@ const AppContent: React.FC = () => {
       <KeepAliveRoute currentPath={location.pathname} path="/purchase/invoices" element={<PurchaseInvoices />} />
       <KeepAliveRoute currentPath={location.pathname} path="/inventory/items" element={<Items />} />
       <KeepAliveRoute currentPath={location.pathname} path="/inventory/brands" element={<Brands />} />
+      <KeepAliveRoute currentPath={location.pathname} path="/inventory/adjustment-notes" element={<AdjustmentNotes />} />
       <KeepAliveRoute currentPath={location.pathname} path="/expenses" element={<Expenses />} />
       <KeepAliveRoute currentPath={location.pathname} path="/expenses/categories" element={<ExpenseCategories />} />
       <KeepAliveRoute currentPath={location.pathname} path="/hr/employees" element={<Employees />} />

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Layout as AntLayout, Menu, Avatar, Dropdown, Input, Select, Space } from 'antd';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Layout as AntLayout, Menu, Avatar, Dropdown, Input, Select, Space, Modal, InputNumber } from 'antd';
 import {
   DashboardOutlined,
   UserOutlined,
@@ -28,7 +28,16 @@ interface LayoutProps {
 
 const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [collapsed, setCollapsed] = useState(false);
-  const [fiscalYearInput, setFiscalYearInput] = useState<string | null>(null);
+  const [addFYOpen, setAddFYOpen] = useState(false);
+  const [customFyStartYears, setCustomFyStartYears] = useState<number[]>(() => {
+    try {
+      const raw = localStorage.getItem('erp_fy_ranges_custom');
+      const parsed = raw ? JSON.parse(raw) : [];
+      if (Array.isArray(parsed)) return parsed.map((x: any) => Number(x)).filter((n: number) => Number.isFinite(n));
+    } catch { /* ignore */ }
+    return [];
+  });
+  const [fyStartYearDraft, setFyStartYearDraft] = useState<number>(2026);
   const navigate = useNavigate();
   const location = useLocation();
   const { 
@@ -43,6 +52,43 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     restoreModal,
     removeMinimizedModal
   } = useApp();
+
+  const defaultFyOptions = useMemo(() => {
+    const baseStartYear = 2000 + (Number(fiscalYear) || 0);
+    const starts: number[] = [];
+    for (let y = baseStartYear - 2; y <= baseStartYear + 2; y++) starts.push(y);
+    return starts;
+  }, [fiscalYear]);
+
+  const fyOptions = useMemo(() => {
+    const starts = Array.from(new Set([
+      ...defaultFyOptions,
+      ...customFyStartYears,
+      2000 + (Number(fiscalYear) || 0),
+    ]));
+
+    // Normalize and sort
+    starts.sort((a, b) => a - b);
+
+    return starts.map((startYear) => {
+      const endYY = String((startYear + 1) % 100).padStart(2, '0');
+      return {
+        value: startYear % 100,
+        label: `${startYear}\u2013${endYY}`,
+      };
+    });
+  }, [customFyStartYears, defaultFyOptions, fiscalYear]);
+
+  // Ensure selected FY is part of options
+  const fiscalYearValue = Number(fiscalYear);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('erp_fy_ranges_custom', JSON.stringify(customFyStartYears));
+    } catch {
+      // ignore
+    }
+  }, [customFyStartYears]);
 
   const menuItems = [
     {
@@ -94,6 +140,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       children: [
         { key: '/inventory/items', label: 'Items' },
         { key: '/inventory/brands', label: 'Brands' },
+        { key: '/inventory/adjustment-notes', label: 'Adjustment Notes' },
       ],
     },
     {
@@ -224,29 +271,27 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             />
             <Input
               addonBefore="FY 20"
-              value={fiscalYearInput !== null ? fiscalYearInput : String(fiscalYear).padStart(2, '0')}
-              onChange={(e) => {
-                const v = e.target.value.replace(/\D/g, '').slice(0, 2);
-                setFiscalYearInput(v);
-                if (v !== '') {
-                  const n = parseInt(v, 10);
-                  if (!isNaN(n) && n >= 0 && n <= 99) setFiscalYear(n);
-                }
-              }}
-              onFocus={() => setFiscalYearInput(String(fiscalYear).padStart(2, '0'))}
-              onBlur={() => {
-                const v = (fiscalYearInput ?? '').replace(/\D/g, '');
-                setFiscalYearInput(null);
-                if (v === '') {
-                  setFiscalYear(new Date().getFullYear() % 100);
-                } else {
-                  const n = parseInt(v, 10);
-                  if (!isNaN(n) && n >= 0 && n <= 99) setFiscalYear(n);
-                }
-              }}
-              placeholder="26"
+              value={String(fiscalYearValue).padStart(2, '0')}
+              readOnly
+              disabled
               style={{ width: 100, marginLeft: 12 }}
-              maxLength={2}
+            />
+            <Select
+              value={fiscalYearValue}
+              onChange={(v) => {
+                if (v === 'add' as any) {
+                  setFyStartYearDraft(2026);
+                  setAddFYOpen(true);
+                  return;
+                }
+                const n = Number(v);
+                if (!Number.isNaN(n)) setFiscalYear(n);
+              }}
+              style={{ width: 140, marginLeft: 12 }}
+              options={[
+                ...fyOptions,
+                { value: 'add' as any, label: 'Add FY range...' },
+              ]}
             />
           </div>
             <Space size="large">
@@ -258,6 +303,37 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         <Content className="app-content">
           {children}
         </Content>
+        <Modal
+          title="Add Fiscal Year Range"
+          open={addFYOpen}
+          onCancel={() => setAddFYOpen(false)}
+          onOk={() => {
+            const startYear = Number(fyStartYearDraft);
+            if (!Number.isFinite(startYear) || startYear < 2000 || startYear > 2099) return;
+            setCustomFyStartYears((prev) => {
+              const normalized = Array.from(new Set([...prev, startYear])).sort((a, b) => a - b);
+              return normalized;
+            });
+            setFiscalYear(startYear % 100);
+            setAddFYOpen(false);
+          }}
+          okText="Add"
+          cancelText="Cancel"
+        >
+          <div style={{ marginBottom: 12 }}>
+            Enter the starting year of the range (example: <strong>2026</strong> for <strong>2026–27</strong>)
+          </div>
+          <InputNumber
+            min={2000}
+            max={2099}
+            value={fyStartYearDraft}
+            onChange={(v) => {
+              if (v == null) return;
+              setFyStartYearDraft(Number(v));
+            }}
+            style={{ width: '100%' }}
+          />
+        </Modal>
         {minimizedModals.length > 0 && (
           <div className="minimized-modals-bar">
             {minimizedModals.map((modal) => (

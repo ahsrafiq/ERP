@@ -5,11 +5,13 @@ import {
 } from 'antd';
 import {
   PrinterOutlined, ArrowLeftOutlined, HistoryOutlined,
-  ArrowUpOutlined, ArrowDownOutlined,
+  ArrowUpOutlined, ArrowDownOutlined, FileExcelOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import dayjs from 'dayjs';
+import XLSXStyle from 'xlsx-js-style';
+import { message } from 'antd';
 
 const { RangePicker } = DatePicker;
 const { Title, Text } = Typography;
@@ -38,6 +40,106 @@ const StockMovementReport: React.FC = () => {
       const res = await (window as any).electronAPI.db.items.getAll(currentCompany?.id);
       if (res.success) setItems(res.data || []);
     } catch { /* ignore */ }
+  };
+
+  const handleExportExcel = () => {
+    if (movements.length === 0) {
+      message.warning('No data to export');
+      return;
+    }
+
+    const periodLabel = `${dateRange[0]?.format('DDMMYYYY')}_${dateRange[1]?.format('DDMMYYYY')}`;
+    const companyName = currentCompany?.name || 'Company';
+
+    // ── Styles ──────────────────────────────────────────────────────────────
+    const thinBorder = {
+      top:    { style: 'thin', color: { rgb: 'AAAAAA' } },
+      bottom: { style: 'thin', color: { rgb: 'AAAAAA' } },
+      left:   { style: 'thin', color: { rgb: 'AAAAAA' } },
+      right:  { style: 'thin', color: { rgb: 'AAAAAA' } },
+    };
+
+    const styleCompanyName = {
+      font:      { bold: true, sz: 16, color: { rgb: '1F3864' } },
+      alignment: { horizontal: 'center', vertical: 'center' },
+    };
+    const styleReportTitle = {
+      font:      { bold: true, sz: 13, color: { rgb: '2F5496' } },
+      alignment: { horizontal: 'center' },
+    };
+    const stylePeriod = {
+      font:      { sz: 10, italic: true, color: { rgb: '555555' } },
+      alignment: { horizontal: 'center' },
+    };
+    const styleColHeader = {
+      font:      { bold: true, sz: 10, color: { rgb: 'FFFFFF' } },
+      fill:      { fgColor: { rgb: '2F5496' } },
+      alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+      border:    thinBorder,
+    };
+    const styleData = {
+      font:      { sz: 10 },
+      alignment: { vertical: 'center' },
+      border:    thinBorder,
+    };
+    const styleDataRight = {
+      font:      { sz: 10 },
+      alignment: { horizontal: 'right', vertical: 'center' },
+      border:    thinBorder,
+    };
+
+    const c = (v: any, s: any = {}) => ({ v, s });
+
+    // ── Column headers ────────────────────────────────────────────────────
+    const colHeaders = [
+      c('Sr.',          styleColHeader),
+      c('Date',         styleColHeader),
+      c('Type',         styleColHeader),
+      c('Reference #',  styleColHeader),
+      c('Partner',      styleColHeader),
+      c('Item Name',    styleColHeader),
+      c('Quantity',     styleColHeader),
+    ];
+
+    // ── Data rows ──────────────────────────────────────────────────────────
+    const dataRows = movements.map((m, i) => [
+      c(i + 1,                                               styleData),
+      c(m.date ? dayjs(m.date).format('DD-MM-YYYY') : '',    styleData),
+      c(m.type || '',                                        styleData),
+      c(m.reference || '',                                   styleData),
+      c(m.partner_name || '',                                styleData),
+      c(m.item_name || '',                                   styleData),
+      c(m.quantity || 0,                                     styleDataRight),
+    ]);
+
+    // ── Assemble sheet ────────────────────────────────────────────────────
+    const wsData: any[][] = [
+      [c(companyName, styleCompanyName)],
+      [c('Stock Movement Report', styleReportTitle)],
+      [c(`Period: ${dateRange[0]?.format('DD-MM-YYYY')} — ${dateRange[1]?.format('DD-MM-YYYY')}`, stylePeriod)],
+      [],
+      colHeaders,
+      ...dataRows,
+    ];
+
+    const ws: any = XLSXStyle.utils.aoa_to_sheet(wsData);
+
+    // Merge headers
+    ws['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 6 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 6 } },
+      { s: { r: 2, c: 0 }, e: { r: 2, c: 6 } },
+    ];
+
+    // Column widths
+    ws['!cols'] = [
+      { wch: 6 }, { wch: 15 }, { wch: 12 }, { wch: 20 }, { wch: 25 }, { wch: 30 }, { wch: 12 },
+    ];
+
+    const wb = XLSXStyle.utils.book_new();
+    XLSXStyle.utils.book_append_sheet(wb, ws, 'Stock Movements');
+    XLSXStyle.writeFile(wb, `Stock_Movement_${periodLabel}.xlsx`);
+    message.success('Exported to Excel successfully');
   };
 
   const loadMovements = async () => {
@@ -126,9 +228,14 @@ const StockMovementReport: React.FC = () => {
             <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/reports')}>Back</Button>
             <Title level={4} style={{ margin: 0 }}>Stock Movement Report — {currentCompany?.name}</Title>
           </Space>
-          <Button type="primary" icon={<PrinterOutlined />} onClick={() => window.print()}>
-            Print
-          </Button>
+          <Space>
+            <Button icon={<FileExcelOutlined />} style={{ color: '#217346', borderColor: '#217346' }} onClick={handleExportExcel}>
+              Export Excel
+            </Button>
+            <Button type="primary" icon={<PrinterOutlined />} onClick={() => window.print()}>
+              Print
+            </Button>
+          </Space>
         </div>
 
         <Card style={{ marginBottom: 16 }} size="small">

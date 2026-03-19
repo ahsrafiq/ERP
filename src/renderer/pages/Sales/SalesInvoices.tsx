@@ -88,7 +88,9 @@ const SalesInvoices: React.FC = () => {
     try {
       const result = await (window as any).electronAPI.db.salesInvoices.getAll(currentCompany.id);
       if (result.success) {
-        setInvoices(result.data || []);
+        const yy = String(fiscalYear).padStart(2, '0');
+        const filtered = (result.data || []).filter((inv: any) => String(inv?.invoice_number || '').includes(`/${yy}`));
+        setInvoices(filtered);
       }
     } catch (error) {
       notification.error({ message: 'Error', description: `Failed to load ${docLabel}s`, duration: 0 });

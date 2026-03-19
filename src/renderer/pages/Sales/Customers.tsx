@@ -152,9 +152,6 @@ const Customers: React.FC = () => {
           phone: getCol(row, 'Phone', 'phone'),
           address: getCol(row, 'Address', 'address'),
           city: getCol(row, 'City', 'city'),
-          state: getCol(row, 'State', 'state'),
-          country: getCol(row, 'Country', 'country'),
-          postal_code: getCol(row, 'Postal Code', 'postal_code'),
           tax_number: getCol(row, 'Tax Number', 'NTN Number', 'tax_number'),
           credit_limit: getColNum(row, 'Credit Limit', 'credit_limit'),
           attention_person: getCol(row, 'Attention Person', 'attention_person'),
@@ -385,9 +382,6 @@ const Customers: React.FC = () => {
             <Input.TextArea rows={2} />
           </Form.Item>
           <Form.Item name="city" label="City" rules={[{ required: true, message: 'Please enter city' }]}><Input /></Form.Item>
-          <Form.Item name="state" label="State" rules={[{ required: true, message: 'Please enter state' }]}><Input /></Form.Item>
-          <Form.Item name="country" label="Country" rules={[{ required: true, message: 'Please enter country' }]}><Input /></Form.Item>
-          <Form.Item name="postal_code" label="Postal Code" rules={[{ required: true, message: 'Please enter postal code' }]}><Input /></Form.Item>
           <Form.Item name="tax_number" label="NTN Number" rules={[{ required: true, message: 'Please enter NTN number' }]}>
             <Input placeholder="e.g., 1234567-8" />
           </Form.Item>
@@ -489,7 +483,7 @@ const Customers: React.FC = () => {
         </ul>
         <p><strong>Optional columns:</strong></p>
         <ul style={{ marginBottom: 0, paddingLeft: 20 }}>
-          <li>Email, Phone, Address, City, State, Country, Postal Code</li>
+          <li>Email, Phone, Address, City</li>
           <li>Tax Number (NTN), Attention Person, Sales Person, GST Number, Opening Balance</li>
         </ul>
       </Modal>

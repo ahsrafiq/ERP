@@ -36,7 +36,6 @@ const SalesReport: React.FC = () => {
     dayjs().endOf('month'),
   ]);
   const [selectedCustomer, setSelectedCustomer] = useState<number | null>(null);
-  const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
   const [itemName, setItemName] = useState('');
   const [poNumber, setPoNumber] = useState('');
 
@@ -87,7 +86,6 @@ const SalesReport: React.FC = () => {
 
   const filtered = invoices.filter((inv) => {
     if (selectedCustomer && inv.customer_id !== selectedCustomer) return false;
-    if (selectedStatus && inv.status !== selectedStatus) return false;
     return true;
   });
 
@@ -445,20 +443,6 @@ const SalesReport: React.FC = () => {
               showSearch
               optionFilterProp="label"
             />
-            <Select
-              allowClear
-              placeholder="All Statuses"
-              style={{ width: 120 }}
-              value={selectedStatus}
-              onChange={setSelectedStatus}
-              options={[
-                { label: 'Draft', value: 'draft' },
-                { label: 'Unpaid', value: 'unpaid' },
-                { label: 'Partial', value: 'partial' },
-                { label: 'Paid', value: 'paid' },
-                { label: 'Cancelled', value: 'cancelled' },
-              ]}
-            />
             <Input
               placeholder="Item Name"
               style={{ width: 130 }}
@@ -558,7 +542,6 @@ const SalesReport: React.FC = () => {
           <Text style={{ display: 'block', textAlign: 'center', color: '#888' }}>
             Period: {dateRange[0]?.format('DD-MM-YYYY')} — {dateRange[1]?.format('DD-MM-YYYY')}
             {selectedCustomer && ` | Customer: ${customers.find(c => c.id === selectedCustomer)?.name}`}
-            {selectedStatus && ` | Status: ${selectedStatus.toUpperCase()}`}
           </Text>
           <Divider style={{ margin: '8px 0' }} />
           {/* Print summary row */}

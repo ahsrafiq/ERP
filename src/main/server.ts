@@ -131,9 +131,19 @@ app.get('/api/dashboard/top-customers', async (req, res) => res.json(await dashb
 // Global Search
 app.get('/api/search/global', async (req, res) => res.json(await searchHandlers.search(Number(req.query.companyId), String(req.query.query))));
 
+let serverInstance: any = null;
+
 export function startServer() {
     const { serverPort } = getConfig();
-    app.listen(serverPort, '0.0.0.0', () => {
+    serverInstance = app.listen(serverPort, '0.0.0.0', () => {
         console.log(`Master server running on port ${serverPort}`);
     });
+}
+
+export function stopServer() {
+    if (serverInstance) {
+        console.log('Stopping Master server...');
+        serverInstance.close();
+        serverInstance = null;
+    }
 }

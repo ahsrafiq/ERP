@@ -150,7 +150,11 @@ const SalesQuotations: React.FC = () => {
         setLoading(true);
         try {
             const result = await (window as any).electronAPI.db.salesQuotations.getAll(currentCompany.id);
-            if (result.success) setQuotations(result.data || []);
+            if (result.success) {
+                const yy = String(fiscalYear).padStart(2, '0');
+                const filtered = (result.data || []).filter((q: any) => String(q?.quotation_number || '').includes(`/${yy}`));
+                setQuotations(filtered);
+            }
         } catch (error) {
             notification.error({ message: 'Error', description: 'Failed to load quotations', duration: 0 });
         } finally {

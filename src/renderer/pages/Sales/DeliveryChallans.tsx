@@ -109,7 +109,11 @@ const DeliveryChallans: React.FC = () => {
         setLoading(true);
         try {
             const result = await (window as any).electronAPI.db.deliveryChallans.getAll(currentCompany.id);
-            if (result.success) setChallans(result.data || []);
+            if (result.success) {
+                const yy = String(fiscalYear).padStart(2, '0');
+                const filtered = (result.data || []).filter((dc: any) => String(dc?.challan_number || '').includes(`/${yy}`));
+                setChallans(filtered);
+            }
         } catch (error) {
             notification.error({ message: 'Error', description: 'Failed to load delivery challans', duration: 0 });
         } finally {

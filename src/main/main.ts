@@ -22,7 +22,7 @@ import {
 } from './database/handlers';
 import { isMasterMode, getConfig, saveConfig } from './config';
 import { dbBridge } from './database/bridge';
-import { startServer } from './server';
+import { startServer, stopServer } from './server';
 import { apiClient } from './apiClient';
 
 // Register atom protocol as privileged
@@ -386,6 +386,15 @@ app.on('window-all-closed', () => {
   }
 });
 
+app.on('before-quit', () => {
+  console.log('App is quitting, cleaning up resources...');
+  if (backupInterval) {
+    clearInterval(backupInterval);
+    backupInterval = null;
+  }
+  stopServer();
+});
+
 ipcMain.handle('file:printToPDF', async (event) => {
   const { filePath } = await dialog.showSaveDialog({
     title: 'Save as PDF',
@@ -716,6 +725,30 @@ ipcMain.handle('db:deliveryChallans:createFromQuotation', async (event, quotatio
   return dbBridge.deliveryChallans.createFromQuotation(quotationId, createdBy, selectedItems, poNumber);
 });
 
+ipcMain.handle('db:adjustmentNotes:getAll', async (event, companyId: number, filters?: any) => {
+  return dbBridge.adjustmentNotes.getAll(companyId, filters);
+});
+
+ipcMain.handle('db:adjustmentNotes:getById', async (event, id: number) => {
+  return dbBridge.adjustmentNotes.getById(id);
+});
+
+ipcMain.handle('db:adjustmentNotes:getNextNumber', async (event, companyId: number, fiscalYear?: number | string) => {
+  return dbBridge.adjustmentNotes.getNextNumber(companyId, fiscalYear);
+});
+
+ipcMain.handle('db:adjustmentNotes:create', async (event, note: any) => {
+  return dbBridge.adjustmentNotes.create(note);
+});
+
+ipcMain.handle('db:adjustmentNotes:update', async (event, id: number, note: any) => {
+  return dbBridge.adjustmentNotes.update(id, note);
+});
+
+ipcMain.handle('db:adjustmentNotes:delete', async (event, id: number) => {
+  return dbBridge.adjustmentNotes.delete(id);
+});
+
 ipcMain.handle('db:purchaseInvoices:getAll', async (event, companyId: number, filters?: any) => {
   return dbBridge.purchaseInvoices.getAll(companyId, filters);
 });
@@ -788,6 +821,10 @@ ipcMain.handle('db:dashboard:getKPIs', async (event, companyId: number, filters?
   return dbBridge.dashboard.getKPIs(companyId, filters);
 });
 
+ipcMain.handle('db:dashboard:getHistory', async (event, companyId: number, filters?: any) => {
+  return dbBridge.dashboard.getHistory(companyId, filters);
+});
+
 ipcMain.handle('db:dashboard:getSalesVsPurchase', async (event, companyId: number, filters?: any) => {
   return dbBridge.dashboard.getSalesVsPurchase(companyId, filters);
 });
@@ -810,7 +847,7 @@ ipcMain.handle('db:auth:login', async (event, username: string, password?: strin
 });
 
 ipcMain.handle('db:auth:verifyAdminPassword', async (event, password: string) => {
-    return dbBridge.auth.verifyAdminPassword(password);
+  return dbBridge.auth.verifyAdminPassword(password);
 });
 
 // Global search handler

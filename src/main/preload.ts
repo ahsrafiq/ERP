@@ -111,10 +111,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
     dashboard: {
       getKPIs: (companyId: number, filters?: any) => ipcRenderer.invoke('db:dashboard:getKPIs', companyId, filters),
+      getHistory: (companyId: number, filters?: any) => ipcRenderer.invoke('db:dashboard:getHistory', companyId, filters),
       getSalesVsPurchase: (companyId: number, filters?: any) => ipcRenderer.invoke('db:dashboard:getSalesVsPurchase', companyId, filters),
       getExpenseBreakdown: (companyId: number, filters?: any) => ipcRenderer.invoke('db:dashboard:getExpenseBreakdown', companyId, filters),
       getMonthlyRevenue: (companyId: number, filters?: any) => ipcRenderer.invoke('db:dashboard:getMonthlyRevenue', companyId, filters),
       getTopCustomers: (companyId: number, filters?: any) => ipcRenderer.invoke('db:dashboard:getTopCustomers', companyId, filters),
+    },
+    adjustmentNotes: {
+      getAll: (companyId: number, filters?: any) => ipcRenderer.invoke('db:adjustmentNotes:getAll', companyId, filters),
+      getById: (id: number) => ipcRenderer.invoke('db:adjustmentNotes:getById', id),
+      getNextNumber: (companyId: number, fiscalYear?: number | string) => ipcRenderer.invoke('db:adjustmentNotes:getNextNumber', companyId, fiscalYear),
+      create: (note: any) => ipcRenderer.invoke('db:adjustmentNotes:create', note),
+      update: (id: number, note: any) => ipcRenderer.invoke('db:adjustmentNotes:update', id, note),
+      delete: (id: number) => ipcRenderer.invoke('db:adjustmentNotes:delete', id),
     },
     search: {
       global: (companyId: number, query: string) => ipcRenderer.invoke('db:search:global', companyId, query),
