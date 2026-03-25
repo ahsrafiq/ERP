@@ -11,6 +11,7 @@ import { useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import dayjs from 'dayjs';
 import XLSXStyle from 'xlsx-js-style';
+import { ReportTablePdfDocument } from '../../components/ReportPdf/ReportTablePdfDocument';
 
 const { RangePicker } = DatePicker;
 const { Title, Text } = Typography;
@@ -38,6 +39,9 @@ const SalesReport: React.FC = () => {
   const [selectedCustomer, setSelectedCustomer] = useState<number | null>(null);
   const [itemName, setItemName] = useState('');
   const [poNumber, setPoNumber] = useState('');
+  const [brand, setBrand] = useState('');
+  const [quantity, setQuantity] = useState('');
+  const [unitPrice, setUnitPrice] = useState('');
 
   useEffect(() => {
     if (currentCompany) {
@@ -70,6 +74,9 @@ const SalesReport: React.FC = () => {
       if (dateRange[1]) filters.toDate = dateRange[1].format('YYYY-MM-DD');
       if (itemName) filters.itemName = itemName;
       if (poNumber) filters.poNumber = poNumber;
+      if (brand) filters.brand = brand;
+      if (quantity) filters.quantity = quantity;
+      if (unitPrice) filters.unitPrice = unitPrice;
 
       const res = await (window as any).electronAPI.db.salesInvoices.getAll(currentCompany.id, filters);
       if (res.success) {
@@ -178,6 +185,33 @@ const SalesReport: React.FC = () => {
 
   const handlePrint = () => {
     window.print();
+  };
+
+  const handleSavePDF = async () => {
+    try {
+      const fileName = `Sales_Report_${dayjs().format('YYYY-MM-DD')}.pdf`;
+      const pathResult = await (window as any).electronAPI.db.files.getSavePath(fileName);
+      if (!pathResult.success) return;
+
+      document.body.classList.add('capturing-pdf');
+      const pc = document.getElementById('report-pdf-container');
+      if (pc) pc.style.display = 'block';
+
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const res = await (window as any).electronAPI.db.files.captureAndSave(pathResult.filePath);
+      
+      if (res.success) {
+        message.success(`Saved to: ${res.filePath}`);
+      } else {
+        notification.error({ message: 'Error', description: res.error || 'Failed to save PDF', duration: 0 });
+      }
+    } catch {
+      notification.error({ message: 'Error', description: 'Failed to save PDF', duration: 0 });
+    } finally {
+      document.body.classList.remove('capturing-pdf');
+      const pc = document.getElementById('report-pdf-container');
+      if (pc) pc.style.display = 'none';
+    }
   };
 
   const handleExportExcel = () => {
@@ -417,8 +451,11 @@ const SalesReport: React.FC = () => {
             <Button icon={<FileExcelOutlined />} style={{ color: '#217346', borderColor: '#217346' }} onClick={handleExportExcel}>
               Export Excel
             </Button>
-            <Button type="primary" icon={<PrinterOutlined />} onClick={handlePrint}>
+            <Button icon={<PrinterOutlined />} onClick={handlePrint}>
               Print
+            </Button>
+            <Button type="primary" onClick={handleSavePDF}>
+              Save as PDF
             </Button>
           </Space>
         </div>
@@ -455,6 +492,27 @@ const SalesReport: React.FC = () => {
               style={{ width: 130 }}
               value={poNumber}
               onChange={(e) => setPoNumber(e.target.value)}
+              allowClear
+            />
+            <Input
+              placeholder="Brand"
+              style={{ width: 110 }}
+              value={brand}
+              onChange={(e) => setBrand(e.target.value)}
+              allowClear
+            />
+            <Input
+              placeholder="Qty"
+              style={{ width: 80 }}
+              value={quantity}
+              onChange={(e) => setQuantity(e.target.value)}
+              allowClear
+            />
+            <Input
+              placeholder="Price"
+              style={{ width: 90 }}
+              value={unitPrice}
+              onChange={(e) => setUnitPrice(e.target.value)}
               allowClear
             />
             <Button type="primary" onClick={loadInvoices}>Search</Button>
@@ -546,7 +604,7 @@ const SalesReport: React.FC = () => {
           <Divider style={{ margin: '8px 0' }} />
           {/* Print summary row */}
           <Row gutter={[24, 8]} style={{ marginBottom: 12 }}>
-            <Col span={4}><Text>Invoices: <strong>{totalInvoices}</strong></Text></Col>
+            <Col span={4}><Text>Records: <strong>{totalInvoices}</strong></Text></Col>
             <Col span={5}><Text>Subtotal: <strong>{totalSubtotal.toLocaleString()}</strong></Text></Col>
             {isGst && <Col span={5}><Text>Tax: <strong>{totalTax.toLocaleString()}</strong></Text></Col>}
             <Col span={5}><Text>Total: <strong>{totalAmount.toLocaleString()}</strong></Text></Col>
@@ -564,6 +622,37 @@ const SalesReport: React.FC = () => {
           bordered
           summary={summaryRow}
           style={{ fontSize: 13 }}
+        />
+      </div>
+
+      {/* PDF Capture container */}
+      <div id="report-pdf-container" style={{ display: 'none' }}>
+        <ReportTablePdfDocument
+          reportTitle="Sales Report"
+          companyName={currentCompany?.name || '-'}
+          periodLabel={`Period: ${dateRange[0]?.format('DD-MM-YYYY')} — ${dateRange[1]?.format('DD-MM-YYYY')}`}
+          columns={[
+            { title: 'Date', dataIndex: 'invoice_date', align: 'center' as const, render: (v) => dayjs(v).format('DD-MM-YYYY') },
+            { title: 'Invoice #', dataIndex: 'invoice_number', align: 'left' as const },
+            { title: 'Customer', dataIndex: 'customer_name', align: 'left' as const },
+            { title: 'Subtotal', dataIndex: 'subtotal', align: 'right' as const, render: (v) => Number(v || 0).toLocaleString() },
+            ...(isGst ? [{ title: 'Tax', dataIndex: 'gst_total', align: 'right' as const, render: (v: any) => Number(v || 0).toLocaleString() }] : []),
+            { title: 'Total', dataIndex: 'total_amount', align: 'right' as const, render: (v) => Number(v || 0).toLocaleString() },
+            { title: 'Paid', dataIndex: 'id', align: 'right' as const, render: (_, r) => ((Number(r.total_amount) || 0) - (Number(r.balance) || 0)).toLocaleString() },
+            { title: 'Balance', dataIndex: 'balance', align: 'right' as const, render: (v) => Number(v || 0).toLocaleString() },
+          ]}
+          data={filtered}
+          summaryRow={
+            <tr className="erp-report-pdf-total-row">
+              <td colSpan={3} style={{ textAlign: 'right', fontWeight: 'bold' }}>TOTAL</td>
+              <td style={{ textAlign: 'right', fontWeight: 'bold' }}>{totalSubtotal.toLocaleString()}</td>
+              {isGst && <td style={{ textAlign: 'right', fontWeight: 'bold' }}>{totalTax.toLocaleString()}</td>}
+              <td style={{ textAlign: 'right', fontWeight: 'bold' }}>{totalAmount.toLocaleString()}</td>
+              <td style={{ textAlign: 'right', fontWeight: 'bold' }}>{totalPaid.toLocaleString()}</td>
+              <td style={{ textAlign: 'right', fontWeight: 'bold' }}>{totalBalance.toLocaleString()}</td>
+            </tr>
+          }
+          footerNote={`Generated on ${dayjs().format('DD-MMM-YYYY HH:mm')}`}
         />
       </div>
 

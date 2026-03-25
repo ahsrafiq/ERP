@@ -15,6 +15,16 @@ const Brands: React.FC = () => {
   const [deletePasswordModal, setDeletePasswordModal] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
   const [adminPassword, setAdminPassword] = useState('');
+  const passwordInputRef = React.useRef<any>(null);
+
+  useEffect(() => {
+    if (deletePasswordModal) {
+      setTimeout(() => {
+        passwordInputRef.current?.select();
+        passwordInputRef.current?.focus();
+      }, 100);
+    }
+  }, [deletePasswordModal]);
 
   // Section permissions (Inventory)
   const isAdminUser = user?.role_id === 1 || (user as any)?.role === 'admin' || user?.username === 'admin';
@@ -188,6 +198,7 @@ const Brands: React.FC = () => {
           onChange={e => setAdminPassword(e.target.value)}
           placeholder="Admin password"
           onKeyDown={e => { if (e.key === 'Enter') handleConfirmDelete(); }}
+          ref={passwordInputRef}
           autoFocus
         />
       </Modal>

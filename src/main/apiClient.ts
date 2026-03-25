@@ -65,6 +65,13 @@ export const apiClient = {
         update: (id: number, item: any) => apiRequest('put', `/items/${id}`, item),
         delete: (id: number) => apiRequest('delete', `/items/${id}`),
     },
+    warehouses: {
+        getAll: (companyId: number) => apiRequest('get', '/warehouses', { companyId }),
+        getById: (id: number) => apiRequest('get', `/warehouses/${id}`),
+        create: (warehouse: any) => apiRequest('post', '/warehouses', warehouse),
+        update: (id: number, warehouse: any) => apiRequest('put', `/warehouses/${id}`, warehouse),
+        delete: (id: number) => apiRequest('delete', `/warehouses/${id}`),
+    },
     salesInvoices: {
         getAll: (companyId: number, filters?: any) => apiRequest('get', '/sales-invoices', { companyId, ...filters }),
         getById: (id: number) => apiRequest('get', `/sales-invoices/${id}`),
@@ -126,6 +133,13 @@ export const apiClient = {
         getExpenseBreakdown: (companyId: number) => apiRequest('get', '/dashboard/expense-breakdown', { companyId }),
         getMonthlyRevenue: (companyId: number) => apiRequest('get', '/dashboard/monthly-revenue', { companyId }),
         getTopCustomers: (companyId: number) => apiRequest('get', '/dashboard/top-customers', { companyId }),
+    },
+    reportTemplates: {
+        getAllByUser: (companyId: number, userId: number, moduleKey?: string) =>
+            apiRequest('get', '/report-templates', { companyId, userId, ...(moduleKey ? { moduleKey } : {}) }),
+        getById: (id: number) => apiRequest('get', `/report-templates/${id}`),
+        create: (template: any) => apiRequest('post', '/report-templates', template),
+        deleteById: (id: number) => apiRequest('delete', `/report-templates/${id}`),
     },
     search: {
         global: (companyId: number, query: string) => apiRequest('get', '/search/global', { companyId, query }),

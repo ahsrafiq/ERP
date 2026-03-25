@@ -3,10 +3,11 @@ import { Table, Button, Space, Modal, Form, Input, InputNumber, Select, DatePick
 import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined, LockOutlined, MinusSquareOutlined, CloseOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useApp } from '../../context/AppContext';
+import { filterRowsByOperationalFiscalYear } from '../../utils/fiscalYearFilter';
 import { useLocation } from 'react-router-dom';
 
 const Expenses: React.FC = () => {
-  const { currentCompany, user, minimizeModal } = useApp();
+  const { currentCompany, user, fiscalYear, minimizeModal } = useApp();
   const location = useLocation();
   const [expenses, setExpenses] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
@@ -19,6 +20,16 @@ const Expenses: React.FC = () => {
   const [deletePasswordModal, setDeletePasswordModal] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
   const [adminPassword, setAdminPassword] = useState('');
+  const passwordInputRef = React.useRef<any>(null);
+
+  useEffect(() => {
+    if (deletePasswordModal) {
+      setTimeout(() => {
+        passwordInputRef.current?.select();
+        passwordInputRef.current?.focus();
+      }, 100);
+    }
+  }, [deletePasswordModal]);
 
   // Section permissions (Expenses)
   const isAdminUser = user?.role_id === 1 || (user as any)?.role === 'admin' || user?.username === 'admin';
@@ -37,7 +48,7 @@ const Expenses: React.FC = () => {
         loadCategories();
       }
     }
-  }, [currentCompany, location.pathname]);
+  }, [currentCompany, location.pathname, fiscalYear]);
 
   const loadExpenses = async () => {
     if (!currentCompany) return;
@@ -45,7 +56,7 @@ const Expenses: React.FC = () => {
     try {
       const result = await (window as any).electronAPI.db.expenses.getAll(currentCompany.id);
       if (result.success) {
-        setExpenses(result.data || []);
+        setExpenses(filterRowsByOperationalFiscalYear(result.data || [], fiscalYear));
       }
     } catch (error) {
       notification.error({ message: 'Error', description: 'Failed to load expenses', duration: 0 });
@@ -311,6 +322,7 @@ const Expenses: React.FC = () => {
           onChange={e => setAdminPassword(e.target.value)}
           placeholder="Admin password"
           onKeyDown={e => { if (e.key === 'Enter') handleConfirmDelete(); }}
+          ref={passwordInputRef}
           autoFocus
         />
       </Modal>

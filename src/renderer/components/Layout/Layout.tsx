@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Layout as AntLayout, Menu, Avatar, Dropdown, Input, Select, Space, Modal, InputNumber } from 'antd';
+import { Layout as AntLayout, Menu, Avatar, Dropdown, Select, Space, Typography } from 'antd';
 import {
   DashboardOutlined,
   UserOutlined,
@@ -15,9 +15,11 @@ import {
   MenuUnfoldOutlined,
   FileTextOutlined,
   CloseOutlined,
+  CalendarOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
+import { attachModalEnterToSubmit } from '../../utils/modalEnterSubmit';
 import './Layout.css';
 
 // const { Header, Content } = AntLayout; // Moved inside component
@@ -28,16 +30,7 @@ interface LayoutProps {
 
 const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [collapsed, setCollapsed] = useState(false);
-  const [addFYOpen, setAddFYOpen] = useState(false);
-  const [customFyStartYears, setCustomFyStartYears] = useState<number[]>(() => {
-    try {
-      const raw = localStorage.getItem('erp_fy_ranges_custom');
-      const parsed = raw ? JSON.parse(raw) : [];
-      if (Array.isArray(parsed)) return parsed.map((x: any) => Number(x)).filter((n: number) => Number.isFinite(n));
-    } catch { /* ignore */ }
-    return [];
-  });
-  const [fyStartYearDraft, setFyStartYearDraft] = useState<number>(2026);
+  const [logoDataUrl, setLogoDataUrl] = useState<string | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
   const { 
@@ -53,6 +46,24 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     removeMinimizedModal
   } = useApp();
 
+  // Load company logo as base64 whenever logo_path changes
+  useEffect(() => {
+    if (!currentCompany?.logo_path) {
+      setLogoDataUrl(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const result = await (window as any).electronAPI.db.files.readAsDataURL(currentCompany.logo_path);
+        if (!cancelled && result?.success && result?.data) {
+          setLogoDataUrl(result.data);
+        }
+      } catch { /* ignore */ }
+    })();
+    return () => { cancelled = true; };
+  }, [currentCompany?.logo_path]);
+
   const defaultFyOptions = useMemo(() => {
     const baseStartYear = 2000 + (Number(fiscalYear) || 0);
     const starts: number[] = [];
@@ -63,7 +74,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const fyOptions = useMemo(() => {
     const starts = Array.from(new Set([
       ...defaultFyOptions,
-      ...customFyStartYears,
       2000 + (Number(fiscalYear) || 0),
     ]));
 
@@ -77,18 +87,29 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         label: `${startYear}\u2013${endYY}`,
       };
     });
-  }, [customFyStartYears, defaultFyOptions, fiscalYear]);
+  }, [defaultFyOptions, fiscalYear]);
 
   // Ensure selected FY is part of options
   const fiscalYearValue = Number(fiscalYear);
 
+  // Ctrl+P on report screens: trigger print from the report page.
+  // (Sales documents already handle Ctrl+P to open their print preview modal.)
   useEffect(() => {
-    try {
-      localStorage.setItem('erp_fy_ranges_custom', JSON.stringify(customFyStartYears));
-    } catch {
-      // ignore
-    }
-  }, [customFyStartYears]);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
+        if (location.pathname.startsWith('/reports')) {
+          e.preventDefault();
+          window.print();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [location.pathname]);
+
+  // Modals / drawers: Enter → primary button; Shift+Enter → newline in textareas.
+  useEffect(() => attachModalEnterToSubmit(), []);
 
   const menuItems = [
     {
@@ -125,6 +146,11 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       label: 'Receivables',
     },
     {
+      key: '/inventory/adjustment-notes',
+      icon: <FileTextOutlined />,
+      label: 'Adjustment Notes',
+    },
+    {
       key: 'purchase',
       icon: <ShoppingOutlined />,
       label: 'Purchase',
@@ -136,11 +162,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     {
       key: 'inventory',
       icon: <DatabaseOutlined />,
-      label: 'Inventory',
+      label: 'Stock',
       children: [
         { key: '/inventory/items', label: 'Items' },
         { key: '/inventory/brands', label: 'Brands' },
-        { key: '/inventory/adjustment-notes', label: 'Adjustment Notes' },
       ],
     },
     {
@@ -160,7 +185,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         { key: '/reports', label: 'All Reports' },
         { key: '/reports/sales', label: 'Sales Report' },
         { key: '/reports/purchase', label: 'Purchase Report' },
-        { key: '/reports/inventory', label: 'Inventory Report' },
+        { key: '/reports/inventory', label: 'Stock Report' },
+        { key: '/reports/custom-builder', label: 'Custom Report Builder' },
         { key: '/reports/customer-ledger', label: 'Customer Ledger' },
         { key: '/reports/vendor-ledger', label: 'Vendor Ledger' },
         { key: '/reports/tax', label: 'Tax Deduction Report' },
@@ -168,6 +194,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         { key: '/reports/expenses', label: 'Expense Report' },
         { key: '/reports/pl', label: 'Profit & Loss' },
         { key: '/reports/balance', label: 'Balance Sheet' },
+        { key: '/reports/customer-outstanding', label: 'Customer Outstanding' },
       ],
     },
   ];
@@ -236,9 +263,15 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           boxShadow: '2px 0 8px 0 rgba(29,35,41,.05)',
         }}
       >
-        <div className="logo" style={{ justifyContent: collapsed ? 'center' : 'space-between', padding: collapsed ? '0' : '0 16px' }}>
-          {!collapsed && <h2 style={{ marginLeft: 8, whiteSpace: 'nowrap', overflow: 'hidden' }}>ERP Desktop</h2>}
-          {collapsed && <h2 style={{ fontSize: '18px' }}>ERP</h2>}
+        <div className="logo" style={{ justifyContent: collapsed ? 'center' : 'space-between', padding: collapsed ? '0' : '0 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Avatar 
+            src={logoDataUrl || undefined} 
+            shape={collapsed ? 'circle' : 'square'} 
+            size={collapsed ? 32 : 40}
+            icon={!logoDataUrl && <h2 style={{ fontSize: '18px', margin: 0 }}>{currentCompany?.name?.[0].toUpperCase() || 'E'}</h2>}
+            style={{ flexShrink: 0 }}
+          />
+          {!collapsed && <h2 style={{ whiteSpace: 'nowrap', overflow: 'hidden', fontSize: '18px', margin: 0 }}>{currentCompany?.name || 'ERP'}</h2>}
         </div>
         <Menu
           mode="inline"
@@ -269,30 +302,19 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               placeholder="Select Company"
               options={companies.map((c) => ({ label: c.name, value: c.id }))}
             />
-            <Input
-              addonBefore="FY 20"
-              value={String(fiscalYearValue).padStart(2, '0')}
-              readOnly
-              disabled
-              style={{ width: 100, marginLeft: 12 }}
-            />
-            <Select
-              value={fiscalYearValue}
-              onChange={(v) => {
-                if (v === 'add' as any) {
-                  setFyStartYearDraft(2026);
-                  setAddFYOpen(true);
-                  return;
-                }
-                const n = Number(v);
-                if (!Number.isNaN(n)) setFiscalYear(n);
-              }}
-              style={{ width: 140, marginLeft: 12 }}
-              options={[
-                ...fyOptions,
-                { value: 'add' as any, label: 'Add FY range...' },
-              ]}
-            />
+            <Space style={{ marginLeft: 24 }}>
+              <CalendarOutlined style={{ color: '#1890ff' }} />
+              <Typography.Text strong>Fiscal Year:</Typography.Text>
+              <Select
+                value={fiscalYearValue}
+                onChange={(v) => {
+                  const n = Number(v);
+                  if (!Number.isNaN(n)) setFiscalYear(n);
+                }}
+                style={{ width: 140 }}
+                options={fyOptions}
+              />
+            </Space>
           </div>
             <Space size="large">
               <Dropdown menu={{ items: userMenuItems, onClick: handleUserMenuClick }} placement="bottomRight">
@@ -303,37 +325,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         <Content className="app-content">
           {children}
         </Content>
-        <Modal
-          title="Add Fiscal Year Range"
-          open={addFYOpen}
-          onCancel={() => setAddFYOpen(false)}
-          onOk={() => {
-            const startYear = Number(fyStartYearDraft);
-            if (!Number.isFinite(startYear) || startYear < 2000 || startYear > 2099) return;
-            setCustomFyStartYears((prev) => {
-              const normalized = Array.from(new Set([...prev, startYear])).sort((a, b) => a - b);
-              return normalized;
-            });
-            setFiscalYear(startYear % 100);
-            setAddFYOpen(false);
-          }}
-          okText="Add"
-          cancelText="Cancel"
-        >
-          <div style={{ marginBottom: 12 }}>
-            Enter the starting year of the range (example: <strong>2026</strong> for <strong>2026–27</strong>)
-          </div>
-          <InputNumber
-            min={2000}
-            max={2099}
-            value={fyStartYearDraft}
-            onChange={(v) => {
-              if (v == null) return;
-              setFyStartYearDraft(Number(v));
-            }}
-            style={{ width: '100%' }}
-          />
-        </Modal>
         {minimizedModals.length > 0 && (
           <div className="minimized-modals-bar">
             {minimizedModals.map((modal) => (

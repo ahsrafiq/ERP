@@ -1,15 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { Table, Button, Space, Modal, Form, Input, message, notification, Popconfirm, Switch, Upload } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, UploadOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, DeleteOutlined, UploadOutlined, MinusSquareOutlined, CloseOutlined } from '@ant-design/icons';
 import { useApp } from '../../context/AppContext';
 
 const Companies: React.FC = () => {
-  const { companies, setCompanies, setCurrentCompany } = useApp();
+  const { companies, setCompanies, currentCompany, setCurrentCompany, minimizeModal } = useApp();
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingCompany, setEditingCompany] = useState<any>(null);
   const [letterheadBase64, setLetterheadBase64] = useState<string | null>(null);
   const [letterheadFileName, setLetterheadFileName] = useState<string>('');
+  const [logoBase64, setLogoBase64] = useState<string | null>(null);
+  const [logoFileName, setLogoFileName] = useState<string>('');
   const [form] = Form.useForm();
 
   useEffect(() => {
@@ -23,6 +25,11 @@ const Companies: React.FC = () => {
       if (result.success) {
         const data = result.data || [];
         setCompanies(data);
+        // Keep currentCompany in sync (e.g. after logo/name change)
+        if (currentCompany) {
+          const updated = data.find((c: any) => c.id === currentCompany.id);
+          if (updated) setCurrentCompany(updated);
+        }
         return data;
       }
     } catch (error) {
@@ -45,7 +52,18 @@ const Companies: React.FC = () => {
   const handleSave = async (values: any) => {
     try {
       const companyData = { ...values };
-      companyData.logo_path = null; // Logo removed - PDF letterhead only
+
+      // Handle company logo upload
+      if (logoBase64) {
+        const ext = logoFileName.split('.').pop()?.toLowerCase() || 'png';
+        const fileName = `company_logo_${Date.now()}.${ext}`;
+        const logoResult = await (window as any).electronAPI.db.files.save(logoBase64, fileName, 'logos');
+        if (logoResult.success) {
+          companyData.logo_path = logoResult.filePath;
+        }
+      } else if (!editingCompany?.logo_path) {
+        companyData.logo_path = null;
+      }
 
       // Handle letterhead upload (PDF or image)
       if (!letterheadBase64 && !editingCompany?.letterhead_path) {
@@ -86,6 +104,8 @@ const Companies: React.FC = () => {
       setEditingCompany(null);
       setLetterheadBase64(null);
       setLetterheadFileName('');
+      setLogoBase64(null);
+      setLogoFileName('');
       form.resetFields();
       loadCompanies();
     } catch (error) {
@@ -158,6 +178,8 @@ const Companies: React.FC = () => {
             setEditingCompany(null);
             setLetterheadBase64(null);
             setLetterheadFileName('');
+            setLogoBase64(null);
+            setLogoFileName('');
             form.resetFields();
             setModalVisible(true);
           }}
@@ -182,10 +204,42 @@ const Companies: React.FC = () => {
           setEditingCompany(null);
           setLetterheadBase64(null);
           setLetterheadFileName('');
+          setLogoBase64(null);
+          setLogoFileName('');
           form.resetFields();
         }}
         onOk={() => form.submit()}
         width={700}
+        closeIcon={
+          <Space>
+            <MinusSquareOutlined
+              style={{ fontSize: 18, color: '#1890ff' }}
+              onClick={(e) => {
+                e.stopPropagation();
+                setModalVisible(false);
+                const values = form.getFieldsValue();
+                const companyName = values.name || 'New Company';
+                minimizeModal({
+                  id: editingCompany ? `company-edit-${editingCompany.id}` : 'company-new',
+                  title: editingCompany ? `Edit Company ${companyName}` : `New Company ${companyName}`,
+                  onRestore: () => {
+                    setEditingCompany(editingCompany);
+                    setModalVisible(true);
+                  }
+                });
+              }}
+            />
+            <CloseOutlined style={{ fontSize: 18 }} onClick={() => {
+              setModalVisible(false);
+              setEditingCompany(null);
+              setLetterheadBase64(null);
+              setLetterheadFileName('');
+              setLogoBase64(null);
+              setLogoFileName('');
+              form.resetFields();
+            }} />
+          </Space>
+        }
       >
         <Form form={form} layout="vertical" onFinish={handleSave}>
           <Space align="start" style={{ width: '100%', justifyContent: 'space-between' }}>
@@ -204,6 +258,38 @@ const Companies: React.FC = () => {
               </Form.Item>
             </div>
             <div style={{ width: 320 }}>
+              {/* Company Logo */}
+              <Form.Item label="Company Logo (shown in sidebar & reports)">
+                <Upload
+                  accept=".jpg,.jpeg,.png"
+                  showUploadList={false}
+                  beforeUpload={async (file) => {
+                    const base64 = await convertToBase64(file);
+                    setLogoBase64(base64);
+                    setLogoFileName(file.name);
+                    return false;
+                  }}
+                >
+                  <Button icon={<UploadOutlined />}>Upload Logo (JPG/PNG)</Button>
+                </Upload>
+                {logoBase64 ? (
+                  <div style={{ marginTop: 8, border: '1px solid #ddd', padding: 4, textAlign: 'center' }}>
+                    <img src={logoBase64} alt="Logo preview" style={{ maxWidth: 120, maxHeight: 80, objectFit: 'contain' }} />
+                    <div style={{ fontSize: 12, color: '#555', marginTop: 4 }}>{logoFileName}</div>
+                  </div>
+                ) : editingCompany?.logo_path ? (
+                  <div style={{ marginTop: 8, border: '1px solid #ddd', padding: 4, textAlign: 'center' }}>
+                    <img
+                      src={editingCompany.logo_path.replace('atom://', 'atom-file://')}
+                      alt="Current logo"
+                      style={{ maxWidth: 120, maxHeight: 80, objectFit: 'contain' }}
+                    />
+                    <div style={{ fontSize: 12, color: '#555', marginTop: 4 }}>Current logo</div>
+                  </div>
+                ) : null}
+              </Form.Item>
+
+              {/* Letterhead */}
               <Form.Item label="Letterhead (PDF or Image)" required>
                 <Upload
                   accept=".pdf,.jpg,.jpeg,.png"
@@ -217,9 +303,7 @@ const Companies: React.FC = () => {
                 >
                   <Button icon={<UploadOutlined />}>Upload Letterhead (PDF/JPG/PNG)</Button>
                 </Upload>
-                {/* Preview: show chosen file or existing letterhead */}
                 {letterheadBase64 ? (
-                  // Newly selected file preview
                   /\.(jpg|jpeg|png)$/i.test(letterheadFileName) ? (
                     <div style={{ marginTop: 8, border: '1px solid #ddd', padding: 4, textAlign: 'center' }}>
                       <img src={letterheadBase64} alt="Letterhead preview" style={{ maxWidth: '100%', maxHeight: 120, objectFit: 'contain' }} />
@@ -232,7 +316,6 @@ const Companies: React.FC = () => {
                     </div>
                   )
                 ) : editingCompany?.letterhead_path ? (
-                  // Existing saved letterhead
                   /\.(jpg|jpeg|png)/i.test(editingCompany.letterhead_path) ? (
                     <div style={{ marginTop: 8, fontSize: 12, color: '#555' }}>
                       🖼️ Current: {editingCompany.letterhead_path.split('/').pop()}
@@ -257,6 +340,9 @@ const Companies: React.FC = () => {
             <Form.Item name="state" label="State" rules={[{ required: true, message: 'State is required' }]}><Input /></Form.Item>
           </Space>
 
+          <Form.Item name="tax_number" label="NTN/Tax Number" rules={[{ required: true, message: 'NTN/Tax Number is required' }]}>
+            <Input />
+          </Form.Item>
           <Form.Item
             name="is_gst_enabled"
             label="Enable GST"
@@ -273,18 +359,13 @@ const Companies: React.FC = () => {
           >
             {({ getFieldValue }) =>
               getFieldValue('is_gst_enabled') ? (
-                <>
-                  <Form.Item name="tax_number" label="NTN/Tax Number" rules={[{ required: true, message: 'NTN/Tax Number is required' }]}>
-                    <Input />
-                  </Form.Item>
-                  <Form.Item
-                    name="gst_registration_number"
-                    label="GST Registration Number"
-                    rules={[{ required: true, message: 'Please enter GST registration number' }]}
-                  >
-                    <Input placeholder="e.g., 12-345678-9" />
-                  </Form.Item>
-                </>
+                <Form.Item
+                  name="gst_registration_number"
+                  label="GST Registration Number"
+                  rules={[{ required: true, message: 'Please enter GST registration number' }]}
+                >
+                  <Input placeholder="e.g., 12-345678-9" />
+                </Form.Item>
               ) : null
             }
           </Form.Item>

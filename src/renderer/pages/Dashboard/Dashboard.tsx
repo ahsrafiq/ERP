@@ -69,8 +69,8 @@ const Dashboard: React.FC = () => {
 
   return (
     <div className="dashboard">
-      <div className="dashboard-header">
-        <h1>Dashboard Overview</h1>
+      <div className="dashboard-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 20px', background: '#fff', borderBottom: '1px solid #f0f0f0' }}>
+        <h1 style={{ margin: 0 }}>Dashboard Overview</h1>
       </div>
 
       {loading ? (

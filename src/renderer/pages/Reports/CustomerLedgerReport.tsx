@@ -1,16 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import {
   Table, Card, Row, Col, Select, Button, Space,
-  Statistic, Divider, Typography, notification, message, Empty, Tag,
+  Statistic, Divider, Typography, notification, message, Empty, Tag, Avatar,
 } from 'antd';
 import {
   PrinterOutlined, ArrowLeftOutlined, FileExcelOutlined,
-  UserOutlined, DollarOutlined, FileTextOutlined,
+  UserOutlined, DollarOutlined, FileTextOutlined, ReloadOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import dayjs from 'dayjs';
 import XLSXStyle from 'xlsx-js-style';
+import {
+  ReportLedgerPdfDocument,
+  formatLedgerPaymentTransType,
+  type ReportLedgerPdfRow,
+} from '../../components/ReportPdf/ReportLedgerPdfDocument';
 
 const { Title, Text } = Typography;
 
@@ -18,6 +23,7 @@ interface LedgerEntry {
   id: string;
   date: string;
   type: 'invoice' | 'payment';
+  po_number?: string;
   reference: string;
   customer_name?: string;
   description: string;
@@ -26,6 +32,8 @@ interface LedgerEntry {
   balance: number;
   taxDeductionRate?: number;
   taxDeductionAmount?: number;
+  personnel?: string;
+  payment_method?: string | null;
 }
 
 const CustomerLedgerReport: React.FC = () => {
@@ -62,11 +70,13 @@ const CustomerLedgerReport: React.FC = () => {
       const customer = selectedCustomerId ? customers.find((c) => c.id === selectedCustomerId) : null;
       setCustomerInfo(customer);
 
-      // Load all sales invoices
-      const invRes = await (window as any).electronAPI.db.salesInvoices.getAll(
-        currentCompany!.id,
-        {}
-      );
+      // Load invoices, payments, and users (for Personnel column on PDFs)
+      const [invRes, payRes, usersRes] = await Promise.all([
+        (window as any).electronAPI.db.salesInvoices.getAll(currentCompany!.id, {}),
+        (window as any).electronAPI.db.payments.getAll(currentCompany!.id, { type: 'in' }),
+        (window as any).electronAPI.db.users.getAll(currentCompany!.id),
+      ]);
+
       let invoices = (invRes.success ? invRes.data : []) || [];
       if (selectedCustomerId) {
         invoices = invoices.filter((inv: any) => inv.customer_id === selectedCustomerId);
@@ -82,14 +92,17 @@ const CustomerLedgerReport: React.FC = () => {
         );
       }
 
-      // Load all payments
-      const payRes = await (window as any).electronAPI.db.payments.getAll(
-        currentCompany!.id,
-        { type: 'in' }
-      );
       let payments = (payRes.success ? payRes.data : []) || [];
       if (selectedCustomerId) {
         payments = payments.filter((p: any) => p.customer_id === selectedCustomerId);
+      }
+
+      const userMap: Record<number, string> = {};
+      if (usersRes?.success && Array.isArray(usersRes.data)) {
+        for (const u of usersRes.data) {
+          const id = Number(u.id);
+          if (id) userMap[id] = (u.full_name && String(u.full_name).trim()) || u.username || '—';
+        }
       }
 
       // Combine into unified ledger entries
@@ -98,16 +111,19 @@ const CustomerLedgerReport: React.FC = () => {
           id: `inv-${inv.id}`,
           date: inv.invoice_date,
           type: 'invoice' as const,
+          po_number: inv.po_number || '',
           reference: inv.invoice_number,
           customer_name: inv.customer_name,
           description: `Sales Invoice${inv.due_date ? ` (Due: ${dayjs(inv.due_date).format('DD-MM-YYYY')})` : ''}`,
           debit: Number(inv.total_amount) || 0,
           credit: 0,
+          personnel: userMap[Number(inv.created_by)] || '—',
         })),
         ...(!overdueOnly ? payments.map((p: any) => ({
           id: `pay-${p.id}`,
           date: p.payment_date,
           type: 'payment' as const,
+          po_number: selectedCustomerId ? (customer?.po_number || '') : '',
           reference: p.payment_number,
           customer_name: p.customer_name,
           description: `Payment Received (Net)${p.payment_method ? ` (${p.payment_method})` : ''}${p.notes ? ' — ' + p.notes : ''}`,
@@ -115,6 +131,8 @@ const CustomerLedgerReport: React.FC = () => {
           credit: Number(p.amount) || 0,
           taxDeductionRate: Number(p.tax_deduction_rate) || 0,
           taxDeductionAmount: Number(p.tax_deduction) || 0,
+          personnel: userMap[Number(p.created_by)] || '—',
+          payment_method: p.payment_method,
         })) : []),
       ];
 
@@ -162,21 +180,22 @@ const CustomerLedgerReport: React.FC = () => {
         ? <Tag color="blue">Invoice</Tag>
         : <Tag color="green">Payment</Tag>,
     },
+    { title: 'PO Number', dataIndex: 'po_number', key: 'po_number', render: (v: string) => v ? v : '—' },
     { title: 'Reference', dataIndex: 'reference',   key: 'reference', render: (v: string) => <Text strong>{v}</Text> },
     { title: 'Description', dataIndex: 'description', key: 'description' },
     {
       title: 'Debit (Invoice)',
       dataIndex: 'debit', key: 'debit', align: 'right' as const,
       render: (v: number) => v > 0
-        ? <Text style={{ color: '#cf1322' }}>{Number(v).toLocaleString()}</Text>
-        : <Text type="secondary">—</Text>,
+        ? <Text style={{ color: '#cf1322', fontSize: '12px' }}>{Number(v).toLocaleString()}</Text>
+        : <Text type="secondary" style={{ fontSize: '12px' }}>—</Text>,
     },
     {
       title: 'Credit (Payment)',
       dataIndex: 'credit', key: 'credit', align: 'right' as const,
       render: (v: number) => v > 0
-        ? <Text style={{ color: '#389e0d' }}>{Number(v).toLocaleString()}</Text>
-        : <Text type="secondary">—</Text>,
+        ? <Text style={{ color: '#389e0d', fontSize: '12px' }}>{Number(v).toLocaleString()}</Text>
+        : <Text type="secondary" style={{ fontSize: '12px' }}>—</Text>,
     },
     {
       title: 'Tax Ded %',
@@ -192,17 +211,49 @@ const CustomerLedgerReport: React.FC = () => {
       title: 'Balance',
       dataIndex: 'balance', key: 'balance', align: 'right' as const,
       render: (v: number) => (
-        <Text strong type={v > 0 ? 'danger' : v < 0 ? 'success' : undefined}>
+        <Text strong style={{ fontSize: '12px' }} type={v > 0 ? 'danger' : v < 0 ? 'success' : undefined}>
           {Number(v).toLocaleString()}
         </Text>
       ),
     },
   ];
 
+  const handleSavePDF = async () => {
+    try {
+      const fileName = `Customer_Ledger_${customerInfo?.name || 'All'}.pdf`;
+      const pathResult = await (window as any).electronAPI.db.files.getSavePath(fileName);
+      if (!pathResult.success) return;
+
+      document.body.classList.add('capturing-pdf');
+      // Ensure the report is visible in the print container
+      const printContainer = document.getElementById('print-container');
+      if (printContainer) {
+          printContainer.style.display = 'block';
+      }
+
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const result = await (window as any).electronAPI.db.files.captureAndSave(pathResult.filePath);
+      
+      if (result.success) {
+        message.success(`Saved to: ${result.filePath}`);
+      } else {
+        notification.error({ message: 'Error', description: result.error || 'Failed to save PDF', duration: 0 });
+      }
+    } catch (err) {
+      notification.error({ message: 'Error', description: 'Failed to save PDF', duration: 0 });
+    } finally {
+      document.body.classList.remove('capturing-pdf');
+      const printContainer = document.getElementById('print-container');
+      if (printContainer) {
+          printContainer.style.display = 'none';
+      }
+    }
+  };
+
   const summaryRow = () => (
     <Table.Summary fixed>
       <Table.Summary.Row style={{ fontWeight: 700, background: '#fafafa' }}>
-        <Table.Summary.Cell index={0} colSpan={selectedCustomerId ? 5 : 6} align="right"><Text strong>Total</Text></Table.Summary.Cell>
+        <Table.Summary.Cell index={0} colSpan={selectedCustomerId ? 6 : 7} align="right"><Text strong>Total</Text></Table.Summary.Cell>
         <Table.Summary.Cell index={1} align="right"><Text style={{ color: '#cf1322' }} strong>{totalDebit.toLocaleString()}</Text></Table.Summary.Cell>
         <Table.Summary.Cell index={2} align="right"><Text style={{ color: '#389e0d' }} strong>{totalCredit.toLocaleString()}</Text></Table.Summary.Cell>
         <Table.Summary.Cell index={3} colSpan={2} align="right" />
@@ -238,13 +289,14 @@ const CustomerLedgerReport: React.FC = () => {
     
     // Define columns based on whether a specific customer is selected
     const hasCust = !!selectedCustomerId;
-    const numCols = hasCust ? 8 : 9;
+    const numCols = hasCust ? 9 : 10;
 
     const colHdrs = [
       c('Sr.', sHdr), 
       c('Date', sHdr), 
       ...(hasCust ? [] : [c('Customer', sHdr)]),
       c('Type', sHdr), 
+      c('PO Number', sHdr),
       c('Reference', sHdr),
       c('Description', sHdr), 
       c('Debit (Invoice)', sHdrR), 
@@ -257,6 +309,7 @@ const CustomerLedgerReport: React.FC = () => {
       c(row.date ? dayjs(row.date).format('DD-MM-YYYY') : '', sData),
       ...(hasCust ? [] : [c(row.customer_name || '—', sData)]),
       c(row.type === 'invoice' ? 'Invoice' : 'Payment', sData),
+      c(row.po_number || '',                        sData),
       c(row.reference,                             sData),
       c(row.description,                           sData),
       c(row.debit  > 0 ? row.debit  : '',          row.debit  > 0 ? sDebit : sDataR),
@@ -265,7 +318,7 @@ const CustomerLedgerReport: React.FC = () => {
     ]);
 
     const totalsRow = [
-      c('', sTot), c('', sTot), ...(hasCust ? [] : [c('', sTot)]), c('', sTot), c('', sTot), c('TOTAL', sTot),
+      c('', sTot), c('', sTot), ...(hasCust ? [] : [c('', sTot)]), c('', sTot), c('', sTot), c('', sTot), c('TOTAL', sTot),
       c(totalDebit, sTot), c(totalCredit, sTot), c(closingBal, sTot),
     ];
 
@@ -299,10 +352,10 @@ const CustomerLedgerReport: React.FC = () => {
     ];
     
     ws['!cols'] = hasCust ? [
-      { wch: 8 }, { wch: 13 }, { wch: 10 }, { wch: 16 },
+      { wch: 8 }, { wch: 13 }, { wch: 10 }, { wch: 14 }, { wch: 16 },
       { wch: 35 }, { wch: 18 }, { wch: 18 }, { wch: 16 },
     ] : [
-      { wch: 8 }, { wch: 13 }, { wch: 25 }, { wch: 10 }, { wch: 16 },
+      { wch: 8 }, { wch: 13 }, { wch: 25 }, { wch: 10 }, { wch: 14 }, { wch: 16 },
       { wch: 35 }, { wch: 18 }, { wch: 18 }, { wch: 16 },
     ];
     ws['!rows'] = [{ hpt: 26 }, { hpt: 20 }, { hpt: 16 }, { hpt: 6 }, { hpt: 22 }];
@@ -312,6 +365,18 @@ const CustomerLedgerReport: React.FC = () => {
     XLSXStyle.writeFile(wb, `Customer_Ledger_${custName.replace(/\s+/g, '_')}_${dateStr.replace(/\//g, '-')}.xlsx`);
     message.success('Exported to Excel successfully');
   };
+
+  const pdfRows: ReportLedgerPdfRow[] = ledger.map((r) => ({
+    date: r.date ? dayjs(r.date).format('DD.MM.YYYY') : '-',
+    transType: r.type === 'invoice' ? 'Invoice' : formatLedgerPaymentTransType(r.payment_method),
+    poNumber: r.po_number || '-',
+    invRef: r.reference ? `Inv # ${r.reference}` : '-',
+    debit: r.debit > 0 ? Number(r.debit).toLocaleString() : '-',
+    credit: r.credit > 0 ? Number(r.credit).toLocaleString() : '-',
+    balance: Number(r.balance || 0).toLocaleString(),
+  }));
+  const dateFromLabel = ledger.length > 0 ? dayjs(ledger[0].date).format('DD-MMM-YYYY') : '-';
+  const dateToLabel = ledger.length > 0 ? dayjs(ledger[ledger.length - 1].date).format('DD-MMM-YYYY') : '-';
 
   return (
     <div>
@@ -329,6 +394,9 @@ const CustomerLedgerReport: React.FC = () => {
               onClick={handleExportExcel}
             >
               Export Excel
+            </Button>
+            <Button icon={<PrinterOutlined />} disabled={ledger.length === 0} onClick={handleSavePDF}>
+              Save as PDF
             </Button>
             <Button type="primary" icon={<PrinterOutlined />} disabled={ledger.length === 0} onClick={() => window.print()}>
               Print
@@ -359,10 +427,18 @@ const CustomerLedgerReport: React.FC = () => {
               Overdue Only
             </Button>
             <Button type="primary" onClick={loadLedger}>Search</Button>
+            <Button icon={<span className="anticon"><ReloadOutlined /></span>} onClick={loadLedger}>Refresh</Button>
             {customerInfo && (
               <Space size="large" style={{ marginLeft: 16 }}>
-                {customerInfo.phone && <Text type="secondary">📞 {customerInfo.phone}</Text>}
-                {customerInfo.address && <Text type="secondary">📍 {customerInfo.address}</Text>}
+                <Avatar 
+                  src={customerInfo.logo_path ? customerInfo.logo_path.replace('atom://', 'atom-file://') : undefined} 
+                  shape="square" 
+                  size="large"
+                />
+                <div>
+                  {customerInfo.phone && <div style={{ fontSize: '12px', color: '#888' }}>📞 {customerInfo.phone}</div>}
+                  {customerInfo.address && <div style={{ fontSize: '12px', color: '#888' }}>📍 {customerInfo.address}</div>}
+                </div>
               </Space>
             )}
           </Space>
@@ -390,10 +466,20 @@ const CustomerLedgerReport: React.FC = () => {
       {/* Print header */}
       {ledger.length > 0 && (
         <div className="print-only" style={{ marginBottom: 16 }}>
-          <Title level={3} style={{ textAlign: 'center', margin: 0 }}>{currentCompany?.name}</Title>
-          <Title level={5} style={{ textAlign: 'center', margin: 0, color: '#666' }}>Customer Ledger</Title>
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 20, marginBottom: 8 }}>
+            <Avatar 
+              src={customerInfo?.logo_path ? customerInfo.logo_path.replace('atom://', 'atom-file://') : undefined} 
+              shape="square" 
+              size={64}
+              style={{ display: customerInfo?.logo_path ? 'block' : 'none' }}
+            />
+            <div style={{ textAlign: 'center' }}>
+              <Title level={3} style={{ margin: 0 }}>{currentCompany?.name}</Title>
+              <Title level={5} style={{ margin: 0, color: '#666' }}>Customer Ledger</Title>
+            </div>
+          </div>
           <Text style={{ display: 'block', textAlign: 'center' }}>Customer: <strong>{customerInfo?.name || 'All Customers'}</strong></Text>
-          {customerInfo?.address && <Text style={{ display: 'block', textAlign: 'center', color: '#888' }}>{customerInfo.address}</Text>}
+          {customerInfo?.address && <Text style={{ display: 'block', textAlign: 'center', color: '#888', fontSize: '12px' }}>{customerInfo.address}</Text>}
           <Divider style={{ margin: '8px 0' }} />
           <Row gutter={[24, 8]} style={{ marginBottom: 12 }}>
             <Col span={5}><Text>Invoices: <strong>{invoiceCount}</strong></Text></Col>
@@ -420,6 +506,25 @@ const CustomerLedgerReport: React.FC = () => {
           rowClassName={(row) => row.type === 'payment' ? 'payment-row' : ''}
         />
       )}
+
+      {/* Hidden print container for PDF capture */}
+      <div id="print-container" style={{ display: 'none' }}>
+          {ledger.length > 0 && (
+              <ReportLedgerPdfDocument
+                reportTitle="Customer Ledger"
+                companyName={currentCompany?.name || '-'}
+                dateFromLabel={dateFromLabel}
+                dateToLabel={dateToLabel}
+                entityLabel="Customer Name"
+                entityName={customerInfo?.name || 'All Customers'}
+                rows={pdfRows}
+                totalDebit={totalDebit.toLocaleString()}
+                totalCredit={totalCredit.toLocaleString()}
+                closingBalance={closingBal.toLocaleString()}
+                footerNote={`Generated on ${dayjs().format('DD-MMM-YYYY HH:mm')}`}
+              />
+          )}
+      </div>
 
       <style>{`
         .payment-row { background: #f6ffed !important; }

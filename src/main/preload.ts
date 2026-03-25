@@ -89,6 +89,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     purchaseInvoices: {
       getAll: (companyId: number, filters?: any) => ipcRenderer.invoke('db:purchaseInvoices:getAll', companyId, filters),
       getById: (id: number) => ipcRenderer.invoke('db:purchaseInvoices:getById', id),
+      getNextNumber: (companyId: number, fiscalYear?: number) => ipcRenderer.invoke('db:purchaseInvoices:getNextNumber', companyId, fiscalYear),
       create: (invoice: any) => ipcRenderer.invoke('db:purchaseInvoices:create', invoice),
       update: (id: number, invoice: any) => ipcRenderer.invoke('db:purchaseInvoices:update', id, invoice),
       delete: (id: number) => ipcRenderer.invoke('db:purchaseInvoices:delete', id),

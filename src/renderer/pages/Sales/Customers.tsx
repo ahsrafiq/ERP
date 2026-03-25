@@ -28,6 +28,16 @@ const Customers: React.FC = () => {
   const [deletePasswordModal, setDeletePasswordModal] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
   const [adminPassword, setAdminPassword] = useState('');
+  const passwordInputRef = React.useRef<any>(null);
+
+  useEffect(() => {
+    if (deletePasswordModal) {
+      setTimeout(() => {
+        passwordInputRef.current?.select();
+        passwordInputRef.current?.focus();
+      }, 100);
+    }
+  }, [deletePasswordModal]);
 
   // Section permissions (Sales)
   const isAdminUser = user?.role_id === 1 || (user as any)?.role === 'admin' || user?.username === 'admin';
@@ -443,6 +453,26 @@ const Customers: React.FC = () => {
         okText="Record Payment"
         confirmLoading={advanceSaving}
         width={480}
+        closeIcon={
+          <Space>
+            <MinusSquareOutlined
+              style={{ fontSize: 18, color: '#1890ff' }}
+              onClick={(e) => {
+                e.stopPropagation();
+                setAdvanceModal(false);
+                minimizeModal({
+                  id: `cust-advance-${advanceCustomer?.id || 'new'}`,
+                  title: `Advance: ${advanceCustomer?.name || 'Customer'}`,
+                  onRestore: () => setAdvanceModal(true),
+                });
+              }}
+            />
+            <CloseOutlined style={{ fontSize: 18 }} onClick={() => {
+              setAdvanceModal(false);
+              advanceForm.resetFields();
+            }} />
+          </Space>
+        }
       >
         <Form form={advanceForm} layout="vertical" onFinish={handleAdvanceSave}>
           <Form.Item name="amount" label="Amount" rules={[{ required: true, message: 'Please enter amount' }, { type: 'number', min: 0.01, message: 'Amount must be greater than 0' }]}>
@@ -504,6 +534,7 @@ const Customers: React.FC = () => {
           onChange={e => setAdminPassword(e.target.value)}
           placeholder="Admin password"
           onKeyDown={e => { if (e.key === 'Enter') handleConfirmDelete(); }}
+          ref={passwordInputRef}
           autoFocus
         />
       </Modal>

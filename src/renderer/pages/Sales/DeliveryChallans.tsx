@@ -4,6 +4,7 @@ import { PlusOutlined, EditOutlined, PrinterOutlined, DeleteOutlined, FileTextOu
 import dayjs from 'dayjs';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
+import { filterRowsByOperationalFiscalYear } from '../../utils/fiscalYearFilter';
 import PrintTemplate from '../../components/PrintTemplate';
 import XLSX from 'xlsx-js-style';
 
@@ -13,6 +14,7 @@ const DeliveryChallans: React.FC = () => {
     const location = useLocation();
     const docLabel = currentCompany?.is_gst_enabled ? 'Invoice' : 'Bill';
     const [challans, setChallans] = useState<any[]>([]);
+    const challansRef = React.useRef<any[]>([]);
     const [customers, setCustomers] = useState<any[]>([]);
     const [items, setItems] = useState<any[]>([]);
     const [brands, setBrands] = useState<any[]>([]);
@@ -23,11 +25,51 @@ const DeliveryChallans: React.FC = () => {
     const [printData, setPrintData] = useState<any>(null);
     const [isPreviewVisible, setIsPreviewVisible] = useState(false);
     const [printWithLetterhead, setPrintWithLetterhead] = useState(true);
-    const [contentScale, setContentScale] = useState<number>(1);
+    const [contentScale, setContentScale] = useState<number>(() => {
+        const saved = localStorage.getItem('challan_scale');
+        return saved ? parseFloat(saved) : 1;
+    });
+
+    useEffect(() => {
+        localStorage.setItem('challan_scale', contentScale.toString());
+    }, [contentScale]);
     // Admin password delete
     const [deletePasswordModal, setDeletePasswordModal] = useState(false);
     const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
     const [adminPassword, setAdminPassword] = useState('');
+    const passwordInputRef = React.useRef<any>(null);
+    const lastPrintRecordRef = React.useRef<any>(null);
+
+    useEffect(() => {
+        if (deletePasswordModal) {
+            setTimeout(() => {
+                passwordInputRef.current?.select();
+                passwordInputRef.current?.focus();
+            }, 100);
+        }
+    }, [deletePasswordModal]);
+
+    // Keep an always-fresh ref for Ctrl+P fallback selection.
+    useEffect(() => {
+        challansRef.current = challans;
+    }, [challans]);
+
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
+                e.preventDefault();
+                if (isPreviewVisible) {
+                    actualPrint();
+                    return;
+                }
+                const record = lastPrintRecordRef.current ?? challansRef.current?.[0];
+                if (record) handlePrint(record);
+                else message.warning('No delivery challans available to print.');
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [isPreviewVisible]);
 
     // Section permissions (Sales)
     const isAdminUser = user?.role_id === 1 || user?.role === 'admin' || user?.username === 'admin';
@@ -95,7 +137,7 @@ const DeliveryChallans: React.FC = () => {
                 loadBrands();
             }
         }
-    }, [currentCompany, location.pathname]);
+    }, [currentCompany, location.pathname, fiscalYear]);
 
     useEffect(() => {
         if (location.state?.editChallanId && customers.length > 0 && items.length > 0) {
@@ -110,9 +152,7 @@ const DeliveryChallans: React.FC = () => {
         try {
             const result = await (window as any).electronAPI.db.deliveryChallans.getAll(currentCompany.id);
             if (result.success) {
-                const yy = String(fiscalYear).padStart(2, '0');
-                const filtered = (result.data || []).filter((dc: any) => String(dc?.challan_number || '').includes(`/${yy}`));
-                setChallans(filtered);
+                setChallans(filterRowsByOperationalFiscalYear(result.data || [], fiscalYear));
             }
         } catch (error) {
             notification.error({ message: 'Error', description: 'Failed to load delivery challans', duration: 0 });
@@ -143,6 +183,7 @@ const DeliveryChallans: React.FC = () => {
 
     const handlePrint = async (record: any) => {
         try {
+            lastPrintRecordRef.current = record;
             const result = await (window as any).electronAPI.db.deliveryChallans.getById(record.id);
             if (result.success && result.data) {
                 setPrintData(result.data);
@@ -193,35 +234,15 @@ const DeliveryChallans: React.FC = () => {
 
         if (currentCompany) {
             try {
-                const result = await (window as any).electronAPI.db.deliveryChallans.getAll(currentCompany.id);
-                if (result.success && Array.isArray(result.data) && result.data.length > 0) {
-                    const dcs = result.data
-                        .map((d: any) => {
-                            const match = (d.challan_number || '').match(/DC-(\d+)\/(\d+)/);
-                            if (match) {
-                                return { num: parseInt(match[1], 10), year: parseInt(match[2], 10) };
-                            }
-                            return null;
-                        })
-                        .filter(Boolean) as { num: number; year: number }[];
-
-                    if (dcs.length > 0) {
-                        dcs.sort((a, b) => (b.year - a.year) || (b.num - a.num));
-                        const latest = dcs[0];
-                        const nextNum = latest.num + 1;
-                        const yearStr = String(latest.year).padStart(2, '0');
-                        form.setFieldsValue({
-                            challan_number: `DC-${String(nextNum).padStart(4, '0')}/${yearStr}`,
-                            challan_date: dayjs(),
-                        });
-                        return;
-                    }
+                const res = await (window as any).electronAPI.db.deliveryChallans.getNextNumber(currentCompany.id, fiscalYear);
+                if (res.success) {
+                    form.setFieldsValue({
+                        challan_number: res.data,
+                        challan_date: dayjs(),
+                    });
+                } else {
+                    form.setFieldsValue({ challan_date: dayjs() });
                 }
-                const currentYear = fiscalYear || (new Date().getFullYear() % 100);
-                form.setFieldsValue({
-                    challan_number: `DC-0001/${String(currentYear).padStart(2, '0')}`,
-                    challan_date: dayjs(),
-                });
             } catch (err) {
                 console.error('Failed to load next DC number:', err);
                 form.setFieldsValue({ challan_date: dayjs() });
@@ -270,7 +291,7 @@ const DeliveryChallans: React.FC = () => {
 
     const doCreateInvoiceFromChallan = async (challanId: number) => {
         try {
-            const result = await (window as any).electronAPI.db.salesInvoices.createFromChallan(challanId, user?.id);
+            const result = await (window as any).electronAPI.db.salesInvoices.createFromChallan(challanId, user?.id, fiscalYear);
             if (result.success && result.data) {
                 message.success(`${docLabel} ${result.data.invoice_number} created from challan`);
                 navigate('/sales/invoices');
@@ -555,18 +576,22 @@ const DeliveryChallans: React.FC = () => {
             <Modal 
                 title={editingChallan ? 'Edit Delivery Challan' : 'New Delivery Challan'} 
                 open={modalVisible} 
-                onCancel={() => setModalVisible(false)} 
+                onCancel={() => {
+                  setModalVisible(false);
+                  setEditingChallan(null);
+                  form.resetFields();
+                }}
+                maskClosable={true} 
                 onOk={() => form.submit()} 
                 width={900} 
                 closeIcon={
-                  <Space>
+                  <Space size="middle">
                     <MinusSquareOutlined 
                       style={{ fontSize: 18, color: '#1890ff' }}
                       onClick={(e) => {
                         e.stopPropagation();
+                        const dcNum = form.getFieldValue('challan_number') || 'New DC';
                         setModalVisible(false);
-                        const values = form.getFieldsValue();
-                        const dcNum = values.challan_number || 'New DC';
                         minimizeModal({
                           id: editingChallan ? `dc-edit-${editingChallan.id}` : 'dc-new',
                           title: editingChallan ? `Edit DC ${dcNum}` : `New DC ${dcNum}`,
@@ -575,9 +600,14 @@ const DeliveryChallans: React.FC = () => {
                             setModalVisible(true);
                           }
                         });
-                      }} 
+                      }}
                     />
-                    <CloseOutlined style={{ fontSize: 18 }} onClick={() => setModalVisible(false)} />
+                    <CloseOutlined style={{ fontSize: 18 }} onClick={(e) => {
+                      e.stopPropagation();
+                      setModalVisible(false);
+                      setEditingChallan(null);
+                      form.resetFields();
+                    }} />
                   </Space>
                 }
             >
@@ -719,6 +749,7 @@ const DeliveryChallans: React.FC = () => {
                     setPrintData(null);
                 }}
                 width={900}
+                maskClosable={true}
                 footer={
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
@@ -742,6 +773,40 @@ const DeliveryChallans: React.FC = () => {
                     </div>
                 }
                 className="print-preview-modal"
+                closeIcon={
+                  <Space>
+                    <MinusSquareOutlined
+                      style={{ fontSize: 18, color: '#1890ff' }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const preview = printData;
+                        const restoreLetterhead = printWithLetterhead;
+                        const restoreScale = contentScale;
+                        setIsPreviewVisible(false);
+                        setPrintData(null);
+                        minimizeModal({
+                          id: preview?.id != null ? `print-dc-${preview.id}` : 'print-dc',
+                          title: preview?.challan_number ? `Print DC ${preview.challan_number}` : 'Print DC',
+                          returnPath: location.pathname,
+                          onRestore: () => {
+                            setPrintWithLetterhead(restoreLetterhead);
+                            setContentScale(restoreScale);
+                            setPrintData(preview);
+                            setIsPreviewVisible(true);
+                          },
+                        });
+                      }}
+                    />
+                    <CloseOutlined
+                      style={{ fontSize: 18 }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsPreviewVisible(false);
+                        setPrintData(null);
+                      }}
+                    />
+                  </Space>
+                }
             >
                 <div style={{ maxHeight: '70vh', overflowY: 'auto', padding: '20px', background: '#f5f5f5' }}>
                     <div className="preview-page-wrapper">
@@ -790,6 +855,7 @@ const DeliveryChallans: React.FC = () => {
                     onChange={e => setAdminPassword(e.target.value)}
                     placeholder="Admin password"
                     onKeyDown={e => { if (e.key === 'Enter') handleConfirmDelete(); }}
+                    ref={passwordInputRef}
                     autoFocus
                 />
             </Modal>

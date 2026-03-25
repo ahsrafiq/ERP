@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Card, Row, Col, Button, DatePicker, Select, Space } from 'antd';
-import { FilePdfOutlined, FileExcelOutlined, PrinterOutlined } from '@ant-design/icons';
+import { FilePdfOutlined, FileExcelOutlined, PrinterOutlined, FileTextOutlined } from '@ant-design/icons';
 import { useApp } from '../../context/AppContext';
 import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
@@ -18,6 +18,14 @@ const Reports: React.FC = () => {
 
   const reports = [
     {
+      title: 'Custom Report Builder',
+      description: 'Select columns, apply filters, preview and save templates',
+      icon: <FileTextOutlined />,
+      type: 'custom_builder',
+      route: '/reports/custom-builder',
+      available: true,
+    },
+    {
       title: 'Sales Report',
       description: 'View invoices, revenue, tax, and customer balances',
       icon: <FilePdfOutlined />,
@@ -34,11 +42,19 @@ const Reports: React.FC = () => {
       available: true,
     },
     {
-      title: 'Inventory Report',
+      title: 'Stock Report',
       description: 'Stock levels, location, valuation, and low-stock alerts',
       icon: <FilePdfOutlined />,
       type: 'inventory',
       route: '/reports/inventory',
+      available: true,
+    },
+    {
+      title: 'Customer Outstanding',
+      description: 'Customer list with total outstanding due',
+      icon: <FileExcelOutlined />,
+      type: 'customer_outstanding',
+      route: '/reports/customer-outstanding',
       available: true,
     },
     {

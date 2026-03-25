@@ -5,7 +5,7 @@ import {
 } from 'antd';
 import {
   PrinterOutlined, ArrowLeftOutlined, FileExcelOutlined,
-  TeamOutlined, DollarOutlined, WarningOutlined, CheckCircleOutlined,
+  TeamOutlined, DollarOutlined, WarningOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
@@ -19,6 +19,7 @@ interface CustomerRecovery {
   code: string;
   name: string;
   phone: string;
+  po_number: string;
   totalInvoiced: number;
   totalPaid: number;      // Total settled (including tax)
   taxDeducted: number;    // Total tax withheld
@@ -50,7 +51,6 @@ const RecoveryReport: React.FC = () => {
 
   const [recoveryData, setRecoveryData] = useState<CustomerRecovery[]>([]);
   const [loading, setLoading] = useState(false);
-  const [showAll, setShowAll] = useState(false);
   const [dateRange, setDateRange] = useState<[any, any] | null>(null);
 
   useEffect(() => {
@@ -82,6 +82,7 @@ const RecoveryReport: React.FC = () => {
       customers.forEach((c: any) => {
         map[c.id] = {
           id: c.id, code: c.code || '', name: c.name || '', phone: c.phone || '',
+          po_number: c.po_number || '',
           totalInvoiced: 0, totalPaid: 0, taxDeducted: 0, netReceived: 0, balance: 0,
           current: 0, days1_30: 0, days31_60: 0, days61_90: 0, days90plus: 0,
           lastInvoiceDate: '', invoiceCount: 0,
@@ -137,7 +138,8 @@ const RecoveryReport: React.FC = () => {
     finally { setLoading(false); }
   };
 
-  const displayed = showAll ? recoveryData : recoveryData.filter((r) => r.balance > 0);
+  // Show only customers who currently own money (no settled customers).
+  const displayed = recoveryData.filter((r) => r.balance > 0);
 
   const totalInvoiced    = displayed.reduce((s, r) => s + r.totalInvoiced, 0);
   const totalTaxDeducted = displayed.reduce((s, r) => s + r.taxDeducted,    0);
@@ -154,6 +156,7 @@ const RecoveryReport: React.FC = () => {
   const columns = [
     { title: 'Sr.', key: 'sr', width: 50, render: (_: any, __: any, i: number) => i + 1 },
     { title: 'Code', dataIndex: 'code', key: 'code', width: 80 },
+    { title: 'PO Number', dataIndex: 'po_number', key: 'po_number', width: 130 },
     {
       title: 'Customer', dataIndex: 'name', key: 'name',
       render: (v: string, row: any) => (
@@ -174,9 +177,7 @@ const RecoveryReport: React.FC = () => {
     { title: 'Net Received', dataIndex: 'netReceived', key: 'netReceived', align: 'right' as const, render: (v: number) => <Text style={{ color: '#389e0d' }}>{Number(v).toLocaleString()}</Text> },
     {
       title: 'Outstanding', dataIndex: 'balance', key: 'balance', align: 'right' as const,
-      render: (v: number) => v > 0
-        ? <Text strong style={{ color: '#cf1322' }}>{Number(v).toLocaleString()}</Text>
-        : <Tag color="green" icon={<CheckCircleOutlined />}>Settled</Tag>,
+      render: (v: number) => <Text strong style={{ color: '#cf1322' }}>{Number(v).toLocaleString()}</Text>,
     },
     { title: 'Current',     dataIndex: 'current',   key: 'current',   align: 'right' as const, render: (v: number) => v > 0 ? <Tag color="blue">{Number(v).toLocaleString()}</Tag>   : '—' },
     { title: '1–30 Days',   dataIndex: 'days1_30',  key: 'days1_30',  align: 'right' as const, render: (v: number) => v > 0 ? <Tag color="orange">{Number(v).toLocaleString()}</Tag>  : '—' },
@@ -188,16 +189,16 @@ const RecoveryReport: React.FC = () => {
   const summaryRow = () => (
     <Table.Summary fixed>
       <Table.Summary.Row style={{ fontWeight: 700, background: '#fafafa' }}>
-        <Table.Summary.Cell index={0} colSpan={5} align="right"><Text strong>Total ({displayed.length} customers)</Text></Table.Summary.Cell>
-        <Table.Summary.Cell index={1} align="right">{totalInvoiced.toLocaleString()}</Table.Summary.Cell>
-        <Table.Summary.Cell index={2} align="right"><Text style={{ color: '#fa8c16' }} strong>{totalTaxDeducted.toLocaleString()}</Text></Table.Summary.Cell>
-        <Table.Summary.Cell index={3} align="right"><Text style={{ color: '#389e0d' }} strong>{totalNetReceived.toLocaleString()}</Text></Table.Summary.Cell>
-        <Table.Summary.Cell index={4} align="right"><Text strong style={{ color: '#cf1322' }}>{totalBalance.toLocaleString()}</Text></Table.Summary.Cell>
-        <Table.Summary.Cell index={5} align="right">{totalCurrent > 0 ? totalCurrent.toLocaleString() : '—'}</Table.Summary.Cell>
-        <Table.Summary.Cell index={6} align="right">{total1_30   > 0 ? total1_30.toLocaleString()   : '—'}</Table.Summary.Cell>
-        <Table.Summary.Cell index={7} align="right">{total31_60  > 0 ? total31_60.toLocaleString()  : '—'}</Table.Summary.Cell>
-        <Table.Summary.Cell index={8} align="right">{total61_90  > 0 ? total61_90.toLocaleString()  : '—'}</Table.Summary.Cell>
-        <Table.Summary.Cell index={9} align="right">{total90plus > 0 ? total90plus.toLocaleString() : '—'}</Table.Summary.Cell>
+        <Table.Summary.Cell index={0} colSpan={6} align="right"><Text strong>Total ({displayed.length} customers)</Text></Table.Summary.Cell>
+        <Table.Summary.Cell index={6} align="right">{totalInvoiced.toLocaleString()}</Table.Summary.Cell>
+        <Table.Summary.Cell index={7} align="right"><Text style={{ color: '#fa8c16' }} strong>{totalTaxDeducted.toLocaleString()}</Text></Table.Summary.Cell>
+        <Table.Summary.Cell index={8} align="right"><Text style={{ color: '#389e0d' }} strong>{totalNetReceived.toLocaleString()}</Text></Table.Summary.Cell>
+        <Table.Summary.Cell index={9} align="right"><Text strong style={{ color: '#cf1322' }}>{totalBalance.toLocaleString()}</Text></Table.Summary.Cell>
+        <Table.Summary.Cell index={10} align="right">{totalCurrent > 0 ? totalCurrent.toLocaleString() : '—'}</Table.Summary.Cell>
+        <Table.Summary.Cell index={11} align="right">{total1_30   > 0 ? total1_30.toLocaleString()   : '—'}</Table.Summary.Cell>
+        <Table.Summary.Cell index={12} align="right">{total31_60  > 0 ? total31_60.toLocaleString()  : '—'}</Table.Summary.Cell>
+        <Table.Summary.Cell index={13} align="right">{total61_90  > 0 ? total61_90.toLocaleString()  : '—'}</Table.Summary.Cell>
+        <Table.Summary.Cell index={14} align="right">{total90plus > 0 ? total90plus.toLocaleString() : '—'}</Table.Summary.Cell>
       </Table.Summary.Row>
     </Table.Summary>
   );
@@ -205,7 +206,8 @@ const RecoveryReport: React.FC = () => {
   const handleExportExcel = () => {
     const companyName = currentCompany?.name || 'Company';
     const dateStr     = new Date().toLocaleDateString('en-GB');
-    const numCols     = 13;
+    // Used for Excel merge ranges (last column index = numCols + 1).
+    const numCols     = 14;
 
     const thin  = { top: { style: 'thin', color: { rgb: 'AAAAAA' } }, bottom: { style: 'thin', color: { rgb: 'AAAAAA' } }, left: { style: 'thin', color: { rgb: 'AAAAAA' } }, right: { style: 'thin', color: { rgb: 'AAAAAA' } } };
     const thick = { ...thin, bottom: { style: 'medium', color: { rgb: '000000' } } };
@@ -228,14 +230,28 @@ const RecoveryReport: React.FC = () => {
     const c = (v: any, s: any = {}) => ({ v, s });
 
     const colHdrs = [
-      c('Sr.', sHdr), c('Code', sHdr), c('Customer', sHdr), c('Phone', sHdr), c('Invoices', sHdrR), c('Last Invoice', sHdr),
-      c('Total Invoiced', sHdrR), c('Tax Deducted', sHdrR), c('Net Received', sHdrR), c('Outstanding', sHdrR),
-      c('Current', sHdrR), c('1–30 Days', sHdrR), c('31–60 Days', sHdrR), c('61–90 Days', sHdrR), c('90+ Days', sHdrR),
+      c('Sr.', sHdr),
+      c('Code', sHdr),
+      c('PO Number', sHdr),
+      c('Customer', sHdr),
+      c('Phone', sHdr),
+      c('Invoices', sHdrR),
+      c('Last Invoice', sHdr),
+      c('Total Invoiced', sHdrR),
+      c('Tax Deducted', sHdrR),
+      c('Net Received', sHdrR),
+      c('Outstanding', sHdrR),
+      c('Current', sHdrR),
+      c('1–30 Days', sHdrR),
+      c('31–60 Days', sHdrR),
+      c('61–90 Days', sHdrR),
+      c('90+ Days', sHdrR),
     ];
 
     const dataRows = displayed.map((row, i) => [
       c(i + 1, sData),
       c(row.code, sData),
+      c(row.po_number || '', sData),
       c(row.name, sData),
       c(row.phone || '', sData),
       c(row.invoiceCount, sDataR),
@@ -252,10 +268,17 @@ const RecoveryReport: React.FC = () => {
     ]);
 
     const totalsRow = [
-      c('', sTot), c('', sTot), c('TOTAL', sTot), c('', sTot),
+      c('', sTot), c('', sTot), c('', sTot), c('TOTAL', sTot), c('', sTot),
       c(`${displayed.length}`, sTot), c('', sTot),
-      c(totalInvoiced, sTot), c(totalTaxDeducted, sTot), c(totalNetReceived, sTot), c(totalBalance, sTot),
-      c(totalCurrent, sTot), c(total1_30, sTot), c(total31_60, sTot), c(total61_90, sTot), c(total90plus, sTot),
+      c(totalInvoiced, sTot),
+      c(totalTaxDeducted, sTot),
+      c(totalNetReceived, sTot),
+      c(totalBalance, sTot),
+      c(totalCurrent, sTot),
+      c(total1_30, sTot),
+      c(total31_60, sTot),
+      c(total61_90, sTot),
+      c(total90plus, sTot),
     ];
 
     const summaryRows: any[][] = [
@@ -277,7 +300,7 @@ const RecoveryReport: React.FC = () => {
     const wsData: any[][] = [
       [c(companyName, sTitle)],
       [c('Recovery Report (Accounts Receivable)', sSub)],
-      [c(`Generated: ${dateStr}${!showAll ? '  |  Outstanding only' : '  |  All customers'}`, sMeta)],
+      [c(`Generated: ${dateStr}  |  Outstanding only`, sMeta)],
       [],
       colHdrs,
       ...dataRows,
@@ -292,9 +315,8 @@ const RecoveryReport: React.FC = () => {
       { s: { r: 2, c: 0 }, e: { r: 2, c: numCols + 1 } },
     ];
     ws['!cols'] = [
-      { wch: 6 }, { wch: 8 }, { wch: 26 }, { wch: 14 }, { wch: 9 }, { wch: 13 },
-      { wch: 15 }, { wch: 14 }, { wch: 14 }, { wch: 14 },
-      { wch: 12 }, { wch: 12 }, { wch: 13 }, { wch: 13 }, { wch: 12 },
+      { wch: 6 }, { wch: 8 }, { wch: 14 }, { wch: 26 }, { wch: 14 }, { wch: 9 }, { wch: 13 },
+      { wch: 15 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 13 }, { wch: 13 }, { wch: 12 },
     ];
     ws['!rows'] = [{ hpt: 26 }, { hpt: 20 }, { hpt: 16 }, { hpt: 6 }, { hpt: 22 }];
 
@@ -322,12 +344,6 @@ const RecoveryReport: React.FC = () => {
               format="MMM-YYYY"
             />
             <Button type="primary" onClick={loadData}>Search</Button>
-            <Button
-              type={showAll ? 'primary' : 'default'}
-              onClick={() => setShowAll(!showAll)}
-            >
-              {showAll ? 'Show Outstanding Only' : 'Show All Customers'}
-            </Button>
             <Button icon={<FileExcelOutlined />} style={{ color: '#217346', borderColor: '#217346' }} onClick={handleExportExcel}>Export Excel</Button>
             <Button type="primary" icon={<PrinterOutlined />} onClick={() => window.print()}>Print</Button>
           </Space>

@@ -4,9 +4,10 @@ import { PlusOutlined, EditOutlined, DeleteOutlined, LockOutlined, StopOutlined,
 import dayjs from 'dayjs';
 import { useApp } from '../../context/AppContext';
 import { useLocation } from 'react-router-dom';
+import { filterRowsByOperationalFiscalYear } from '../../utils/fiscalYearFilter';
 
 const PurchaseInvoices: React.FC = () => {
-  const { currentCompany, user, minimizeModal } = useApp();
+  const { currentCompany, user, fiscalYear, minimizeModal } = useApp();
   const location = useLocation();
   const [invoices, setInvoices] = useState<any[]>([]);
   const [vendors, setVendors] = useState<any[]>([]);
@@ -21,6 +22,16 @@ const PurchaseInvoices: React.FC = () => {
   const [deletePasswordModal, setDeletePasswordModal] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
   const [adminPassword, setAdminPassword] = useState('');
+  const passwordInputRef = React.useRef<any>(null);
+
+  useEffect(() => {
+    if (deletePasswordModal) {
+      setTimeout(() => {
+        passwordInputRef.current?.select();
+        passwordInputRef.current?.focus();
+      }, 100);
+    }
+  }, [deletePasswordModal]);
   const [form] = Form.useForm();
   const [paymentForm] = Form.useForm();
 
@@ -46,7 +57,7 @@ const PurchaseInvoices: React.FC = () => {
         loadBrands();
       }
     }
-  }, [currentCompany, location.pathname]);
+  }, [currentCompany, location.pathname, fiscalYear]);
 
   const loadBrands = async () => {
     try {
@@ -64,9 +75,11 @@ const PurchaseInvoices: React.FC = () => {
     if (!currentCompany) return;
     setLoading(true);
     try {
-      const result = await (window as any).electronAPI.db.purchaseInvoices.getAll(currentCompany.id);
+      const result = await (window as any).electronAPI.db.purchaseInvoices.getAll(currentCompany.id, {
+        fiscalYear,
+      });
       if (result.success) {
-        setInvoices(result.data || []);
+        setInvoices(filterRowsByOperationalFiscalYear(result.data || [], fiscalYear));
       }
     } catch (error) {
       notification.error({ message: 'Error', description: 'Failed to load purchase invoices', duration: 0 });
@@ -105,6 +118,7 @@ const PurchaseInvoices: React.FC = () => {
       const invoiceData = {
         ...values,
         company_id: currentCompany.id,
+        fiscal_year: fiscalYear,
         invoice_date: values.invoice_date.format('YYYY-MM-DD'),
         items: values.items || [],
         created_by: user?.id,
@@ -399,32 +413,27 @@ const PurchaseInvoices: React.FC = () => {
         title={editingInvoice ? 'Edit Invoice' : 'New Purchase Invoice'}
         open={modalVisible}
         onCancel={() => {
+          const invNum = form.getFieldValue('invoice_number') || 'New PI';
           setModalVisible(false);
-          setEditingInvoice(null);
-          form.resetFields();
+          minimizeModal({
+            id: editingInvoice ? `pi-edit-${editingInvoice.id}` : 'pi-new',
+            title: editingInvoice ? `Edit PI ${invNum}` : `New PI ${invNum}`,
+            onRestore: () => {
+              setEditingInvoice(editingInvoice);
+              setModalVisible(true);
+            }
+          });
         }}
+        maskClosable={true}
         onOk={() => form.submit()}
         width={900}
         closeIcon={
-          <Space>
+          <Space size="middle">
             <MinusSquareOutlined 
               style={{ fontSize: 18, color: '#1890ff' }}
-              onClick={(e) => {
-                e.stopPropagation();
-                setModalVisible(false);
-                const values = form.getFieldsValue();
-                const invNum = values.invoice_number || 'New PI';
-                minimizeModal({
-                  id: editingInvoice ? `pi-edit-${editingInvoice.id}` : 'pi-new',
-                  title: editingInvoice ? `Edit PI ${invNum}` : `New PI ${invNum}`,
-                  onRestore: () => {
-                    setEditingInvoice(editingInvoice);
-                    setModalVisible(true);
-                  }
-                });
-              }} 
             />
-            <CloseOutlined style={{ fontSize: 18 }} onClick={() => {
+            <CloseOutlined style={{ fontSize: 18 }} onClick={(e) => {
+              e.stopPropagation();
               setModalVisible(false);
               setEditingInvoice(null);
               form.resetFields();
@@ -620,6 +629,7 @@ const PurchaseInvoices: React.FC = () => {
           onChange={e => setAdminPassword(e.target.value)}
           placeholder="Admin password"
           onKeyDown={e => { if (e.key === 'Enter') handleConfirmDelete(); }}
+          ref={passwordInputRef}
           autoFocus
         />
       </Modal>

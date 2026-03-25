@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Table, Card, Row, Col, DatePicker, Select, Button, Space,
-  Tag, Statistic, Divider, Typography, notification, message,
+  Tag, Statistic, Divider, Typography, notification, message, Input,
 } from 'antd';
 import {
   PrinterOutlined, ArrowLeftOutlined, FileTextOutlined,
@@ -11,6 +11,7 @@ import { useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import dayjs from 'dayjs';
 import XLSXStyle from 'xlsx-js-style';
+import { ReportTablePdfDocument } from '../../components/ReportPdf/ReportTablePdfDocument';
 
 const { RangePicker } = DatePicker;
 const { Title, Text } = Typography;
@@ -32,6 +33,10 @@ const PurchaseReport: React.FC = () => {
   ]);
   const [selectedVendor, setSelectedVendor] = useState<number | null>(null);
   const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
+  const [itemName, setItemName] = useState('');
+  const [brand, setBrand] = useState('');
+  const [quantity, setQuantity] = useState('');
+  const [unitPrice, setUnitPrice] = useState('');
 
   useEffect(() => {
     if (currentCompany) { loadVendors(); }
@@ -56,6 +61,10 @@ const PurchaseReport: React.FC = () => {
       const filters: any = {};
       if (dateRange[0]) filters.fromDate = dateRange[0].format('YYYY-MM-DD');
       if (dateRange[1]) filters.toDate   = dateRange[1].format('YYYY-MM-DD');
+      if (itemName) filters.itemName = itemName;
+      if (brand) filters.brand = brand;
+      if (quantity) filters.quantity = quantity;
+      if (unitPrice) filters.unitPrice = unitPrice;
       const res = await (window as any).electronAPI.db.purchaseInvoices.getAll(currentCompany.id, filters);
       if (res.success) setInvoices(res.data || []);
       else notification.error({ message: 'Error', description: 'Failed to load purchase invoices', duration: 0 });
@@ -109,6 +118,33 @@ const PurchaseReport: React.FC = () => {
       </Table.Summary.Row>
     </Table.Summary>
   );
+
+  const handleSavePDF = async () => {
+    try {
+      const fileName = `Purchase_Report_${dayjs().format('YYYY-MM-DD')}.pdf`;
+      const pathResult = await (window as any).electronAPI.db.files.getSavePath(fileName);
+      if (!pathResult.success) return;
+
+      document.body.classList.add('capturing-pdf');
+      const pc = document.getElementById('report-pdf-container');
+      if (pc) pc.style.display = 'block';
+
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const res = await (window as any).electronAPI.db.files.captureAndSave(pathResult.filePath);
+      
+      if (res.success) {
+        message.success(`Saved to: ${res.filePath}`);
+      } else {
+        notification.error({ message: 'Error', description: res.error || 'Failed to save PDF', duration: 0 });
+      }
+    } catch {
+      notification.error({ message: 'Error', description: 'Failed to save PDF', duration: 0 });
+    } finally {
+      document.body.classList.remove('capturing-pdf');
+      const pc = document.getElementById('report-pdf-container');
+      if (pc) pc.style.display = 'none';
+    }
+  };
 
   const handleExportExcel = () => {
     const periodLabel   = `${dateRange[0]?.format('DDMMYYYY')}_${dateRange[1]?.format('DDMMYYYY')}`;
@@ -213,7 +249,8 @@ const PurchaseReport: React.FC = () => {
           </Space>
           <Space>
             <Button icon={<FileExcelOutlined />} style={{ color: '#217346', borderColor: '#217346' }} onClick={handleExportExcel}>Export Excel</Button>
-            <Button type="primary" icon={<PrinterOutlined />} onClick={() => window.print()}>Print</Button>
+            <Button icon={<PrinterOutlined />} onClick={() => window.print()}>Print</Button>
+            <Button type="primary" onClick={handleSavePDF}>Save as PDF</Button>
           </Space>
         </div>
 
@@ -222,12 +259,40 @@ const PurchaseReport: React.FC = () => {
             <RangePicker value={dateRange} onChange={(d) => d && d[0] && d[1] && setDateRange([d[0], d[1]])} format="DD-MM-YYYY" />
             <Select allowClear placeholder="All Vendors" style={{ width: 200 }} value={selectedVendor} onChange={setSelectedVendor}
               options={vendors.map((v: any) => ({ label: v.name, value: v.id }))} showSearch optionFilterProp="label" />
-            <Select allowClear placeholder="All Statuses" style={{ width: 150 }} value={selectedStatus} onChange={setSelectedStatus}
+            <Select allowClear placeholder="All Statuses" style={{ width: 130 }} value={selectedStatus} onChange={setSelectedStatus}
               options={[
                 { label: 'Draft', value: 'draft' }, { label: 'Unpaid', value: 'unpaid' },
                 { label: 'Partial', value: 'partial' }, { label: 'Paid', value: 'paid' },
                 { label: 'Cancelled', value: 'cancelled' },
               ]} />
+            <Input
+              placeholder="Item Name"
+              style={{ width: 120 }}
+              value={itemName}
+              onChange={(e: any) => setItemName(e.target.value)}
+              allowClear
+            />
+            <Input
+              placeholder="Brand"
+              style={{ width: 100 }}
+              value={brand}
+              onChange={(e) => setBrand(e.target.value)}
+              allowClear
+            />
+            <Input
+              placeholder="Qty"
+              style={{ width: 70 }}
+              value={quantity}
+              onChange={(e) => setQuantity(e.target.value)}
+              allowClear
+            />
+            <Input
+              placeholder="Price"
+              style={{ width: 80 }}
+              value={unitPrice}
+              onChange={(e) => setUnitPrice(e.target.value)}
+              allowClear
+            />
             <Button type="primary" onClick={loadInvoices}>Search</Button>
           </Space>
         </Card>
@@ -259,6 +324,37 @@ const PurchaseReport: React.FC = () => {
       </div>
 
       <Table dataSource={filtered} columns={columns} rowKey="id" loading={loading} pagination={false} size="small" bordered summary={summaryRow} />
+
+      {/* PDF Capture container */}
+      <div id="report-pdf-container" style={{ display: 'none' }}>
+        <ReportTablePdfDocument
+          reportTitle="Purchase Report"
+          companyName={currentCompany?.name || '-'}
+          periodLabel={`Period: ${dateRange[0]?.format('DD-MM-YYYY')} — ${dateRange[1]?.format('DD-MM-YYYY')}`}
+          columns={[
+            { title: 'Date', dataIndex: 'invoice_date', align: 'center' as const, render: (v) => dayjs(v).format('DD-MM-YYYY') },
+            { title: 'Invoice #', dataIndex: 'invoice_number', align: 'left' as const },
+            { title: 'Vendor', dataIndex: 'vendor_name', align: 'left' as const },
+            { title: 'Subtotal', dataIndex: 'subtotal', align: 'right' as const, render: (v) => Number(v || 0).toLocaleString() },
+            ...(isGst ? [{ title: 'Tax', dataIndex: 'gst_total', align: 'right' as const, render: (v: any) => Number(v || 0).toLocaleString() }] : []),
+            { title: 'Total', dataIndex: 'total_amount', align: 'right' as const, render: (v) => Number(v || 0).toLocaleString() },
+            { title: 'Paid', dataIndex: 'id', align: 'right' as const, render: (_, r) => ((Number(r.total_amount) || 0) - (Number(r.balance) || 0)).toLocaleString() },
+            { title: 'Balance', dataIndex: 'balance', align: 'right' as const, render: (v) => Number(v || 0).toLocaleString() },
+          ]}
+          data={filtered}
+          summaryRow={
+            <tr className="erp-report-pdf-total-row">
+              <td colSpan={3} style={{ textAlign: 'right', fontWeight: 'bold' }}>TOTAL</td>
+              <td style={{ textAlign: 'right', fontWeight: 'bold' }}>{totalSubtotal.toLocaleString()}</td>
+              {isGst && <td style={{ textAlign: 'right', fontWeight: 'bold' }}>{totalTax.toLocaleString()}</td>}
+              <td style={{ textAlign: 'right', fontWeight: 'bold' }}>{totalAmount.toLocaleString()}</td>
+              <td style={{ textAlign: 'right', fontWeight: 'bold' }}>{totalPaid.toLocaleString()}</td>
+              <td style={{ textAlign: 'right', fontWeight: 'bold' }}>{totalBalance.toLocaleString()}</td>
+            </tr>
+          }
+          footerNote={`Generated on ${dayjs().format('DD-MMM-YYYY HH:mm')}`}
+        />
+      </div>
 
       <style>{`
         @media print {

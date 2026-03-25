@@ -4,6 +4,7 @@ import { PlusOutlined, EditOutlined, DeleteOutlined, PrinterOutlined, FileTextOu
 import dayjs from 'dayjs';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
+import { filterRowsByOperationalFiscalYear } from '../../utils/fiscalYearFilter';
 import PrintTemplate from '../../components/PrintTemplate';
 import XLSX from 'xlsx-js-style';
 
@@ -40,6 +41,7 @@ const SalesQuotations: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
     const [quotations, setQuotations] = useState<any[]>([]);
+    const quotationsRef = React.useRef<any[]>([]);
     const [customers, setCustomers] = useState<any[]>([]);
     const [items, setItems] = useState<any[]>([]);
     const [brands, setBrands] = useState<any[]>([]);
@@ -49,8 +51,21 @@ const SalesQuotations: React.FC = () => {
     const [form] = Form.useForm();
     const [printData, setPrintData] = useState<any>(null);
     const [isPreviewVisible, setIsPreviewVisible] = useState(false);
-    const [contentScale, setContentScale] = useState<number>(1);
+    const [contentScale, setContentScale] = useState<number>(() => {
+    const saved = localStorage.getItem('quotation_scale');
+    return saved ? parseFloat(saved) : 1;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('quotation_scale', contentScale.toString());
+  }, [contentScale]);
     const [printWithLetterhead, setPrintWithLetterhead] = useState(true);
+
+    // Keep an always-fresh ref for Ctrl+P fallback selection.
+    useEffect(() => {
+        quotationsRef.current = quotations;
+    }, [quotations]);
+    const lastPrintRecordRef = React.useRef<any>(null);
 
     // Admin password delete
     const [deletePasswordModal, setDeletePasswordModal] = useState(false);
@@ -67,6 +82,36 @@ const SalesQuotations: React.FC = () => {
     // Autocomplete suggestions
     const [validitySuggestions, setValiditySuggestions] = useState<string[]>([]);
     const [remarksSuggestions, setRemarksSuggestions] = useState<string[]>([]);
+    const passwordInputRef = React.useRef<any>(null);
+
+    useEffect(() => {
+        if (deletePasswordModal) {
+            setTimeout(() => {
+                passwordInputRef.current?.select();
+                passwordInputRef.current?.focus();
+            }, 100);
+        }
+    }, [deletePasswordModal]);
+
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
+                e.preventDefault();
+                // If preview is open, print the preview
+                if (isPreviewVisible) {
+                    actualPrint();
+                    return;
+                }
+                // Otherwise, open the preview for the last clicked "Print"
+                // (or fall back to the first available quotation on this page).
+                const record = lastPrintRecordRef.current ?? quotationsRef.current?.[0];
+                if (record) handlePrint(record);
+                else message.warning('No quotations available to print.');
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [isPreviewVisible]);
 
     const watchedCustomerId = Form.useWatch('customer_id', form);
 
@@ -97,7 +142,7 @@ const SalesQuotations: React.FC = () => {
                 loadBrands();
             }
         }
-    }, [currentCompany, location.pathname]);
+    }, [currentCompany, location.pathname, fiscalYear]);
 
     useEffect(() => {
         if (location.state?.editQuotationId && customers.length > 0) {
@@ -151,9 +196,7 @@ const SalesQuotations: React.FC = () => {
         try {
             const result = await (window as any).electronAPI.db.salesQuotations.getAll(currentCompany.id);
             if (result.success) {
-                const yy = String(fiscalYear).padStart(2, '0');
-                const filtered = (result.data || []).filter((q: any) => String(q?.quotation_number || '').includes(`/${yy}`));
-                setQuotations(filtered);
+                setQuotations(filterRowsByOperationalFiscalYear(result.data || [], fiscalYear));
             }
         } catch (error) {
             notification.error({ message: 'Error', description: 'Failed to load quotations', duration: 0 });
@@ -181,6 +224,7 @@ const SalesQuotations: React.FC = () => {
 
     const handlePrint = async (record: any) => {
         try {
+            lastPrintRecordRef.current = record;
             const result = await (window as any).electronAPI.db.salesQuotations.getById(record.id);
             if (result.success && result.data) {
                 setPrintData(result.data);
@@ -223,33 +267,12 @@ const SalesQuotations: React.FC = () => {
     const loadNextQuotationNumber = async () => {
         if (!currentCompany) return;
         try {
-            const result = await (window as any).electronAPI.db.salesQuotations.getAll(currentCompany.id);
-            if (result.success && Array.isArray(result.data) && result.data.length > 0) {
-                const quotes = result.data
-                    .map((q: any) => {
-                        const match = (q.quotation_number || '').match(/QUO-(\d+)\/(\d+)/);
-                        if (match) {
-                            return { num: parseInt(match[1], 10), year: parseInt(match[2], 10) };
-                        }
-                        return null;
-                    })
-                    .filter(Boolean) as { num: number; year: number }[];
-
-                if (quotes.length > 0) {
-                    // Sort by year, then number
-                    quotes.sort((a, b) => (b.year - a.year) || (b.num - a.num));
-                    const latest = quotes[0];
-                    const nextNum = latest.num + 1;
-                    const yearStr = String(latest.year).padStart(2, '0');
-                    form.setFieldsValue({
-                        quotation_number: `QUO-${String(nextNum).padStart(4, '0')}/${yearStr}`,
-                    });
-                    return;
-                }
+            const result = await (window as any).electronAPI.db.salesQuotations.getNextNumber(currentCompany.id, fiscalYear);
+            if (result.success) {
+                form.setFieldsValue({
+                    quotation_number: result.data,
+                });
             }
-            // Default initial if none found
-            const currentYear = fiscalYear || (new Date().getFullYear() % 100);
-            form.setFieldsValue({ quotation_number: `QUO-0001/${String(currentYear).padStart(2, '0')}` });
         } catch (error) {
             console.error('Failed to load next quotation number', error);
         }
@@ -333,7 +356,8 @@ const SalesQuotations: React.FC = () => {
                     unit_price: it.unit_price,
                     brand_id: it.brand_id, // backend should handle this
                 })),
-                dcPoNumber?.trim()
+                dcPoNumber?.trim(),
+                fiscalYear
             );
             if (result.success && result.data) {
                 message.success(`Delivery Challan ${result.data.challan_number} created`);
@@ -692,19 +716,23 @@ const SalesQuotations: React.FC = () => {
             <Modal
                 title={editingQuotation ? 'Edit Quotation' : 'New Quotation'}
                 open={modalVisible}
-                onCancel={() => setModalVisible(false)}
+                onCancel={() => {
+                  setModalVisible(false);
+                  setEditingQuotation(null);
+                  form.resetFields();
+                }}
+                maskClosable={true}
                 onOk={() => form.submit()}
                 width={1100}
                 destroyOnClose
                 closeIcon={
-                  <Space>
+                  <Space size="middle">
                     <MinusSquareOutlined 
                       style={{ fontSize: 18, color: '#1890ff' }}
                       onClick={(e) => {
                         e.stopPropagation();
+                        const quoNum = form.getFieldValue('quotation_number') || 'New Quotation';
                         setModalVisible(false);
-                        const values = form.getFieldsValue();
-                        const quoNum = values.quotation_number || 'New Quotation';
                         minimizeModal({
                           id: editingQuotation ? `quo-edit-${editingQuotation.id}` : 'quo-new',
                           title: editingQuotation ? `Edit Quotation ${quoNum}` : `New Quotation ${quoNum}`,
@@ -713,9 +741,14 @@ const SalesQuotations: React.FC = () => {
                             setModalVisible(true);
                           }
                         });
-                      }} 
+                      }}
                     />
-                    <CloseOutlined style={{ fontSize: 18 }} onClick={() => setModalVisible(false)} />
+                    <CloseOutlined style={{ fontSize: 18 }} onClick={(e) => { 
+                      e.stopPropagation();
+                      setModalVisible(false); 
+                      setEditingQuotation(null); 
+                      form.resetFields(); 
+                    }} />
                   </Space>
                 }
             >
@@ -918,6 +951,7 @@ const SalesQuotations: React.FC = () => {
                     onChange={e => setAdminPassword(e.target.value)}
                     placeholder="Admin password"
                     onKeyDown={e => { if (e.key === 'Enter') handleConfirmDelete(); }}
+                    ref={passwordInputRef}
                     autoFocus
                 />
             </Modal>
@@ -985,6 +1019,7 @@ const SalesQuotations: React.FC = () => {
                     setPrintData(null);
                 }}
                 width={900}
+                maskClosable={true}
                 footer={[
                     <Button key="cancel" onClick={() => setIsPreviewVisible(false)}>Close</Button>,
                     <Button key="excel" onClick={handleExportExcelSingle}>Export to Excel</Button>,
@@ -992,6 +1027,40 @@ const SalesQuotations: React.FC = () => {
                     <Button key="print" type="primary" onClick={actualPrint}>Print</Button>
                 ]}
                 className="print-preview-modal"
+                closeIcon={
+                  <Space>
+                    <MinusSquareOutlined
+                      style={{ fontSize: 18, color: '#1890ff' }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const preview = printData;
+                        const restoreLetterhead = printWithLetterhead;
+                        const restoreScale = contentScale;
+                        setIsPreviewVisible(false);
+                        setPrintData(null);
+                        minimizeModal({
+                          id: preview?.id != null ? `print-quo-${preview.id}` : 'print-quo',
+                          title: preview?.quotation_number ? `Print Quotation ${preview.quotation_number}` : 'Print Quotation',
+                          returnPath: location.pathname,
+                          onRestore: () => {
+                            setPrintWithLetterhead(restoreLetterhead);
+                            setContentScale(restoreScale);
+                            setPrintData(preview);
+                            setIsPreviewVisible(true);
+                          },
+                        });
+                      }}
+                    />
+                    <CloseOutlined
+                      style={{ fontSize: 18 }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsPreviewVisible(false);
+                        setPrintData(null);
+                      }}
+                    />
+                  </Space>
+                }
             >
                 <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                     <span>Scale:</span>

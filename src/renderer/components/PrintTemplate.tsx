@@ -227,7 +227,9 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
                         <p><strong>Date:</strong> <span>{formatDate(getDate())}</span></p>
                         <p><strong>PO#</strong> <span>{data.dc_po_number || data.po_number || company?.po_number || '-'}</span></p>
                         {data.delivery_challan_number && <p><strong>Ref D/C #</strong> <span>{data.delivery_challan_number}</span></p>}
-                        {company.gst_registration_number && <p><strong>Our STRN #</strong> <span>{company.gst_registration_number}</span></p>}
+                        {company.gst_registration_number && (
+                            <p><strong>Our STRN #</strong> <span style={{ fontSize: company.gst_registration_number.length > 20 ? '11px' : 'inherit', whiteSpace: 'nowrap' }}>{company.gst_registration_number}</span></p>
+                        )}
                         {company.tax_number && <p><strong>Our NTN #</strong> <span>{company.tax_number}</span></p>}
                     </div>
                 </div>
@@ -240,15 +242,24 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
                         {data.customer_address != null && String(data.customer_address).trim() !== '' && (
                             <p className="bill-customer-address">{data.customer_address}</p>
                         )}
+                        {data.customer_gst_number && <p className="bill-customer-details" style={{ margin: 0 }}><strong>Customer STRN #</strong> {data.customer_gst_number}</p>}
+                        {data.customer_ntn_number && <p className="bill-customer-details" style={{ margin: 0 }}><strong>Customer NTN #</strong> {data.customer_ntn_number}</p>}
                     </div>
                     <div className="bill-doc-info">
                         <p><strong>{getNumberLabel()}</strong> {getNumber()}</p>
                         <p><strong>Date:</strong>  {formatDate(getDate())}</p>
-                        {data.person_name != null && String(data.person_name).trim() !== '' && (
-                            <p><strong>Ref:</strong>  {data.person_name}</p>
+                        {company.gst_registration_number && (
+                            <p><strong>Our STRN #</strong> <span style={{ fontSize: company.gst_registration_number.length > 20 ? '11px' : 'inherit', whiteSpace: 'nowrap' }}>{company.gst_registration_number}</span></p>
                         )}
-                        {(data.dc_po_number ?? data.po_number) != null && String(data.dc_po_number || data.po_number).trim() !== '' && (
+                        {company.tax_number && <p><strong>Our NTN #</strong> <span>{company.tax_number}</span></p>}
+                        {data.customer_attention_person != null && String(data.customer_attention_person).trim() !== '' && (
+                            <p><strong>Ref:</strong>  {data.customer_attention_person}</p>
+                        )}
+                        {(data.dc_po_number || data.po_number || '') !== '' && (
                             <p><strong>PO No:</strong> {data.dc_po_number || data.po_number}</p>
+                        )}
+                        {data.delivery_challan_number && (
+                            <p><strong>DC No:</strong> {data.delivery_challan_number}</p>
                         )}
                         {data.customer_pr_number != null && String(data.customer_pr_number).trim() !== '' && (
                             <p><strong>PR No:</strong> {data.customer_pr_number}</p>
@@ -263,21 +274,27 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
                         <p className="customer-name" style={{ marginTop: 5, marginBottom: 2 }}>{data.customer_name}</p>
                         <p className="customer-details" style={{ margin: 0 }}>{data.customer_address || 'Address not provided'}</p>
                         {data.customer_phone && <p className="customer-contact" style={{ margin: 0 }}>Ph: {data.customer_phone}</p>}
-                        {data.customer_gst_number && <p style={{ margin: 0 }}><strong>STRN #</strong> {data.customer_gst_number}</p>}
-                        {data.customer_ntn_number && <p style={{ margin: 0 }}><strong>NTN #</strong> {data.customer_ntn_number}</p>}
                     </div>
                     <div className="doc-info" style={{ textAlign: 'right', minWidth: '220px' }}>
                         <p><strong style={{ display: 'inline-block', width: '100px' }}>{getNumberLabel()}</strong> <span style={{ display: 'inline-block', width: '120px', textAlign: 'left' }}>{getNumber() || '-'}</span></p>
                         <p><strong style={{ display: 'inline-block', width: '100px' }}>Date:</strong> <span style={{ display: 'inline-block', width: '120px', textAlign: 'left' }}>{getDate() ? formatDate(getDate()) : '-'}</span></p>
-                        {type === 'quotation' ? (
-                             <p><strong style={{ display: 'inline-block', width: '100px' }}>PR No:</strong> <span style={{ display: 'inline-block', width: '120px', textAlign: 'left' }}>{data.pr_number || '-'}</span></p>
-                        ) : (
-                             <p><strong style={{ display: 'inline-block', width: '100px' }}>PO No:</strong> <span style={{ display: 'inline-block', width: '120px', textAlign: 'left' }}>{data.po_number || ''}</span></p>
+                        {type === 'quotation' && (
+                            <>
+                                {data.customer_attention_person && <p><strong style={{ display: 'inline-block', width: '100px' }}>Attention:</strong> <span style={{ display: 'inline-block', width: '120px', textAlign: 'left' }}>{data.customer_attention_person}</span></p>}
+                                {data.expiry_date && <p><strong style={{ display: 'inline-block', width: '100px' }}>Due Date:</strong> <span style={{ display: 'inline-block', width: '120px', textAlign: 'left' }}>{formatDate(data.expiry_date)}</span></p>}
+                                <p><strong style={{ display: 'inline-block', width: '100px' }}>Validity:</strong> <span style={{ display: 'inline-block', width: '120px', textAlign: 'left' }}>{data.validity || '15 Days'}</span></p>
+                                <p><strong style={{ display: 'inline-block', width: '100px' }}>PR No:</strong> <span style={{ display: 'inline-block', width: '120px', textAlign: 'left' }}>{data.pr_number || '-'}</span></p>
+                            </>
                         )}
-                        {data.delivery_challan_number && (
-                            <p><strong style={{ display: 'inline-block', width: '100px' }}>DC No:</strong> <span style={{ display: 'inline-block', width: '120px', textAlign: 'left' }}>{data.delivery_challan_number}</span></p>
+                        {type !== 'quotation' && (
+                            <>
+                                <p><strong style={{ display: 'inline-block', width: '100px' }}>PO No:</strong> <span style={{ display: 'inline-block', width: '120px', textAlign: 'left' }}>{data.po_number || ''}</span></p>
+                                {data.delivery_challan_number && (
+                                    <p><strong style={{ display: 'inline-block', width: '100px' }}>DC No:</strong> <span style={{ display: 'inline-block', width: '120px', textAlign: 'left' }}>{data.delivery_challan_number}</span></p>
+                                )}
+                                {data.expiry_date && <p><strong style={{ display: 'inline-block', width: '100px' }}>Valid Until:</strong> <span style={{ display: 'inline-block', width: '120px', textAlign: 'left' }}>{formatDate(data.expiry_date)}</span></p>}
+                            </>
                         )}
-                        {data.expiry_date && <p><strong style={{ display: 'inline-block', width: '100px' }}>Valid Until:</strong> <span style={{ display: 'inline-block', width: '120px', textAlign: 'left' }}>{formatDate(data.expiry_date)}</span></p>}
                         {type === 'challan' && data.customer_salesperson_name && (
                             <p><strong style={{ display: 'inline-block', width: '100px' }}>Sales Person:</strong> <span style={{ display: 'inline-block', width: '120px', textAlign: 'left' }}>{data.customer_salesperson_name}</span></p>
                         )}

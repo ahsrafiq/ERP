@@ -4,6 +4,7 @@ import { Table, Button, Space, Modal, Form, Input, InputNumber, Select, DatePick
 import { EditOutlined, DeleteOutlined, PrinterOutlined, LockOutlined, StopOutlined, EyeOutlined, SearchOutlined, MinusSquareOutlined, CloseOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useApp } from '../../context/AppContext';
+import { filterRowsByOperationalFiscalYear } from '../../utils/fiscalYearFilter';
 import PrintTemplate from '../../components/PrintTemplate';
 import XLSX from 'xlsx-js-style';
 
@@ -15,6 +16,7 @@ const SalesInvoices: React.FC = () => {
   const docLabel = isGst ? 'Invoice' : 'Bill';
   const docPlaceholder = isGst ? 'INV-0001/26' : 'CI-0001/26';
   const [invoices, setInvoices] = useState<any[]>([]);
+  const invoicesRef = React.useRef<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -26,6 +28,24 @@ const SalesInvoices: React.FC = () => {
   const [adminPassword, setAdminPassword] = useState('');
   const [form] = Form.useForm();
   const [printData, setPrintData] = useState<any>(null);
+  const passwordInputRef = React.useRef<any>(null);
+  const lastPrintRecordRef = React.useRef<any>(null);
+
+  useEffect(() => {
+    if (deletePasswordModal) {
+      setTimeout(() => {
+        passwordInputRef.current?.select();
+        passwordInputRef.current?.focus();
+      }, 100);
+    }
+  }, [deletePasswordModal]);
+
+  // Keep an always-fresh ref for Ctrl+P fallback selection.
+  useEffect(() => {
+    invoicesRef.current = invoices;
+  }, [invoices]);
+
+
 
   // Section permissions (Sales)
   const isAdminUser = user?.role_id === 1 || user?.role === 'admin' || user?.username === 'admin';
@@ -47,7 +67,36 @@ const SalesInvoices: React.FC = () => {
         loadItems();
       }
     }
-  }, [currentCompany, location.pathname]);
+  }, [currentCompany, location.pathname, fiscalYear]);
+
+  const [selectedCustomerInfo, setSelectedCustomerInfo] = useState<any>(null);
+  const [isPreviewVisible, setIsPreviewVisible] = useState(false);
+  const [contentScale, setContentScale] = useState<number>(() => {
+    const saved = localStorage.getItem('sales_invoice_scale');
+    return saved ? parseFloat(saved) : 1;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('sales_invoice_scale', contentScale.toString());
+  }, [contentScale]);
+  const [printWithLetterhead, setPrintWithLetterhead] = useState(true);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
+        e.preventDefault();
+        if (isPreviewVisible) {
+          actualPrint();
+          return;
+        }
+        const record = lastPrintRecordRef.current ?? invoicesRef.current?.[0];
+        if (record) handlePrint(record);
+        else message.warning('No invoices available to print.');
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isPreviewVisible]);
 
   const handleEdit = async (record: any) => {
     const hide = message.loading(`Fetching ${docLabel.toLowerCase()} details...`, 0);
@@ -88,9 +137,7 @@ const SalesInvoices: React.FC = () => {
     try {
       const result = await (window as any).electronAPI.db.salesInvoices.getAll(currentCompany.id);
       if (result.success) {
-        const yy = String(fiscalYear).padStart(2, '0');
-        const filtered = (result.data || []).filter((inv: any) => String(inv?.invoice_number || '').includes(`/${yy}`));
-        setInvoices(filtered);
+        setInvoices(filterRowsByOperationalFiscalYear(result.data || [], fiscalYear));
       }
     } catch (error) {
       notification.error({ message: 'Error', description: `Failed to load ${docLabel}s`, duration: 0 });
@@ -123,14 +170,11 @@ const SalesInvoices: React.FC = () => {
     }
   };
 
-  const [selectedCustomerInfo, setSelectedCustomerInfo] = useState<any>(null);
 
-  const [isPreviewVisible, setIsPreviewVisible] = useState(false);
-  const [contentScale, setContentScale] = useState<number>(1);
-  const [printWithLetterhead, setPrintWithLetterhead] = useState(true);
 
   const handlePrint = async (record: any) => {
     try {
+      lastPrintRecordRef.current = record;
       const result = await (window as any).electronAPI.db.salesInvoices.getById(record.id);
       if (result.success && result.data) {
         const data = result.data as any;
@@ -591,17 +635,17 @@ const SalesInvoices: React.FC = () => {
           setSelectedCustomerInfo(null);
           form.resetFields();
         }}
+        maskClosable={true}
         onOk={() => form.submit()}
         width={900}
         closeIcon={
-          <Space>
+          <Space size="middle">
             <MinusSquareOutlined 
               style={{ fontSize: 18, color: '#1890ff' }}
               onClick={(e) => {
                 e.stopPropagation();
+                const invNum = form.getFieldValue('invoice_number') || `New ${docLabel}`;
                 setModalVisible(false);
-                const values = form.getFieldsValue();
-                const invNum = values.invoice_number || `New ${docLabel}`;
                 minimizeModal({
                   id: editingInvoice ? `inv-edit-${editingInvoice.id}` : 'inv-new',
                   title: editingInvoice ? `Edit ${docLabel} ${invNum}` : `New ${docLabel} ${invNum}`,
@@ -610,9 +654,10 @@ const SalesInvoices: React.FC = () => {
                     setModalVisible(true);
                   }
                 });
-              }} 
+              }}
             />
-            <CloseOutlined style={{ fontSize: 18 }} onClick={() => {
+            <CloseOutlined style={{ fontSize: 18 }} onClick={(e) => {
+              e.stopPropagation(); // Prevent triggering onCancel (minimization)
               setModalVisible(false);
               setEditingInvoice(null);
               setSelectedCustomerInfo(null);
@@ -798,7 +843,8 @@ const SalesInvoices: React.FC = () => {
           onChange={e => setAdminPassword(e.target.value)}
           placeholder="Admin password"
           onKeyDown={e => { if (e.key === 'Enter') handleConfirmDelete(); }}
-          autoFocus
+        ref={passwordInputRef}
+        autoFocus
         />
       </Modal>
 
@@ -810,6 +856,7 @@ const SalesInvoices: React.FC = () => {
           setPrintData(null);
         }}
         width={900}
+        maskClosable={true}
         footer={[
           <Button key="cancel" onClick={() => setIsPreviewVisible(false)}>
             Close
@@ -829,6 +876,40 @@ const SalesInvoices: React.FC = () => {
           </Button>,
         ]}
         className="print-preview-modal"
+        closeIcon={
+          <Space>
+            <MinusSquareOutlined
+              style={{ fontSize: 18, color: '#1890ff' }}
+              onClick={(e) => {
+                e.stopPropagation();
+                const preview = printData;
+                const restoreLetterhead = printWithLetterhead;
+                const restoreScale = contentScale;
+                setIsPreviewVisible(false);
+                setPrintData(null);
+                minimizeModal({
+                  id: preview?.id != null ? `print-inv-${preview.id}` : 'print-inv',
+                  title: preview?.invoice_number ? `Print ${docLabel} ${preview.invoice_number}` : `Print ${docLabel}`,
+                  returnPath: location.pathname,
+                  onRestore: () => {
+                    setPrintWithLetterhead(restoreLetterhead);
+                    setContentScale(restoreScale);
+                    setPrintData(preview);
+                    setIsPreviewVisible(true);
+                  },
+                });
+              }}
+            />
+            <CloseOutlined
+              style={{ fontSize: 18 }}
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsPreviewVisible(false);
+                setPrintData(null);
+              }}
+            />
+          </Space>
+        }
       >
         <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
           <span>Scale:</span>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Table, Button, Space, Modal, Form, Input, Select, notification, message, Popconfirm, Tag, Alert } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, DeleteOutlined, MinusSquareOutlined, CloseOutlined } from '@ant-design/icons';
 import { useApp } from '../../context/AppContext';
 
 const PERMISSION_OPTIONS = [
@@ -14,12 +14,12 @@ const SECTIONS = [
   { key: 'sales', label: 'Sales' },
   { key: 'receivables', label: 'Receivables' },
   { key: 'purchase', label: 'Purchase' },
-  { key: 'inventory', label: 'Inventory' },
+  { key: 'inventory', label: 'Stock' },
   { key: 'expenses', label: 'Expenses' },
 ];
 
 const Users: React.FC = () => {
-  const { currentCompany, companies, user: currentUser } = useApp();
+  const { currentCompany, companies, user: currentUser, minimizeModal } = useApp();
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
@@ -69,6 +69,9 @@ const Users: React.FC = () => {
       delete dataToSave.company_assignments;
 
       if (editingUser) {
+        if (editingUser.username === 'admin') {
+          dataToSave.is_active = editingUser.is_active;
+        }
         const result = await (window as any).electronAPI.db.users.update(editingUser.id, dataToSave);
         if (result.success) {
           message.success('User updated successfully');
@@ -249,6 +252,32 @@ const Users: React.FC = () => {
         }}
         onOk={() => form.submit()}
         width={560}
+        closeIcon={
+          <Space>
+            <MinusSquareOutlined
+              style={{ fontSize: 18, color: '#1890ff' }}
+              onClick={(e) => {
+                e.stopPropagation();
+                setModalVisible(false);
+                const values = form.getFieldsValue();
+                const username = values.username || 'New User';
+                minimizeModal({
+                  id: editingUser ? `user-edit-${editingUser.id}` : 'user-new',
+                  title: editingUser ? `Edit User ${username}` : `New User ${username}`,
+                  onRestore: () => {
+                    setModalVisible(true);
+                    setEditingUser(editingUser);
+                  }
+                });
+              }}
+            />
+            <CloseOutlined style={{ fontSize: 18 }} onClick={() => {
+              setModalVisible(false);
+              setEditingUser(null);
+              form.resetFields();
+            }} />
+          </Space>
+        }
       >
         <Form form={form} layout="vertical" onFinish={handleSave}>
           <Form.Item name="username" label="Username" rules={[{ required: true }]}>
@@ -311,7 +340,7 @@ const Users: React.FC = () => {
           )}
 
           <Form.Item name="is_active" label="Status" initialValue={1}>
-            <Select>
+            <Select disabled={isEditingAdmin}>
               <Select.Option value={1}>Active</Select.Option>
               <Select.Option value={0}>Inactive</Select.Option>
             </Select>

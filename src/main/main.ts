@@ -757,6 +757,10 @@ ipcMain.handle('db:purchaseInvoices:getById', async (event, id: number) => {
   return dbBridge.purchaseInvoices.getById(id);
 });
 
+ipcMain.handle('db:purchaseInvoices:getNextNumber', async (event, companyId: number, fiscalYear?: number) => {
+  return dbBridge.purchaseInvoices.getNextNumber(companyId, fiscalYear);
+});
+
 ipcMain.handle('db:purchaseInvoices:create', async (event, invoice: any) => {
   return dbBridge.purchaseInvoices.create(invoice);
 });

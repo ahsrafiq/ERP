@@ -35,7 +35,7 @@ const Login: React.FC = () => {
         }}>
             <Card style={{ width: 350, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
                 <div style={{ textAlign: 'center', marginBottom: 24 }}>
-                    <Title level={2} style={{ color: '#1890ff', margin: 0 }}>ERP Desktop</Title>
+                    <Title level={2} style={{ color: '#1890ff', margin: 0 }}>ERP</Title>
                     <Typography.Text type="secondary">Sign in to your account</Typography.Text>
                 </div>
 

@@ -23,7 +23,7 @@ const InventoryReport: React.FC = () => {
   const [searchText, setSearchText] = useState('');
   const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
   const [selectedBrand, setSelectedBrand] = useState<string | null>(null);
-  const [lowStockOnly, setLowStockOnly] = useState(false);
+  const [stockFilter, setStockFilter] = useState<string>('all');
 
   // REMOVED AUTO-LOAD ON MOUNT AS PER REQUEST
   // useEffect(() => {
@@ -61,7 +61,15 @@ const InventoryReport: React.FC = () => {
     }
     if (selectedLocation && item.location !== selectedLocation) return false;
     if (selectedBrand && item.brand_name !== selectedBrand) return false;
-    if (lowStockOnly && Number(item.quantity) > Number(item.reorder_level || 0)) return false;
+    
+    if (stockFilter === 'low') {
+      if (Number(item.quantity) > Number(item.reorder_level || 0)) return false;
+    } else if (stockFilter === 'zero') {
+      if (Number(item.quantity) !== 0) return false;
+    } else if (stockFilter === 'nonzero') {
+      if (Number(item.quantity) <= 0) return false;
+    }
+    
     return true;
   });
 
@@ -220,7 +228,7 @@ const InventoryReport: React.FC = () => {
     const numCols = 6;
     const wsData: any[][] = [
       [c(companyName, styleTitle)],
-      [c('Inventory Report', styleSubTitle)],
+      [c('Stock Report', styleSubTitle)],
       [c(`Generated: ${dateStr}${selectedLocation ? '  |  Location: ' + selectedLocation : ''}${selectedBrand ? '  |  Brand: ' + selectedBrand : ''}`, styleMeta)],
       [],
       colHeaders,
@@ -255,8 +263,8 @@ const InventoryReport: React.FC = () => {
     ];
 
     const wb = XLSXStyle.utils.book_new();
-    XLSXStyle.utils.book_append_sheet(wb, ws, 'Inventory Report');
-    XLSXStyle.writeFile(wb, `Inventory_Report_${dateStr.replace(/\//g, '-')}.xlsx`);
+    XLSXStyle.utils.book_append_sheet(wb, ws, 'Stock Report');
+    XLSXStyle.writeFile(wb, `Stock_Report_${dateStr.replace(/\//g, '-')}.xlsx`);
     message.success('Exported to Excel successfully');
   };
 
@@ -267,7 +275,7 @@ const InventoryReport: React.FC = () => {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <Space>
             <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/reports')}>Back</Button>
-            <Title level={4} style={{ margin: 0 }}>Inventory Report — {currentCompany?.name}</Title>
+            <Title level={4} style={{ margin: 0 }}>Stock Report — {currentCompany?.name}</Title>
           </Space>
           <Space>
             <Button
@@ -309,14 +317,16 @@ const InventoryReport: React.FC = () => {
               onChange={setSelectedBrand}
               options={brandOptions.map((b) => ({ label: b, value: b }))}
             />
-            <Button
-              type={lowStockOnly ? 'primary' : 'default'}
-              danger={lowStockOnly}
-              icon={<WarningOutlined />}
-              onClick={() => setLowStockOnly(!lowStockOnly)}
-            >
-              Low Stock Only
-            </Button>
+            <Select
+              style={{ width: 180 }}
+              value={stockFilter}
+              onChange={setStockFilter}
+              options={[
+                { label: 'All Items', value: 'all' },
+                { label: 'Items with 0 Qty', value: 'zero' },
+                { label: 'Items without 0 Qty', value: 'nonzero' },
+              ]}
+            />
             <Button onClick={loadItems}>Refresh</Button>
           </Space>
         </Card>
@@ -349,12 +359,12 @@ const InventoryReport: React.FC = () => {
       {/* Print header */}
       <div className="print-only" style={{ marginBottom: 16 }}>
         <Title level={3} style={{ textAlign: 'center', margin: 0 }}>{currentCompany?.name}</Title>
-        <Title level={5} style={{ textAlign: 'center', margin: 0, color: '#666' }}>Inventory Report</Title>
+        <Title level={5} style={{ textAlign: 'center', margin: 0, color: '#666' }}>Stock Report</Title>
         <Text style={{ display: 'block', textAlign: 'center', color: '#888', marginBottom: 4 }}>
           Generated: {new Date().toLocaleDateString('en-GB')}
           {selectedLocation && ` | Location: ${selectedLocation}`}
           {selectedBrand && ` | Brand: ${selectedBrand}`}
-          {lowStockOnly && ' | Low Stock Only'}
+          {stockFilter !== 'all' && ` | Filter: ${stockFilter === 'low' ? 'Low Stock' : stockFilter === 'zero' ? 'Zero Qty' : 'Non-Zero Qty'}`}
         </Text>
         <Divider style={{ margin: '8px 0' }} />
         <Row gutter={[24, 4]} style={{ marginBottom: 12 }}>

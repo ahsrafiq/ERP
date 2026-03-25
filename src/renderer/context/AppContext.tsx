@@ -151,6 +151,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setCompanies(result.data);
         if (result.data.length > 0 && !currentCompany) {
           setCurrentCompany(result.data[0]);
+        } else if (currentCompany) {
+          // Refresh currentCompany with the latest data (e.g. logo_path changes)
+          const updated = result.data.find((c: any) => c.id === currentCompany.id);
+          if (updated) setCurrentCompany(updated);
         }
       }
     } catch (error) {
@@ -193,6 +197,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const logout = () => {
     setUser(null);
+    setMinimizedModals([]);
+    pendingRestoresRef.current = [];
   };
 
   const [minimizedModals, setMinimizedModals] = useState<any[]>([]);

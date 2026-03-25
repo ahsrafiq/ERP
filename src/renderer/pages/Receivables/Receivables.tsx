@@ -3,9 +3,10 @@ import { Table, Button, Modal, Form, Input, InputNumber, DatePicker, Select, mes
 import { DollarOutlined, DeleteOutlined, CloseOutlined, EditOutlined, SearchOutlined, LockOutlined, MinusSquareOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useApp } from '../../context/AppContext';
+import { documentMatchesFiscalYearSuffix, paymentMatchesOperationalFiscalYear } from '../../utils/fiscalYearFilter';
 
 const Receivables: React.FC = () => {
-  const { currentCompany, user, minimizeModal } = useApp();
+  const { currentCompany, user, fiscalYear, minimizeModal } = useApp();
   const [customers, setCustomers] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
@@ -27,6 +28,7 @@ const Receivables: React.FC = () => {
   const [deletePasswordModal, setDeletePasswordModal] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
   const [adminPassword, setAdminPassword] = useState('');
+  const passwordInputRef = React.useRef<any>(null);
 
   // Form watchers for dynamic calculations
   const receiptAmount = Form.useWatch('amount', receiptForm);
@@ -41,7 +43,16 @@ const Receivables: React.FC = () => {
 
   useEffect(() => {
     if (currentCompany?.id) loadCustomers();
-  }, [currentCompany?.id]);
+  }, [currentCompany?.id, fiscalYear]);
+
+  useEffect(() => {
+    if (deletePasswordModal) {
+      setTimeout(() => {
+        passwordInputRef.current?.select();
+        passwordInputRef.current?.focus();
+      }, 100);
+    }
+  }, [deletePasswordModal]);
 
   const loadCustomers = async () => {
     if (!currentCompany?.id) return;
@@ -52,9 +63,26 @@ const Receivables: React.FC = () => {
         setCustomers([]);
         return;
       }
-      const result = await api.getAll(currentCompany.id);
-      if (result && result.success && Array.isArray(result.data)) {
-        setCustomers(result.data);
+      const [custRes, invRes] = await Promise.all([
+        api.getAll(currentCompany.id),
+        (window as any).electronAPI.db.salesInvoices.getAll(currentCompany.id),
+      ]);
+
+      if (custRes && custRes.success && Array.isArray(custRes.data)) {
+        const fyInvoices = (invRes?.success ? (invRes.data || []) : []).filter((inv: any) =>
+          documentMatchesFiscalYearSuffix(inv?.invoice_number, fiscalYear)
+        );
+        const outstandingByCustomer: Record<number, number> = {};
+        fyInvoices.forEach((inv: any) => {
+          const cid = Number(inv?.customer_id);
+          if (!cid) return;
+          outstandingByCustomer[cid] = (outstandingByCustomer[cid] || 0) + (Number(inv?.balance) || 0);
+        });
+        const withFyBalance = custRes.data.map((c: any) => ({
+          ...c,
+          balance: Number(outstandingByCustomer[c.id] || 0),
+        }));
+        setCustomers(withFyBalance);
       } else {
         setCustomers([]);
       }
@@ -69,10 +97,26 @@ const Receivables: React.FC = () => {
   const loadPaymentHistory = async (customerId: number) => {
     setPaymentsLoading(true);
     try {
-      const result = await (window as any).electronAPI.db.payments.getAll(currentCompany!.id);
-      if (result.success && Array.isArray(result.data)) {
-        const filtered = result.data.filter((p: any) => p.customer_id === customerId);
+      const [payResult, invResult] = await Promise.all([
+        (window as any).electronAPI.db.payments.getAll(currentCompany!.id),
+        (window as any).electronAPI.db.salesInvoices.getAll(currentCompany!.id),
+      ]);
+      if (payResult.success && Array.isArray(payResult.data)) {
+        const salesInvoiceById: Record<number, { invoice_number?: string }> = {};
+        if (invResult?.success && Array.isArray(invResult.data)) {
+          for (const inv of invResult.data) {
+            const id = Number(inv?.id);
+            if (id) salesInvoiceById[id] = { invoice_number: inv.invoice_number };
+          }
+        }
+        const filtered = payResult.data.filter(
+          (p: any) =>
+            p.customer_id === customerId &&
+            paymentMatchesOperationalFiscalYear(p as Record<string, unknown>, fiscalYear, salesInvoiceById)
+        );
         setPayments(filtered);
+      } else {
+        setPayments([]);
       }
     } catch {
       setPayments([]);
@@ -101,7 +145,9 @@ const Receivables: React.FC = () => {
     // Fetch unpaid invoices
     try {
       const uInvs = await (window as any).electronAPI.db.customers.getUnpaidInvoices(customer.id, currentCompany!.id);
-      const dues = uInvs.data || [];
+      const dues = (uInvs.data || []).filter((inv: any) =>
+        documentMatchesFiscalYearSuffix(inv?.invoice_number, fiscalYear)
+      );
       
       const sumOfInvoices = dues.reduce((sum: number, i: any) => sum + i.balance, 0);
       const customerBalance = Number(customer.balance) || 0;
@@ -327,11 +373,7 @@ const Receivables: React.FC = () => {
       dataIndex: 'balance',
       key: 'balance',
       align: 'right' as const,
-      render: (val: number) => {
-        const n = Number(val) || 0;
-        if (n <= 0) return <Tag color="green">Settled</Tag>;
-        return <span style={{ color: '#cf1322', fontWeight: 600 }}>{n.toLocaleString()}</span>;
-      },
+      render: (val: number) => <span style={{ color: '#cf1322', fontWeight: 600 }}>{(Number(val) || 0).toLocaleString()}</span>,
     },
     {
       title: 'Actions',
@@ -347,10 +389,14 @@ const Receivables: React.FC = () => {
     },
   ];
 
-  const filteredCustomers = (Array.isArray(customers) ? customers : []).filter(c =>
-    (c.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (c.code || '').toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredCustomers = (Array.isArray(customers) ? customers : []).filter(c => {
+    const q = searchQuery.toLowerCase();
+    const matchesQuery =
+      (c.name || '').toLowerCase().includes(q) ||
+      (c.code || '').toLowerCase().includes(q);
+    const ownsMoney = Number(c.balance) > 0;
+    return matchesQuery && ownsMoney;
+  });
 
   if (!currentCompany && loading) {
     return (
@@ -424,6 +470,7 @@ const Receivables: React.FC = () => {
               setReceiptModalVisible(false);
               receiptForm.resetFields();
               setSelectedReceiptKeys([]);
+              setSelectedCustomer(null);
             }} />
           </Space>
         }
@@ -460,6 +507,7 @@ const Receivables: React.FC = () => {
               }}
               columns={[
                 { title: 'Inv/Type', dataIndex: 'invoice_number', key: 'invoice_number', width: 140 },
+                { title: 'PO Number', dataIndex: 'po_number', key: 'po_number', width: 130, render: (v) => (v != null && String(v).trim() !== '' ? String(v) : '—') },
                 { title: 'Date', dataIndex: 'invoice_date', key: 'invoice_date', render: (d) => d ? dayjs(d).format('DD/MM/YYYY') : '—' },
                 { title: 'Amount', dataIndex: 'total_amount', key: 'amount', align: 'right', render: (v) => Number(v).toLocaleString() },
                 { title: 'Pending', dataIndex: 'balance', key: 'balance', align: 'right', render: (v) => <strong style={{ color: '#cf1322' }}>{Number(v).toLocaleString()}</strong> },
@@ -553,6 +601,23 @@ const Receivables: React.FC = () => {
         onOk={() => editForm.submit()}
         width={400}
         zIndex={1100}
+        closeIcon={
+          <Space>
+            <MinusSquareOutlined
+              style={{ fontSize: 18, color: '#1890ff' }}
+              onClick={(e) => {
+                e.stopPropagation();
+                setEditModalVisible(false);
+                minimizeModal({
+                  id: `receivables-editpay-${editingPayment?.id || 'new'}`,
+                  title: `Edit Payment #${editingPayment?.payment_number || ''}`.trim(),
+                  onRestore: () => setEditModalVisible(true),
+                });
+              }}
+            />
+            <CloseOutlined style={{ fontSize: 18 }} onClick={() => setEditModalVisible(false)} />
+          </Space>
+        }
       >
         <Form form={editForm} layout="vertical" onFinish={handleEditPayment}>
           <Form.Item
@@ -611,6 +676,7 @@ const Receivables: React.FC = () => {
           onChange={e => setAdminPassword(e.target.value)}
           placeholder="Admin password"
           onKeyDown={e => { if (e.key === 'Enter') handleConfirmDelete(); }}
+          ref={passwordInputRef}
           autoFocus
         />
       </Modal>

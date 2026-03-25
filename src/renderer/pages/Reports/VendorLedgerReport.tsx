@@ -5,12 +5,16 @@ import {
 } from 'antd';
 import {
   PrinterOutlined, ArrowLeftOutlined, FileExcelOutlined,
-  ShopOutlined, DollarOutlined, FileTextOutlined,
+  ShopOutlined, DollarOutlined, FileTextOutlined, ReloadOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import dayjs from 'dayjs';
 import XLSXStyle from 'xlsx-js-style';
+import {
+  ReportLedgerPdfDocument,
+  type ReportLedgerPdfRow,
+} from '../../components/ReportPdf/ReportLedgerPdfDocument';
 
 const { Title, Text } = Typography;
 
@@ -59,14 +63,14 @@ const VendorLedgerReport: React.FC = () => {
 
       const [invRes, payRes] = await Promise.all([
         (window as any).electronAPI.db.purchaseInvoices.getAll(currentCompany!.id, { vendorId }),
-        (window as any).electronAPI.db.payments.getAll(currentCompany!.id, { type: 'out' }),
+        (window as any).electronAPI.db.payments.getAll(currentCompany!.id, { type: 'out', vendorId }),
       ]);
 
-      const invoices: any[] = (invRes.success ? invRes.data || [] : [])
-        .filter((inv: any) => inv.vendor_id === vendorId && inv.status !== 'draft');
+      const invoices: any[] = (invRes.success ? (Array.isArray(invRes.data) ? invRes.data : []) : [])
+        .filter((inv: any) => Number(inv.vendor_id) === Number(vendorId) && inv.status !== 'draft');
 
-      const payments: any[] = (payRes.success ? payRes.data || [] : [])
-        .filter((p: any) => p.vendor_id === vendorId);
+      const payments: any[] = (payRes.success ? (Array.isArray(payRes.data) ? payRes.data : []) : [])
+        .filter((p: any) => Number(p.vendor_id) === Number(vendorId));
 
       const entries: LedgerEntry[] = [
         ...invoices.map((inv: any) => ({
@@ -132,31 +136,71 @@ const VendorLedgerReport: React.FC = () => {
     {
       title: 'Debit (Invoice)', dataIndex: 'debit', key: 'debit', align: 'right' as const,
       render: (v: number) => v > 0
-        ? <Text style={{ color: '#cf1322' }}>{Number(v).toLocaleString()}</Text>
-        : <Text type="secondary">—</Text>,
+        ? <Text style={{ color: '#cf1322', fontSize: '12px' }}>{Number(v).toLocaleString()}</Text>
+        : <Text type="secondary" style={{ fontSize: '12px' }}>—</Text>,
     },
     {
       title: 'Credit (Payment)', dataIndex: 'credit', key: 'credit', align: 'right' as const,
       render: (v: number) => v > 0
-        ? <Text style={{ color: '#389e0d' }}>{Number(v).toLocaleString()}</Text>
-        : <Text type="secondary">—</Text>,
+        ? <Text style={{ color: '#389e0d', fontSize: '12px' }}>{Number(v).toLocaleString()}</Text>
+        : <Text type="secondary" style={{ fontSize: '12px' }}>—</Text>,
     },
     {
       title: 'Balance', dataIndex: 'balance', key: 'balance', align: 'right' as const,
       render: (v: number) => (
-        <Text strong style={{ color: v > 0 ? '#cf1322' : v < 0 ? '#1890ff' : '#52c41a' }}>
+        <Text strong style={{ color: v > 0 ? '#cf1322' : v < 0 ? '#1890ff' : '#52c41a', fontSize: '12px' }}>
           {Math.abs(v).toLocaleString()}
         </Text>
       ),
     },
   ];
 
+  const handleSavePDF = async () => {
+    try {
+      const fileName = `Vendor_Ledger_${vendorInfo?.name || 'All'}.pdf`;
+      const pathResult = await (window as any).electronAPI.db.files.getSavePath(fileName);
+      if (!pathResult.success) return;
+
+      document.body.classList.add('capturing-pdf');
+      const printContainer = document.getElementById('print-container');
+      if (printContainer) printContainer.style.display = 'block';
+
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const result = await (window as any).electronAPI.db.files.captureAndSave(pathResult.filePath);
+      
+      if (result.success) {
+        message.success(`Saved to: ${result.filePath}`);
+      } else {
+        notification.error({ message: 'Error', description: result.error || 'Failed to save PDF', duration: 0 });
+      }
+    } catch (err) {
+      notification.error({ message: 'Error', description: 'Failed to save PDF', duration: 0 });
+    } finally {
+      document.body.classList.remove('capturing-pdf');
+      const printContainer = document.getElementById('print-container');
+      if (printContainer) printContainer.style.display = 'none';
+    }
+  };
+
   const handlePrint = () => window.print();
+
+  const pdfRows: ReportLedgerPdfRow[] = ledger.map((r) => ({
+    date: r.date ? dayjs(r.date).format('DD.MM.YYYY') : '-',
+    transType: r.type === 'invoice' ? 'Purchase' : `Payment - ${r.reference || 'cash'}`,
+    poNumber: r.reference || '-',
+    invRef: r.reference ? `Ref # ${r.reference}` : '-',
+    debit: r.debit > 0 ? Number(r.debit).toLocaleString() : '-',
+    credit: r.credit > 0 ? Number(r.credit).toLocaleString() : '-',
+    balance: Number(Math.abs(r.balance || 0)).toLocaleString(),
+  }));
+
+  const dateFromLabel = ledger.length > 0 ? dayjs(ledger[0].date).format('DD-MMM-YYYY') : '-';
+  const dateToLabel = ledger.length > 0 ? dayjs(ledger[ledger.length - 1].date).format('DD-MMM-YYYY') : '-';
 
   const handleExportExcel = () => {
     if (!selectedVendorId || !vendorInfo) { message.warning('Please select a vendor first'); return; }
 
-    const sBold   = { font: { bold: true } };
+
     const sHdr    = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '1F3864' } }, border: { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } }, alignment: { horizontal: 'center' } };
     const sThin   = { border: { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } } };
     const sThinR  = { ...sThin, alignment: { horizontal: 'right' } };
@@ -223,7 +267,8 @@ const VendorLedgerReport: React.FC = () => {
         </Space>
         <Space>
           <Button icon={<FileExcelOutlined />} onClick={handleExportExcel} disabled={!selectedVendorId} style={{ color: '#217346', borderColor: '#217346' }}>Export Excel</Button>
-          <Button icon={<PrinterOutlined />} onClick={handlePrint} disabled={!selectedVendorId}>Print</Button>
+          <Button icon={<PrinterOutlined />} onClick={handleSavePDF} disabled={!selectedVendorId}>Save as PDF</Button>
+          <Button type="primary" icon={<PrinterOutlined />} onClick={handlePrint} disabled={!selectedVendorId}>Print</Button>
         </Space>
       </div>
 
@@ -240,6 +285,7 @@ const VendorLedgerReport: React.FC = () => {
             allowClear
           />
           <Button type="primary" onClick={() => selectedVendorId && loadLedger(selectedVendorId)} disabled={!selectedVendorId}>Search</Button>
+          <Button icon={<ReloadOutlined />} onClick={() => selectedVendorId && loadLedger(selectedVendorId)} disabled={!selectedVendorId}>Refresh</Button>
           {vendorInfo && (
             <Space>
               {vendorInfo.phone && <Text type="secondary"><ShopOutlined /> {vendorInfo.phone}</Text>}
@@ -307,6 +353,25 @@ const VendorLedgerReport: React.FC = () => {
           )}
         />
       )}
+
+      {/* Hidden print container for PDF capture */}
+      <div id="print-container" style={{ display: 'none' }}>
+          {selectedVendorId && (
+              <ReportLedgerPdfDocument
+                reportTitle="Vendor Ledger"
+                companyName={currentCompany?.name || '-'}
+                dateFromLabel={dateFromLabel}
+                dateToLabel={dateToLabel}
+                entityLabel="Vendor Name"
+                entityName={vendorInfo?.name || 'All Vendors'}
+                rows={pdfRows}
+                totalDebit={totalDebit.toLocaleString()}
+                totalCredit={totalCredit.toLocaleString()}
+                closingBalance={Math.abs(closingBal).toLocaleString()}
+                footerNote={`Generated on ${dayjs().format('DD-MMM-YYYY HH:mm')} | Balance: ${closingBal.toLocaleString()} (${balanceLabel})`}
+              />
+          )}
+      </div>
 
       <Divider />
       <Text type="secondary" style={{ fontSize: 11 }}>

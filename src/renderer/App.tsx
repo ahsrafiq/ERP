@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { ConfigProvider } from 'antd';
 import Layout from './components/Layout/Layout';
@@ -27,10 +27,13 @@ import VendorLedgerReport from './pages/Reports/VendorLedgerReport';
 import ProfitLossReport from './pages/Reports/ProfitLossReport';
 import BalanceSheetReport from './pages/Reports/BalanceSheetReport';
 import StockMovementReport from './pages/Reports/StockMovementReport';
+import CustomerOutstandingReport from './pages/Reports/CustomerOutstandingReport';
+import CustomReportBuilder from './pages/Reports/CustomReportBuilder';
 import SalesQuotations from './pages/Sales/SalesQuotations';
 import DeliveryChallans from './pages/Sales/DeliveryChallans';
 import Receivables from './pages/Receivables/Receivables';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import './components/ReportPdf/ReportPdf.css';
 import { AppProvider } from './context/AppContext';
 
 import Login from './pages/Login/Login';
@@ -94,6 +97,8 @@ const AppContent: React.FC = () => {
       <KeepAliveRoute currentPath={location.pathname} path="/reports" element={<Reports />} />
       <KeepAliveRoute currentPath={location.pathname} path="/reports/sales" element={<SalesReport />} />
       <KeepAliveRoute currentPath={location.pathname} path="/reports/inventory" element={<InventoryReport />} />
+      <KeepAliveRoute currentPath={location.pathname} path="/reports/customer-outstanding" element={<CustomerOutstandingReport />} />
+      <KeepAliveRoute currentPath={location.pathname} path="/reports/custom-builder" element={<CustomReportBuilder />} />
       <KeepAliveRoute currentPath={location.pathname} path="/reports/purchase" element={<PurchaseReport />} />
       <KeepAliveRoute currentPath={location.pathname} path="/reports/customer-ledger" element={<CustomerLedgerReport />} />
       <KeepAliveRoute currentPath={location.pathname} path="/reports/tax" element={<TaxReport />} />
@@ -108,6 +113,79 @@ const AppContent: React.FC = () => {
 };
 
 const App: React.FC = () => {
+  useEffect(() => {
+    const focusFirstErrorField = (modalRoot: HTMLElement) => {
+      const firstErrorItem = modalRoot.querySelector('.ant-form-item-has-error');
+      if (!firstErrorItem) return;
+      const focusTarget = firstErrorItem.querySelector(
+        'input, textarea, .ant-select-selector, .ant-picker-input input, [tabindex]'
+      ) as HTMLElement | null;
+      if (focusTarget) {
+        focusTarget.focus({ preventScroll: true });
+        focusTarget.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    };
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Enter' || e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return;
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      const modalRoot = target.closest('.ant-modal') as HTMLElement | null;
+      if (!modalRoot) return;
+      if (target.closest('.ant-select-dropdown') || target.closest('.ant-picker-dropdown')) return;
+      if ((target as HTMLElement).isContentEditable) return;
+
+      e.preventDefault();
+
+      const formEl =
+        (target.closest('form') as HTMLFormElement | null) ||
+        (modalRoot.querySelector('form') as HTMLFormElement | null);
+
+      if (formEl?.requestSubmit) {
+        formEl.requestSubmit();
+      } else if (formEl) {
+        formEl.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      } else {
+        const okBtn = modalRoot.querySelector('.ant-modal-footer .ant-btn-primary') as HTMLButtonElement | null;
+        okBtn?.click();
+      }
+
+      window.setTimeout(() => focusFirstErrorField(modalRoot), 40);
+    };
+
+    const onMaskMouseDown = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      const isMask = target.classList.contains('ant-modal-mask');
+      const isWrap = target.classList.contains('ant-modal-wrap');
+      if (!isMask && !isWrap) return;
+
+      // Top-most visible modal (last in DOM order is usually the active one).
+      const wraps = Array.from(document.querySelectorAll('.ant-modal-root .ant-modal-wrap')) as HTMLElement[];
+      const activeWrap = wraps.filter((w) => w.style.display !== 'none').pop();
+      if (!activeWrap) return;
+      if (isWrap && target !== activeWrap) return;
+
+      const modal = activeWrap.querySelector('.ant-modal') as HTMLElement | null;
+      if (!modal) return;
+
+      // Only minimize when modal supports it (minus icon provided by page).
+      const minimizeIcon = modal.querySelector('.anticon-minus-square') as HTMLElement | null;
+      if (!minimizeIcon) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+      minimizeIcon.click();
+    };
+
+    document.addEventListener('keydown', onKeyDown, true);
+    document.addEventListener('mousedown', onMaskMouseDown, true);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown, true);
+      document.removeEventListener('mousedown', onMaskMouseDown, true);
+    };
+  }, []);
+
   return (
     <ConfigProvider
       theme={{
@@ -115,6 +193,10 @@ const App: React.FC = () => {
           borderRadius: 8,
           colorPrimary: '#1890ff',
         },
+      }}
+      form={{
+        scrollToFirstError: { behavior: 'smooth', block: 'center' },
+        validateMessages: { required: '${label} is required' },
       }}
     >
       <AppProvider>
