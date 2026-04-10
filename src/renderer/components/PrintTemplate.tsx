@@ -274,13 +274,19 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
                         <p className="customer-name" style={{ marginTop: 5, marginBottom: 2 }}>{data.customer_name}</p>
                         <p className="customer-details" style={{ margin: 0 }}>{data.customer_address || 'Address not provided'}</p>
                         {data.customer_phone && <p className="customer-contact" style={{ margin: 0 }}>Ph: {data.customer_phone}</p>}
+                        {type === 'quotation' && data.customer_attention_person && (
+                            <div style={{ textAlign: 'left', marginTop: 4 }}>
+                                <p className="customer-attention" style={{ margin: 0, fontStyle: 'italic' }}>
+                                    <strong>Attention:</strong> {data.customer_attention_person}
+                                </p>
+                            </div>
+                        )}
                     </div>
                     <div className="doc-info" style={{ textAlign: 'right', minWidth: '220px' }}>
                         <p><strong style={{ display: 'inline-block', width: '100px' }}>{getNumberLabel()}</strong> <span style={{ display: 'inline-block', width: '120px', textAlign: 'left' }}>{getNumber() || '-'}</span></p>
                         <p><strong style={{ display: 'inline-block', width: '100px' }}>Date:</strong> <span style={{ display: 'inline-block', width: '120px', textAlign: 'left' }}>{getDate() ? formatDate(getDate()) : '-'}</span></p>
                         {type === 'quotation' && (
                             <>
-                                {data.customer_attention_person && <p><strong style={{ display: 'inline-block', width: '100px' }}>Attention:</strong> <span style={{ display: 'inline-block', width: '120px', textAlign: 'left' }}>{data.customer_attention_person}</span></p>}
                                 {data.expiry_date && <p><strong style={{ display: 'inline-block', width: '100px' }}>Due Date:</strong> <span style={{ display: 'inline-block', width: '120px', textAlign: 'left' }}>{formatDate(data.expiry_date)}</span></p>}
                                 <p><strong style={{ display: 'inline-block', width: '100px' }}>Validity:</strong> <span style={{ display: 'inline-block', width: '120px', textAlign: 'left' }}>{data.validity || '15 Days'}</span></p>
                                 <p><strong style={{ display: 'inline-block', width: '100px' }}>PR No:</strong> <span style={{ display: 'inline-block', width: '120px', textAlign: 'left' }}>{data.pr_number || '-'}</span></p>

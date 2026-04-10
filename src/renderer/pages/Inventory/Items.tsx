@@ -21,8 +21,11 @@ const Items: React.FC = () => {
   // Admin password delete
   const [deletePasswordModal, setDeletePasswordModal] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
+  const [pendingDeleteIds, setPendingDeleteIds] = useState<number[]>([]);
   const [adminPassword, setAdminPassword] = useState('');
   const passwordInputRef = React.useRef<any>(null);
+
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
 
   useEffect(() => {
     if (deletePasswordModal) {
@@ -87,6 +90,7 @@ const Items: React.FC = () => {
 
   const handleSave = async (values: any) => {
     if (!currentCompany) return;
+    setModalLoading(true);
     try {
       let code = editingItem ? editingItem.code : '';
       if (!editingItem) {
@@ -119,6 +123,8 @@ const Items: React.FC = () => {
           message.success('Item updated successfully');
           setModalVisible(false);
           setEditingItem(null);
+          form.resetFields();
+          loadItems();
         } else {
           notification.error({ message: 'Error', description: result.error || 'Failed to update item', duration: 0 });
         }
@@ -126,16 +132,18 @@ const Items: React.FC = () => {
         const result = await (window as any).electronAPI.db.items.create(itemData);
         if (result.success) {
           message.success('Item created successfully');
+          setModalVisible(false);
+          setEditingItem(null);
+          form.resetFields();
+          loadItems();
         } else {
           notification.error({ message: 'Error', description: result.error || 'Failed to create item', duration: 0 });
         }
       }
-      setModalVisible(false);
-      setEditingItem(null);
-      form.resetFields();
-      loadItems();
     } catch (error) {
       notification.error({ message: 'Error', description: 'An unexpected error occurred while saving the item.', duration: 0 });
+    } finally {
+      setModalLoading(false);
     }
   };
 
@@ -229,6 +237,14 @@ const Items: React.FC = () => {
 
   const handleRequestDelete = (id: number) => {
     setPendingDeleteId(id);
+    setPendingDeleteIds([]);
+    setAdminPassword('');
+    setDeletePasswordModal(true);
+  };
+
+  const handleRequestBulkDelete = () => {
+    setPendingDeleteIds(selectedRowKeys.map(k => Number(k)));
+    setPendingDeleteId(null);
     setAdminPassword('');
     setDeletePasswordModal(true);
   };
@@ -240,22 +256,42 @@ const Items: React.FC = () => {
       setAdminPassword('');
       return;
     }
-    if (pendingDeleteId == null) return;
-    try {
-      const result = await (window as any).electronAPI.db.items.delete(pendingDeleteId);
-      if (result.success) {
-        message.success('Item deleted successfully');
-        loadItems();
-      } else {
-        notification.error({ message: 'Error', description: result.error || 'Failed to delete item', duration: 0 });
+    if (pendingDeleteId != null) {
+      try {
+        const result = await (window as any).electronAPI.db.items.delete(pendingDeleteId);
+        if (result.success) {
+          message.success('Item deleted successfully');
+          loadItems();
+        } else {
+          notification.error({ message: 'Error', description: result.error || 'Failed to delete item', duration: 0 });
+        }
+      } catch {
+        notification.error({ message: 'Error', description: 'Failed to delete item', duration: 0 });
       }
-    } catch {
-      notification.error({ message: 'Error', description: 'Failed to delete item', duration: 0 });
-    } finally {
-      setDeletePasswordModal(false);
-      setPendingDeleteId(null);
-      setAdminPassword('');
+    } else if (pendingDeleteIds.length > 0) {
+      try {
+        const result = await (window as any).electronAPI.db.items.deleteMultiple(pendingDeleteIds);
+        if (result.success) {
+          const { total, deleted, skipped } = result.data;
+          if (skipped === 0) {
+            message.success(`Deleted ${deleted} items successfully`);
+          } else {
+            message.warning(`Deleted ${deleted} items. ${skipped} were skipped (possibly due to existing records).`);
+          }
+          setSelectedRowKeys([]);
+          loadItems();
+        } else {
+          notification.error({ message: 'Error', description: result.error || 'Failed to delete items', duration: 0 });
+        }
+      } catch (error) {
+        notification.error({ message: 'Error', description: 'Failed to delete items', duration: 0 });
+      }
     }
+    
+    setDeletePasswordModal(false);
+    setPendingDeleteId(null);
+    setPendingDeleteIds([]);
+    setAdminPassword('');
   };
 
   const locationOptions = Array.from(
@@ -354,6 +390,15 @@ const Items: React.FC = () => {
             onChange={e => setSearchQuery(e.target.value)}
             allowClear
           />
+          {selectedRowKeys.length > 0 && canEditOrDelete && (
+            <Button 
+                danger 
+                icon={<DeleteOutlined />} 
+                onClick={handleRequestBulkDelete}
+            >
+                Delete Selected ({selectedRowKeys.length})
+            </Button>
+          )}
           <span style={{ color: '#666', fontSize: 12 }}>Items are shared across all companies</span>
         </div>
         <Space>
@@ -399,7 +444,11 @@ const Items: React.FC = () => {
         columns={columns}
         dataSource={Array.isArray(filteredItems) ? filteredItems : []}
         loading={loading}
-        rowKey={(r) => (r?.id != null ? String(r.id) : String(Math.random()))}
+        rowKey="id"
+        rowSelection={{
+          selectedRowKeys,
+          onChange: (keys) => setSelectedRowKeys(keys),
+        }}
         pagination={{ pageSize: 10 }}
       />
 
@@ -530,7 +579,7 @@ const Items: React.FC = () => {
         okText="Delete"
         okButtonProps={{ danger: true }}
       >
-        <p>Enter admin password to delete this item:</p>
+        <p>Enter admin password to delete {pendingDeleteId ? 'this item' : `${pendingDeleteIds.length} items`}:</p>
         <Input.Password
           prefix={<LockOutlined />}
           value={adminPassword}

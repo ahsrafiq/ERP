@@ -1,13 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Button, Card, Checkbox, DatePicker, Input, InputNumber, Modal, Select, Space, Table, Tag, Typography } from 'antd';
-import { PlusOutlined, SaveOutlined, FilterOutlined, ReloadOutlined } from '@ant-design/icons';
+import { Button, Card, Checkbox, DatePicker, Input, InputNumber, Modal, Select, Space, Table, Tag, Typography, message, Badge } from 'antd';
+import { PlusOutlined, SaveOutlined, FilterOutlined, ReloadOutlined, DeleteOutlined, FolderOpenOutlined, ArrowRightOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useApp } from '../../context/AppContext';
 
 const { RangePicker } = DatePicker;
-const { Text } = Typography;
+const { Text, Title } = Typography;
 
-type ModuleKey = 'sales' | 'inventory';
+type ModuleKey = 'sales' | 'purchases' | 'inventory' | 'payments';
 
 type FieldType = 'string' | 'number' | 'date' | 'enum';
 
@@ -19,653 +19,515 @@ type FieldDef = {
   columnVisibleByDefault?: boolean;
 };
 
-type UnifiedRow = Record<string, any> & { __rowType: ModuleKey; __docType: string };
+type UnifiedRow = Record<string, any> & { __module: ModuleKey; __type: string };
 
 type FilterDef = {
   id: string;
   fieldKey: string;
   operator: string;
-  // For date/number "between" we store { from, to }, else { single }.
   value?: any;
   from?: any;
   to?: any;
 };
 
 type TemplateConfig = {
-  moduleKey: ModuleKey;
+  module: ModuleKey;
   columns: string[];
   filters: FilterDef[];
 };
 
-const MODULES: Array<{ key: ModuleKey; label: string }> = [
-  { key: 'sales', label: 'Sales' },
-  { key: 'inventory', label: 'Inventory' },
+const MODULES: Array<{ key: ModuleKey; label: string; color: string }> = [
+  { key: 'sales', label: 'Sales', color: '#1890ff' },
+  { key: 'purchases', label: 'Purchases', color: '#52c41a' },
+  { key: 'inventory', label: 'Inventory', color: '#faad14' },
+  { key: 'payments', label: 'Payments & Receipts', color: '#722ed1' },
 ];
 
-// MVP field sets (can be expanded later).
 const FIELDS_BY_MODULE: Record<ModuleKey, FieldDef[]> = {
   sales: [
-    { key: '__docType', label: 'Document Type', type: 'enum', filterable: true, columnVisibleByDefault: true },
-    { key: 'doc_number', label: 'Document #', type: 'string', filterable: true, columnVisibleByDefault: true },
-    { key: 'doc_date', label: 'Date', type: 'date', filterable: true, columnVisibleByDefault: true },
-    { key: 'customer_name', label: 'Customer', type: 'string', filterable: true, columnVisibleByDefault: true },
-    { key: 'po_number', label: 'PO / PR #', type: 'string', filterable: true },
-    { key: 'status', label: 'Status', type: 'enum', filterable: true },
-    { key: 'total_amount', label: 'Amount', type: 'number', filterable: true },
-    { key: 'balance', label: 'Balance', type: 'number', filterable: true },
-    { key: 'gst_total', label: 'GST Total', type: 'number', filterable: true },
-    { key: 'subtotal', label: 'Subtotal', type: 'number', filterable: true },
-    { key: 'total_quantity', label: 'Quantity (DC)', type: 'number', filterable: true },
-    { key: 'notes', label: 'Notes', type: 'string', filterable: true },
+    { key: '__type', label: 'Doc Type', type: 'enum', filterable: true, columnVisibleByDefault: true },
+    { key: 'number', label: 'Number', type: 'string', filterable: true, columnVisibleByDefault: true },
+    { key: 'date', label: 'Date', type: 'date', filterable: true, columnVisibleByDefault: true },
+    { key: 'customer', label: 'Customer', type: 'string', filterable: true, columnVisibleByDefault: true },
+    { key: 'po_number', label: 'PO #', type: 'string', filterable: true, columnVisibleByDefault: true },
+    { key: 'total', label: 'Amount', type: 'number', filterable: true, columnVisibleByDefault: true },
+    { key: 'balance', label: 'Balance', type: 'number', filterable: true, columnVisibleByDefault: true },
+    { key: 'status', label: 'Status', type: 'enum', filterable: true, columnVisibleByDefault: true },
+  ],
+  purchases: [
+    { key: 'number', label: 'Invoice #', type: 'string', filterable: true, columnVisibleByDefault: true },
+    { key: 'date', label: 'Date', type: 'date', filterable: true, columnVisibleByDefault: true },
+    { key: 'vendor', label: 'Vendor', type: 'string', filterable: true, columnVisibleByDefault: true },
+    { key: 'total', label: 'Amount', type: 'number', filterable: true, columnVisibleByDefault: true },
+    { key: 'balance', label: 'Balance', type: 'number', filterable: true, columnVisibleByDefault: true },
+    { key: 'status', label: 'Status', type: 'enum', filterable: true, columnVisibleByDefault: true },
   ],
   inventory: [
-    { key: '__docType', label: 'Entity Type', type: 'enum', filterable: true, columnVisibleByDefault: true },
-    { key: 'code', label: 'Code', type: 'string', filterable: true, columnVisibleByDefault: true },
+    { key: 'code', label: 'Item Code', type: 'string', filterable: true, columnVisibleByDefault: true },
     { key: 'name', label: 'Name', type: 'string', filterable: true, columnVisibleByDefault: true },
-    { key: 'brand_name', label: 'Brand', type: 'string', filterable: true },
-    { key: 'sku', label: 'SKU', type: 'string', filterable: true },
-    { key: 'description', label: 'Description', type: 'string', filterable: true },
-    { key: 'location', label: 'Location', type: 'string', filterable: true },
-    { key: 'quantity', label: 'Quantity', type: 'number', filterable: true },
-    { key: 'reorder_level', label: 'Reorder Level', type: 'number', filterable: true },
-    { key: 'hs_code', label: 'HS Code', type: 'string', filterable: true },
-    { key: 'address', label: 'Address (Warehouse)', type: 'string', filterable: false },
-    { key: 'is_default', label: 'Default (Warehouse)', type: 'enum', filterable: false },
+    { key: 'brand', label: 'Brand', type: 'string', filterable: true, columnVisibleByDefault: true },
+    { key: 'category', label: 'Category', type: 'string', filterable: true },
+    { key: 'quantity', label: 'Stock', type: 'number', filterable: true, columnVisibleByDefault: true },
+    { key: 'purchase_price', label: 'Purch. Price', type: 'number', filterable: true },
+    { key: 'sell_price', label: 'Sell Price', type: 'number', filterable: true, columnVisibleByDefault: true },
+  ],
+  payments: [
+    { key: 'number', label: 'Voucher #', type: 'string', filterable: true, columnVisibleByDefault: true },
+    { key: 'date', label: 'Date', type: 'date', filterable: true, columnVisibleByDefault: true },
+    { key: 'type', label: 'Type', type: 'enum', filterable: true, columnVisibleByDefault: true },
+    { key: 'party', label: 'Party (Cust/Vend)', type: 'string', filterable: true, columnVisibleByDefault: true },
+    { key: 'amount', label: 'Amount', type: 'number', filterable: true, columnVisibleByDefault: true },
+    { key: 'method', label: 'Method', type: 'string', filterable: true, columnVisibleByDefault: true },
   ],
 };
 
-function toISODateOrNull(d: any): string | null {
-  if (!d) return null;
-  const v = typeof d === 'string' ? d : d?.toString?.() ?? '';
-  if (v && v.length >= 10) return String(v).slice(0, 10);
-  // dayjs
-  try {
-    return dayjs(d).format('YYYY-MM-DD');
-  } catch {
-    return null;
-  }
-}
-
-function safeNumber(v: any): number | null {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
-}
-
-function applyFilters(rows: UnifiedRow[], moduleKey: ModuleKey, fields: FieldDef[], filters: FilterDef[]): UnifiedRow[] {
-  if (!filters.length) return rows;
-  const fieldMap = new Map(fields.map((f) => [f.key, f]));
-
-  return rows.filter((r) => {
-    for (const f of filters) {
-      const def = fieldMap.get(f.fieldKey);
-      if (!def) continue;
-      const raw = r[f.fieldKey];
-      if (def.type === 'string' || def.type === 'enum') {
-        const s = raw == null ? '' : String(raw);
-        const val = f.value == null ? '' : String(f.value);
-        if (f.operator === 'contains') {
-          if (!s.toLowerCase().includes(val.toLowerCase())) return false;
-        } else if (f.operator === 'equals') {
-          if (s !== val) return false;
-        }
-      } else if (def.type === 'number') {
-        const n = safeNumber(raw);
-        if (n == null) return false;
-        if (f.operator === 'gt') {
-          const v = safeNumber(f.value);
-          if (v == null || !(n > v)) return false;
-        } else if (f.operator === 'lt') {
-          const v = safeNumber(f.value);
-          if (v == null || !(n < v)) return false;
-        } else if (f.operator === 'equals') {
-          const v = safeNumber(f.value);
-          if (v == null || !(n === v)) return false;
-        } else if (f.operator === 'between') {
-          const from = safeNumber(f.from);
-          const to = safeNumber(f.to);
-          if (from == null || to == null) return false;
-          const min = Math.min(from, to);
-          const max = Math.max(from, to);
-          if (!(n >= min && n <= max)) return false;
-        }
-      } else if (def.type === 'date') {
-        const iso = toISODateOrNull(raw);
-        if (!iso) return false;
-        if (f.operator === 'before') {
-          const to = toISODateOrNull(f.value);
-          if (!to) return false;
-          if (iso >= to) return false;
-        } else if (f.operator === 'after') {
-          const from = toISODateOrNull(f.value);
-          if (!from) return false;
-          if (iso <= from) return false;
-        } else if (f.operator === 'between') {
-          const from = toISODateOrNull(f.from);
-          const to = toISODateOrNull(f.to);
-          if (!from || !to) return false;
-          const min = from <= to ? from : to;
-          const max = from <= to ? to : from;
-          if (!(iso >= min && iso <= max)) return false;
-        }
-      }
-    }
-    return true;
-  });
-}
-
-function buildColumns(fields: FieldDef[], selectedColumns: string[]): any[] {
-  const selectedFieldDefs = selectedColumns
-    .map((k) => fields.find((f) => f.key === k))
-    .filter(Boolean) as FieldDef[];
-
-  return selectedFieldDefs.map((f) => {
-    return {
-      title: f.label,
-      dataIndex: f.key,
-      key: f.key,
-      render: (val: any) => {
-        if (val == null || val === '') return '—';
-        if (f.type === 'date') {
-          return dayjs(val).isValid() ? dayjs(val).format('DD-MMM-YYYY') : String(val);
-        }
-        if (f.type === 'number') {
-          const n = safeNumber(val);
-          return n == null ? '—' : n.toLocaleString();
-        }
-        return String(val);
-      },
-    };
-  });
-}
-
-function generateId(prefix: string) {
-  return `${prefix}-${Math.random().toString(16).slice(2)}-${Date.now()}`;
-}
-
 const CustomReportBuilder: React.FC = () => {
-  const { currentCompany, user } = useApp();
+  const { currentCompany } = useApp();
   const [moduleKey, setModuleKey] = useState<ModuleKey>('sales');
-  const fields = useMemo(() => FIELDS_BY_MODULE[moduleKey], [moduleKey]);
-
+  const [selectedColumns, setSelectedColumns] = useState<string[]>([]);
+  const [filters, setFilters] = useState<FilterDef[]>([]);
   const [allRows, setAllRows] = useState<UnifiedRow[]>([]);
   const [loading, setLoading] = useState(false);
-
-  const [selectedColumns, setSelectedColumns] = useState<string[]>(() =>
-    FIELDS_BY_MODULE.sales.filter((f) => f.columnVisibleByDefault).map((f) => f.key)
-  );
-
-  const [filters, setFilters] = useState<FilterDef[]>([]);
-
-  const [savedTemplates, setSavedTemplates] = useState<any[]>([]);
-  const [selectedTemplateId, setSelectedTemplateId] = useState<number | undefined>(undefined);
-
   const [saveModalOpen, setSaveModalOpen] = useState(false);
-  const [saveNameDraft, setSaveNameDraft] = useState('');
+  const [loadModalOpen, setLoadModalOpen] = useState(false);
+  const [templateName, setTemplateName] = useState('');
+  const [savedTemplates, setSavedTemplates] = useState<any[]>([]);
 
-  // Add filter UI state
+  // Filter builders state
   const [pendingFilterField, setPendingFilterField] = useState<string>('');
   const [pendingOperator, setPendingOperator] = useState<string>('contains');
   const [pendingValue, setPendingValue] = useState<any>(undefined);
   const [pendingFrom, setPendingFrom] = useState<any>(undefined);
   const [pendingTo, setPendingTo] = useState<any>(undefined);
 
-  const filterableFields = useMemo(() => fields.filter((f) => f.filterable), [fields]);
-  const selectedFieldDef = useMemo(() => fields.find((f) => f.key === pendingFilterField), [fields, pendingFilterField]);
+  const fields = useMemo(() => FIELDS_BY_MODULE[moduleKey], [moduleKey]);
+  const filterableFields = useMemo(() => fields.filter(f => f.filterable), [fields]);
+  const selectedFieldDef = useMemo(() => fields.find(f => f.key === pendingFilterField), [fields, pendingFilterField]);
 
-  const operatorOptions = useMemo(() => {
-    if (!selectedFieldDef) return [];
-    if (selectedFieldDef.type === 'string' || selectedFieldDef.type === 'enum') {
-      return [
-        { value: 'contains', label: 'Contains' },
-        { value: 'equals', label: 'Equals' },
-      ];
-    }
-    if (selectedFieldDef.type === 'number') {
-      return [
-        { value: 'equals', label: 'Equals' },
-        { value: 'gt', label: 'Greater than' },
-        { value: 'lt', label: 'Less than' },
-        { value: 'between', label: 'Between' },
-      ];
-    }
-    if (selectedFieldDef.type === 'date') {
-      return [
-        { value: 'between', label: 'Between' },
-        { value: 'before', label: 'Before' },
-        { value: 'after', label: 'After' },
-      ];
-    }
-    return [];
-  }, [selectedFieldDef]);
-
+  // Default columns when module changes
   useEffect(() => {
-    // Reset defaults when module changes unless the user already selected something.
-    const defaultCols = FIELDS_BY_MODULE[moduleKey].filter((f) => f.columnVisibleByDefault).map((f) => f.key);
-    setSelectedColumns((prev) => (prev.length ? prev : defaultCols));
+    const defaults = fields.filter(f => f.columnVisibleByDefault).map(f => f.key);
+    setSelectedColumns(defaults);
     setFilters([]);
-  }, [moduleKey]);
+    setPendingFilterField('');
+  }, [moduleKey, fields]);
 
-  const loadAllRows = async () => {
+  const loadData = async () => {
     if (!currentCompany) return;
     setLoading(true);
     try {
+      const db = (window as any).electronAPI.db;
+      let rows: UnifiedRow[] = [];
+
       if (moduleKey === 'sales') {
-        const [invRes, quoRes, dcRes] = await Promise.all([
-          (window as any).electronAPI.db.salesInvoices.getAll(currentCompany.id, {}),
-          (window as any).electronAPI.db.salesQuotations.getAll(currentCompany.id, {}),
-          (window as any).electronAPI.db.deliveryChallans.getAll(currentCompany.id),
+        const [inv, quo, dc] = await Promise.all([
+          db.salesInvoices.getAll(currentCompany.id),
+          db.salesQuotations.getAll(currentCompany.id),
+          db.deliveryChallans.getAll(currentCompany.id),
         ]);
+        
+        const invoices = (inv?.success ? inv.data : inv) || [];
+        const quotations = (quo?.success ? quo.data : quo) || [];
+        const challans = (dc?.success ? dc.data : dc) || [];
 
-        const invoices = (invRes?.success ? invRes.data : []) || [];
-        const quotations = (quoRes?.success ? quoRes.data : []) || [];
-        const challans = (dcRes?.success ? dcRes.data : []) || [];
-
-        const mapped: UnifiedRow[] = [
-          ...invoices.map((r: any) => ({
-            __docType: 'Invoice',
-            __rowType: 'sales',
-            id: r.id,
-            doc_number: r.invoice_number,
-            doc_date: r.invoice_date,
-            customer_name: r.customer_name,
-            po_number: r.po_number,
-            status: r.status,
-            total_amount: r.total_amount,
-            balance: r.balance,
-            gst_total: r.gst_total,
-            subtotal: r.subtotal,
-            total_quantity: null,
-            notes: r.notes,
-          })),
-          ...quotations.map((r: any) => ({
-            __docType: 'Quotation',
-            __rowType: 'sales',
-            id: r.id,
-            doc_number: r.quotation_number,
-            doc_date: r.quotation_date,
-            customer_name: r.customer_name,
-            po_number: r.pr_number,
-            status: r.status,
-            total_amount: r.total_amount,
-            balance: 0,
-            gst_total: r.tax_amount,
-            subtotal: r.subtotal,
-            total_quantity: null,
-            notes: r.terms_and_conditions || r.notes,
-          })),
-          ...challans.map((r: any) => ({
-            __docType: 'Delivery Challan',
-            __rowType: 'sales',
-            id: r.id,
-            doc_number: r.challan_number,
-            doc_date: r.challan_date,
-            customer_name: r.customer_name,
-            po_number: r.po_number,
-            status: r.status,
-            total_amount: null,
-            balance: 0,
-            gst_total: null,
-            subtotal: null,
-            total_quantity: r.total_quantity,
-            notes: r.notes,
-          })),
+        rows = [
+          ...invoices.map((r: any) => ({ ...r, __module: 'sales', __type: 'Invoice', number: r.invoice_number, date: r.invoice_date, customer: r.customer_name, total: r.total_amount })),
+          ...quotations.map((r: any) => ({ ...r, __module: 'sales', __type: 'Quotation', number: r.quotation_number, date: r.quotation_date, customer: r.customer_name, total: r.total_amount })),
+          ...challans.map((r: any) => ({ ...r, __module: 'sales', __type: 'Challan', number: r.challan_number, date: r.challan_date, customer: r.customer_name, total: 0 })),
         ];
-
-        setAllRows(mapped);
-      } else {
-        const [itemsRes, warehousesRes] = await Promise.all([
-          (window as any).electronAPI.db.items.getAll(currentCompany.id),
-          (window as any).electronAPI.db.warehouses.getAll(currentCompany.id),
-        ]);
-
-        const items = (itemsRes?.success ? itemsRes.data : []) || [];
-        const warehouses = (warehousesRes?.success ? warehousesRes.data : []) || [];
-
-        const mapped: UnifiedRow[] = [
-          ...items.map((r: any) => ({
-            __docType: 'Item',
-            __rowType: 'inventory',
-            id: r.id,
-            code: r.code,
-            name: r.name,
-            brand_name: r.brand_name,
-            sku: r.sku,
-            description: r.description,
-            location: r.location,
-            quantity: r.quantity,
-            reorder_level: r.reorder_level,
-            hs_code: r.hs_code,
-            address: null,
-            is_default: null,
-          })),
-          ...warehouses.map((r: any) => ({
-            __docType: 'Warehouse',
-            __rowType: 'inventory',
-            id: r.id,
-            code: r.code,
-            name: r.name,
-            brand_name: null,
-            sku: null,
-            description: null,
-            location: null,
-            quantity: null,
-            reorder_level: null,
-            hs_code: null,
-            address: r.address,
-            is_default: r.is_default,
-          })),
-        ];
-        setAllRows(mapped);
+      } else if (moduleKey === 'purchases') {
+        const res = await db.purchaseInvoices.getAll(currentCompany.id);
+        const data = (res?.success ? res.data : res) || [];
+        rows = data.map((r: any) => ({ ...r, __module: 'purchases', __type: 'Purchase', number: r.invoice_number, date: r.invoice_date, vendor: r.vendor_name, total: r.total_amount }));
+      } else if (moduleKey === 'inventory') {
+        const res = await db.items.getAll(currentCompany.id);
+        const data = (res?.success ? res.data : res) || [];
+        rows = data.map((r: any) => ({ ...r, __module: 'inventory', __type: 'Item', brand: r.brand_name, category: r.category_name, sell_price: r.selling_price }));
+      } else if (moduleKey === 'payments') {
+        const res = await db.payments.getAll(currentCompany.id);
+        const data = (res?.success ? res.data : res) || [];
+        rows = data.map((r: any) => ({ ...r, __module: 'payments', __type: 'Payment', number: r.payment_number, date: r.payment_date, party: r.customer_name || r.vendor_name, type: r.payment_type, method: r.payment_method }));
       }
-    } catch (e) {
-      // keep UI responsive
-      setAllRows([]);
+
+      setAllRows(rows);
+    } catch (err) {
+      console.error('Failed to load data:', err);
+      message.error('Failed to load report data');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    if (!currentCompany) return;
-    void loadAllRows();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentCompany?.id, moduleKey]);
+    loadData();
+  }, [moduleKey, currentCompany?.id]);
 
-  const previewRows = useMemo(() => applyFilters(allRows, moduleKey, fields, filters), [allRows, moduleKey, fields, filters]);
+  const applyFilters = (rows: UnifiedRow[]) => {
+    return rows.filter(row => {
+      for (const f of filters) {
+        const val = row[f.fieldKey];
+        const fieldDef = fields.find(fd => fd.key === f.fieldKey);
+        if (!fieldDef) continue;
 
-  const columns = useMemo(() => buildColumns(fields, selectedColumns), [fields, selectedColumns]);
-
-  const loadSavedTemplates = async () => {
-    if (!currentCompany || !user) return;
-    try {
-      const res = await (window as any).electronAPI.db.reportTemplates.getAllByUser(currentCompany.id, user.id, moduleKey);
-      setSavedTemplates((res?.data || res || []) as any[]);
-    } catch {
-      setSavedTemplates([]);
-    }
+        if (fieldDef.type === 'string' || fieldDef.type === 'enum') {
+          const sVal = String(val || '').toLowerCase();
+          const fVal = String(f.value || '').toLowerCase();
+          if (f.operator === 'contains' && !sVal.includes(fVal)) return false;
+          if (f.operator === 'equals' && sVal !== fVal) return false;
+        } else if (fieldDef.type === 'number') {
+          const nVal = Number(val || 0);
+          if (f.operator === 'equals' && nVal !== Number(f.value)) return false;
+          if (f.operator === 'gt' && nVal <= Number(f.value)) return false;
+          if (f.operator === 'lt' && nVal >= Number(f.value)) return false;
+          if (f.operator === 'between' && (nVal < Number(f.from) || nVal > Number(f.to))) return false;
+        } else if (fieldDef.type === 'date') {
+          const dVal = dayjs(val);
+          if (!dVal.isValid()) return false;
+          if (f.operator === 'before' && !dVal.isBefore(dayjs(f.value), 'day')) return false;
+          if (f.operator === 'after' && !dVal.isAfter(dayjs(f.value), 'day')) return false;
+          if (f.operator === 'between' && (!dVal.isAfter(dayjs(f.from).subtract(1, 'day')) || !dVal.isBefore(dayjs(f.to).add(1, 'day')))) return false;
+        }
+      }
+      return true;
+    });
   };
 
-  useEffect(() => {
-    if (!currentCompany || !user) return;
-    void loadSavedTemplates();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentCompany?.id, user?.id, moduleKey]);
+  const filteredRows = useMemo(() => applyFilters(allRows), [allRows, filters]);
 
-  const handleSelectTemplate = (id: number) => {
-    const tpl = savedTemplates.find((t) => t.id === id);
-    if (!tpl) return;
-    try {
-      const parsed: TemplateConfig = JSON.parse(tpl.config_json || '{}');
-      if (!parsed.moduleKey) return;
-      setModuleKey(parsed.moduleKey);
-      setSelectedColumns(parsed.columns || []);
-      setFilters(parsed.filters || []);
-      setSelectedTemplateId(id);
-    } catch {
-      // ignore
-    }
-  };
-
-  const openSaveModal = () => {
-    setSaveNameDraft('');
-    setSaveModalOpen(true);
-  };
-
-  const handleSaveTemplate = async () => {
-    if (!currentCompany || !user) return;
-    const name = saveNameDraft.trim();
-    if (!name) return;
-    const config: TemplateConfig = { moduleKey, columns: selectedColumns, filters };
-    try {
-      await (window as any).electronAPI.db.reportTemplates.create({
-        user_id: user.id,
-        company_id: currentCompany.id,
-        module_key: moduleKey,
-        report_name: name,
-        config_json: JSON.stringify(config),
-      });
-      setSaveModalOpen(false);
-      setSelectedTemplateId(undefined);
-      await loadSavedTemplates();
-    } catch {
-      // ignore for MVP
-    }
-  };
-
-  const getFieldDef = (key: string) => fields.find((f) => f.key === key);
-
-  const operatorsForField = (fieldKey: string) => {
-    const def = getFieldDef(fieldKey);
-    if (!def) return [];
-    if (def.type === 'string' || def.type === 'enum') return ['contains', 'equals'];
-    if (def.type === 'number') return ['equals', 'gt', 'lt', 'between'];
-    if (def.type === 'date') return ['between', 'before', 'after'];
-    return ['equals'];
-  };
+  const columns = useMemo(() => {
+    return selectedColumns.map(colKey => {
+      const field = fields.find(f => f.key === colKey);
+      return {
+        title: field?.label || colKey,
+        dataIndex: colKey,
+        key: colKey,
+        render: (val: any) => {
+          if (field?.type === 'date') return val ? dayjs(val).format('DD-MM-YYYY') : '-';
+          if (field?.type === 'number') return typeof val === 'number' ? val.toLocaleString(undefined, { minimumFractionDigits: 2 }) : val;
+          return val || '-';
+        }
+      };
+    });
+  }, [selectedColumns, fields]);
 
   const handleAddFilter = () => {
     if (!pendingFilterField) return;
-    const def = getFieldDef(pendingFilterField);
-    if (!def) return;
-
-    if (def.type === 'string' || def.type === 'enum') {
-      if (pendingValue == null || String(pendingValue).trim() === '') return;
-    }
-    if (def.type === 'number') {
-      if (pendingOperator === 'between') {
-        if (pendingFrom == null || pendingTo == null) return;
-      } else {
-        if (pendingValue == null || String(pendingValue).trim() === '') return;
-      }
-    }
-    if (def.type === 'date') {
-      if (pendingOperator === 'between') {
-        if (!pendingFrom || !pendingTo) return;
-      } else {
-        if (!pendingValue) return;
-      }
-    }
-
-    const next: FilterDef = {
-      id: generateId('flt'),
+    const newFilter: FilterDef = {
+      id: Math.random().toString(36).substr(2, 9),
       fieldKey: pendingFilterField,
       operator: pendingOperator,
       value: pendingValue,
       from: pendingFrom,
       to: pendingTo,
     };
-    setFilters((prev) => [...prev, next]);
-    // reset input fields
+    setFilters([...filters, newFilter]);
+    // Reset inputs
     setPendingValue(undefined);
     setPendingFrom(undefined);
     setPendingTo(undefined);
   };
 
-  const moduleLabel = MODULES.find((m) => m.key === moduleKey)?.label || moduleKey;
+  const handleSaveTemplate = async () => {
+    if (!templateName.trim()) return message.warning('Please enter a name');
+    if (!currentCompany) return;
+
+    const config: TemplateConfig = {
+      module: moduleKey,
+      columns: selectedColumns,
+      filters: filters
+    };
+
+    try {
+      const res = await (window as any).electronAPI.db.customReports.create({
+        company_id: currentCompany.id,
+        name: templateName,
+        module: moduleKey,
+        config: JSON.stringify(config)
+      });
+      if (res?.success) {
+        message.success('Report template saved');
+        setSaveModalOpen(false);
+        setTemplateName('');
+      } else {
+        message.error(res?.error || 'Failed to save template');
+      }
+    } catch (err) {
+      message.error('Failed to save template');
+    }
+  };
+
+  const loadTemplates = async () => {
+    if (!currentCompany) return;
+    try {
+      const res = await (window as any).electronAPI.db.customReports.getAll(currentCompany.id);
+      if (res?.success) {
+        setSavedTemplates(res.data || []);
+        setLoadModalOpen(true);
+      } else {
+        message.error(res?.error || 'Failed to load templates');
+      }
+    } catch (err) {
+      message.error('Failed to load templates');
+    }
+  };
+
+  const handleApplyTemplate = (template: any) => {
+    try {
+      const config = JSON.parse(template.config) as TemplateConfig;
+      setModuleKey(config.module);
+      setTimeout(() => {
+        setSelectedColumns(config.columns);
+        setFilters(config.filters);
+        setLoadModalOpen(false);
+        message.success(`Loaded "${template.name}"`);
+      }, 0);
+    } catch (err) {
+      message.error('Invalid template configuration');
+    }
+  };
+
+  const handleDeleteTemplate = async (id: number) => {
+      try {
+          const res = await (window as any).electronAPI.db.customReports.delete(id);
+          if (res?.success) {
+            setSavedTemplates(savedTemplates.filter(t => t.id !== id));
+            message.success('Template deleted');
+          } else {
+            message.error(res?.error || 'Failed to delete template');
+          }
+      } catch (err) {
+          message.error('Failed to delete template');
+      }
+  };
 
   return (
-    <div>
-      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+    <div style={{ padding: '24px', background: '#f0f2f5', minHeight: '100%' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
         <div>
-          <h1 style={{ margin: 0 }}>Custom Report Builder</h1>
-          <Text type="secondary">Build a template with selected columns and filters. Preview updates instantly.</Text>
+          <Title level={2} style={{ margin: 0 }}>Custom Report Builder</Title>
+          <Text type="secondary">Build, preview, and save your custom reports dynamically.</Text>
         </div>
         <Space>
-          <Select<ModuleKey>
-            value={moduleKey}
-            onChange={(v) => setModuleKey(v)}
-            style={{ width: 200 }}
-            options={MODULES.map((m) => ({ value: m.key, label: m.label }))}
-          />
-          <Button icon={<ReloadOutlined />} onClick={() => void loadAllRows()} disabled={loading}>
-            Refresh Data
-          </Button>
-          <Button icon={<SaveOutlined />} type="primary" onClick={openSaveModal}>
-            Save
-          </Button>
+          <Button icon={<FolderOpenOutlined />} onClick={loadTemplates}>Saved Reports</Button>
+          <Button type="primary" icon={<SaveOutlined />} onClick={() => setSaveModalOpen(true)}>Save Template</Button>
         </Space>
       </div>
 
-      <Card style={{ marginBottom: 16 }}>
-        <Space direction="vertical" style={{ width: '100%' }} size={16}>
-          <div>
-            <Text strong>Select Columns</Text>
-            <div style={{ marginTop: 8 }}>
-              <Checkbox.Group
-                value={selectedColumns}
-                onChange={(vals) => setSelectedColumns(vals as string[])}
-              >
-                <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-                  {fields.map((f) => (
-                    <Checkbox key={f.key} value={f.key}>
-                      {f.label}
-                    </Checkbox>
-                  ))}
-                </div>
-              </Checkbox.Group>
-            </div>
-          </div>
-
-          <div>
-            <Space align="baseline">
-              <FilterOutlined />
-              <Text strong>Filters</Text>
-            </Space>
-            <div style={{ marginTop: 12 }}>
-              <Space wrap align="baseline">
-                <Select
-                  value={pendingFilterField || undefined}
-                  onChange={(v) => {
-                    setPendingFilterField(v);
-                    const ops = operatorsForField(v);
-                    setPendingOperator(ops[0] || 'contains');
+      <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: '24px' }}>
+        {/* Sidebar Configuration */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          <Card title="1. Select Module" size="small">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {MODULES.map(m => (
+                <div 
+                  key={m.key}
+                  onClick={() => setModuleKey(m.key)}
+                  style={{
+                    padding: '12px',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    border: `1px solid ${moduleKey === m.key ? m.color : '#f0f0f0'}`,
+                    background: moduleKey === m.key ? `${m.color}10` : '#fff',
+                    transition: 'all 0.3s'
                   }}
-                  style={{ width: 220 }}
-                  placeholder="Field"
-                  options={filterableFields.map((f) => ({ value: f.key, label: f.label }))}
-                />
+                >
+                  <Space>
+                    <Badge color={m.color} />
+                    <Text strong style={{ color: moduleKey === m.key ? m.color : 'inherit' }}>{m.label}</Text>
+                    {moduleKey === m.key && <ArrowRightOutlined style={{ color: m.color }} />}
+                  </Space>
+                </div>
+              ))}
+            </div>
+          </Card>
 
-                <Select
-                  value={pendingOperator}
-                  onChange={setPendingOperator}
-                  style={{ width: 180 }}
-                  options={operatorOptions}
-                />
+          <Card title="2. Select Columns" size="small">
+            <Checkbox.Group 
+              style={{ width: '100%' }} 
+              value={selectedColumns} 
+              onChange={(vals) => setSelectedColumns(vals as string[])}
+            >
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {fields.map(f => (
+                  <Checkbox key={f.key} value={f.key}>{f.label}</Checkbox>
+                ))}
+              </div>
+            </Checkbox.Group>
+          </Card>
+        </div>
 
-                {selectedFieldDef?.type === 'string' || selectedFieldDef?.type === 'enum' ? (
-                  <Input
-                    style={{ width: 220 }}
-                    placeholder="Value"
-                    value={pendingValue}
-                    onChange={(e) => setPendingValue(e.target.value)}
+        {/* Main Content Area */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          {/* Filters Section */}
+          <Card title={<Space><FilterOutlined /> Filters</Space>} size="small">
+            <div style={{ marginBottom: '16px' }}>
+              <Space wrap>
+                <Select 
+                  style={{ width: 180 }} 
+                  placeholder="Select Field" 
+                  value={pendingFilterField || undefined}
+                  onChange={setPendingFilterField}
+                  options={filterableFields.map(f => ({ label: f.label, value: f.key }))}
+                />
+                
+                {selectedFieldDef && (
+                  <Select 
+                    style={{ width: 140 }} 
+                    value={pendingOperator}
+                    onChange={setPendingOperator}
+                    options={
+                      selectedFieldDef.type === 'string' || selectedFieldDef.type === 'enum' 
+                        ? [{ label: 'Contains', value: 'contains' }, { label: 'Equals', value: 'equals' }]
+                        : selectedFieldDef.type === 'number'
+                        ? [{ label: '=', value: 'equals' }, { label: '>', value: 'gt' }, { label: '<', value: 'lt' }, { label: 'Between', value: 'between' }]
+                        : [{ label: 'Before', value: 'before' }, { label: 'After', value: 'after' }, { label: 'Between', value: 'between' }]
+                    }
                   />
-                ) : null}
+                )}
 
-                {selectedFieldDef?.type === 'number' ? (
-                  pendingOperator === 'between' ? (
+                {selectedFieldDef && pendingOperator !== 'between' && (
+                  selectedFieldDef.type === 'date' ? (
+                    <DatePicker value={pendingValue} onChange={setPendingValue} />
+                  ) : selectedFieldDef.type === 'number' ? (
+                    <InputNumber placeholder="Value" value={pendingValue} onChange={setPendingValue} />
+                  ) : (
+                    <Input placeholder="Value" value={pendingValue} onChange={e => setPendingValue(e.target.value)} />
+                  )
+                )}
+
+                {selectedFieldDef && pendingOperator === 'between' && (
+                  selectedFieldDef.type === 'date' ? (
+                    <RangePicker value={[pendingFrom, pendingTo]} onChange={(dates) => { setPendingFrom(dates?.[0]); setPendingTo(dates?.[1]); }} />
+                  ) : (
                     <Space>
-                      <InputNumber value={pendingFrom} onChange={setPendingFrom} placeholder="From" />
-                      <InputNumber value={pendingTo} onChange={setPendingTo} placeholder="To" />
+                      <InputNumber placeholder="From" value={pendingFrom} onChange={setPendingFrom} />
+                      <InputNumber placeholder="To" value={pendingTo} onChange={setPendingTo} />
                     </Space>
-                  ) : (
-                    <InputNumber value={pendingValue} onChange={setPendingValue} placeholder="Value" />
                   )
-                ) : null}
+                )}
 
-                {selectedFieldDef?.type === 'date' ? (
-                  pendingOperator === 'between' ? (
-                    <RangePicker
-                      value={[pendingFrom, pendingTo] as any}
-                      onChange={(vals) => {
-                        setPendingFrom(vals?.[0]);
-                        setPendingTo(vals?.[1]);
-                      }}
-                    />
-                  ) : (
-                    <DatePicker value={pendingValue} onChange={(v) => setPendingValue(v)} />
-                  )
-                ) : null}
-
-                <Button icon={<PlusOutlined />} onClick={handleAddFilter} disabled={!pendingFilterField}>
-                  Add Filter
-                </Button>
+                <Button type="dashed" icon={<PlusOutlined />} onClick={handleAddFilter} disabled={!pendingFilterField}>Add</Button>
               </Space>
             </div>
 
-            {filters.length > 0 && (
-              <div style={{ marginTop: 12, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                {filters.map((f) => {
-                  const fd = fields.find((x) => x.key === f.fieldKey);
-                  const label = fd?.label || f.fieldKey;
-                  const text =
-                    f.operator === 'between'
-                      ? `${label}: ${String(f.from ? dayjs(f.from).format('YYYY-MM-DD') : f.from)}..${String(
-                          f.to ? dayjs(f.to).format('YYYY-MM-DD') : f.to
-                        )}`
-                      : `${label}: ${f.value ?? ''}`;
-                  return (
-                    <Tag
-                      key={f.id}
-                      closable
-                      onClose={() => setFilters((prev) => prev.filter((x) => x.id !== f.id))}
-                    >
-                      {text}
-                    </Tag>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </Space>
-      </Card>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+              {filters.map(f => {
+                const field = fields.find(fd => fd.key === f.fieldKey);
+                return (
+                  <Tag 
+                    key={f.id} 
+                    closable 
+                    onClose={() => setFilters(filters.filter(x => x.id !== f.id))}
+                    color="blue"
+                    style={{ padding: '4px 8px', borderRadius: '4px' }}
+                  >
+                    <Text strong>{field?.label}</Text> {f.operator} {
+                      f.operator === 'between' 
+                        ? `${f.from?.format?.('DD-MM-YYYY') || f.from} - ${f.to?.format?.('DD-MM-YYYY') || f.to}`
+                        : f.value?.format?.('DD-MM-YYYY') || f.value || ''
+                    }
+                  </Tag>
+                );
+              })}
+              {filters.length === 0 && <Text type="secondary">No filters applied.</Text>}
+            </div>
+          </Card>
 
-      <Card>
-        <Space style={{ marginBottom: 12 }}>
-          <Text strong>Preview: </Text>
-          <Text type="secondary">{moduleLabel}</Text>
-          <Tag color="blue">{previewRows.length} rows</Tag>
-        </Space>
-        <Table
-          rowKey={(r: any) => `${r.__docType}-${r.id}`}
-          columns={columns}
-          dataSource={previewRows}
-          pagination={{ pageSize: 20 }}
-          loading={loading}
-          size="small"
-          scroll={{ x: 1000 }}
-        />
-      </Card>
+          {/* Preview Table */}
+          <Card 
+            title={<Space><ReloadOutlined spin={loading} /> Preview Results</Space>} 
+            size="small"
+            extra={<Tag color="blue">{filteredRows.length} Items Found</Tag>}
+          >
+            <Table 
+              dataSource={filteredRows} 
+              columns={columns} 
+              loading={loading}
+              rowKey="id"
+              size="middle"
+              pagination={{ pageSize: 15 }}
+              scroll={{ x: 'max-content' }}
+              bordered
+            />
+          </Card>
+        </div>
+      </div>
 
+      {/* Save Template Modal */}
       <Modal
         title="Save Report Template"
         open={saveModalOpen}
         onCancel={() => setSaveModalOpen(false)}
         onOk={handleSaveTemplate}
-        okText="Save"
-        destroyOnClose
       >
-        <div style={{ marginBottom: 12 }}>
-          <Text type="secondary">Enter a name for your saved template. It will be stored per user in the database.</Text>
+        <div style={{ marginBottom: '16px' }}>
+          <Text>Template Name</Text>
+          <Input 
+            autoFocus
+            placeholder="e.g. Sales Pending Over 5000" 
+            value={templateName} 
+            onChange={e => setTemplateName(e.target.value)} 
+            style={{ marginTop: '8px' }}
+          />
         </div>
-        <Input value={saveNameDraft} onChange={(e) => setSaveNameDraft(e.target.value)} placeholder="e.g. Sales Custom - Pending Invoices" />
-        {savedTemplates.length > 0 && (
-          <div style={{ marginTop: 16 }}>
-            <Text strong>Saved Reports (this module)</Text>
-            <div style={{ marginTop: 8 }}>
-              <Select
-                style={{ width: '100%' }}
-                value={selectedTemplateId}
-                placeholder="Select a saved template to load"
-                onChange={(v) => v != null && handleSelectTemplate(Number(v))}
-                options={savedTemplates.map((t) => ({ value: t.id, label: t.report_name }))}
-              />
-            </div>
-          </div>
-        )}
+        <Alert message="This will save your current module, selected columns, and filters." type="info" showIcon />
+      </Modal>
+
+      {/* Load Template Modal */}
+      <Modal
+        title="Saved Report Templates"
+        open={loadModalOpen}
+        onCancel={() => setLoadModalOpen(false)}
+        footer={null}
+        width={600}
+      >
+        <Table 
+          dataSource={savedTemplates}
+          rowKey="id"
+          pagination={false}
+          columns={[
+            { 
+                title: 'Name', 
+                dataIndex: 'name', 
+                key: 'name',
+                render: (text, record) => <Text strong>{text} <Tag color="blue" style={{ marginLeft: 8 }}>{record.module}</Tag></Text>
+            },
+            { 
+                title: 'Created', 
+                dataIndex: 'created_at', 
+                key: 'created_at',
+                render: (val) => dayjs(val).format('DD-MM-YYYY')
+            },
+            {
+              title: 'Action',
+              key: 'action',
+              render: (_, record) => (
+                <Space>
+                  <Button type="primary" size="small" onClick={() => handleApplyTemplate(record)}>Load</Button>
+                  <Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={() => handleDeleteTemplate(record.id)} />
+                </Space>
+              )
+            }
+          ]}
+        />
       </Modal>
     </div>
   );
 };
 
+// Helper components for Modal
+const Alert: React.FC<{ message: string; type: string; showIcon: boolean }> = ({ message, type }) => (
+    <div style={{ 
+        padding: '12px', 
+        background: type === 'info' ? '#e6f7ff' : '#fffbe6', 
+        border: `1px solid ${type === 'info' ? '#91d5ff' : '#ffe58f'}`,
+        borderRadius: '4px',
+        color: 'rgba(0,0,0,0.85)'
+    }}>
+        {message}
+    </div>
+);
+
 export default CustomReportBuilder;
+
 

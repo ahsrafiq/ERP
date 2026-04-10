@@ -14,8 +14,11 @@ const Brands: React.FC = () => {
   // Admin password delete
   const [deletePasswordModal, setDeletePasswordModal] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
+  const [pendingDeleteIds, setPendingDeleteIds] = useState<number[]>([]);
   const [adminPassword, setAdminPassword] = useState('');
   const passwordInputRef = React.useRef<any>(null);
+
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
 
   useEffect(() => {
     if (deletePasswordModal) {
@@ -79,6 +82,14 @@ const Brands: React.FC = () => {
 
   const handleRequestDelete = (id: number) => {
     setPendingDeleteId(id);
+    setPendingDeleteIds([]);
+    setAdminPassword('');
+    setDeletePasswordModal(true);
+  };
+
+  const handleRequestBulkDelete = () => {
+    setPendingDeleteIds(selectedRowKeys.map(k => Number(k)));
+    setPendingDeleteId(null);
     setAdminPassword('');
     setDeletePasswordModal(true);
   };
@@ -90,22 +101,42 @@ const Brands: React.FC = () => {
         setAdminPassword('');
         return;
     }
-    if (pendingDeleteId == null) return;
-    try {
-      const result = await (window as any).electronAPI.db.brands.delete(pendingDeleteId);
-      if (result.success) {
-        message.success('Brand deleted successfully');
-        loadBrands();
-      } else {
-        notification.error({ message: 'Error', description: result.error || 'Failed to delete brand', duration: 0 });
+    if (pendingDeleteId != null) {
+      try {
+        const result = await (window as any).electronAPI.db.brands.delete(pendingDeleteId);
+        if (result.success) {
+          message.success('Brand deleted successfully');
+          loadBrands();
+        } else {
+          notification.error({ message: 'Error', description: result.error || 'Failed to delete brand', duration: 0 });
+        }
+      } catch (error) {
+        notification.error({ message: 'Error', description: 'Failed to delete brand', duration: 0 });
       }
-    } catch (error) {
-      notification.error({ message: 'Error', description: 'Failed to delete brand', duration: 0 });
-    } finally {
-      setDeletePasswordModal(false);
-      setPendingDeleteId(null);
-      setAdminPassword('');
+    } else if (pendingDeleteIds.length > 0) {
+      try {
+        const result = await (window as any).electronAPI.db.brands.deleteMultiple(pendingDeleteIds);
+        if (result.success) {
+          const { total, deleted, skipped } = result.data;
+          if (skipped === 0) {
+            message.success(`Deleted ${deleted} brands successfully`);
+          } else {
+            message.warning(`Deleted ${deleted} brands. ${skipped} were skipped (possibly due to existing records).`);
+          }
+          setSelectedRowKeys([]);
+          loadBrands();
+        } else {
+          notification.error({ message: 'Error', description: result.error || 'Failed to delete brands', duration: 0 });
+        }
+      } catch (error) {
+        notification.error({ message: 'Error', description: 'Failed to delete brands', duration: 0 });
+      }
     }
+    
+    setDeletePasswordModal(false);
+    setPendingDeleteId(null);
+    setPendingDeleteIds([]);
+    setAdminPassword('');
   };
 
   const columns = [
@@ -138,28 +169,43 @@ const Brands: React.FC = () => {
   ];
 
   return (
-    <div>
-      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
+    <>
+      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h1>Brands</h1>
-        {!isReadOnlySection && (
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => {
-              setEditingBrand(null);
-              form.resetFields();
-              setModalVisible(true);
-            }}
-          >
-            Add Brand
-          </Button>
-        )}
+        <Space>
+          {selectedRowKeys.length > 0 && canEditOrDelete && (
+            <Button 
+                danger 
+                icon={<DeleteOutlined />} 
+                onClick={handleRequestBulkDelete}
+            >
+                Delete Selected ({selectedRowKeys.length})
+            </Button>
+          )}
+          {!isReadOnlySection && (
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => {
+                setEditingBrand(null);
+                form.resetFields();
+                setModalVisible(true);
+              }}
+            >
+              Add Brand
+            </Button>
+          )}
+        </Space>
       </div>
       <Table
         columns={columns}
         dataSource={brands}
         loading={loading}
         rowKey="id"
+        rowSelection={{
+          selectedRowKeys,
+          onChange: (keys) => setSelectedRowKeys(keys),
+        }}
         pagination={{ pageSize: 10 }}
       />
       <Modal
@@ -191,7 +237,7 @@ const Brands: React.FC = () => {
         okText="Delete"
         okButtonProps={{ danger: true }}
       >
-        <p>Enter admin password to delete this brand:</p>
+        <p>Enter admin password to delete {pendingDeleteId ? 'this brand' : `${pendingDeleteIds.length} brands`}:</p>
         <Input.Password
           prefix={<LockOutlined />}
           value={adminPassword}
@@ -202,7 +248,7 @@ const Brands: React.FC = () => {
           autoFocus
         />
       </Modal>
-    </div>
+    </>
   );
 };
 

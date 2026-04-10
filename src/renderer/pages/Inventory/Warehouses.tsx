@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Button, Space, Modal, Form, Input, Switch, message, notification, Popconfirm } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { Table, Button, Space, Modal, Form, Input, Switch, message, notification } from 'antd';
+import { PlusOutlined, EditOutlined, DeleteOutlined, LockOutlined } from '@ant-design/icons';
 import { useApp } from '../../context/AppContext';
 
 const Warehouses: React.FC = () => {
@@ -10,6 +10,24 @@ const Warehouses: React.FC = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [editingWarehouse, setEditingWarehouse] = useState<any>(null);
   const [form] = Form.useForm();
+
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+
+  // Admin password for delete
+  const [deletePasswordModal, setDeletePasswordModal] = useState(false);
+  const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
+  const [pendingDeleteIds, setPendingDeleteIds] = useState<number[]>([]);
+  const [adminPassword, setAdminPassword] = useState('');
+  const passwordInputRef = React.useRef<any>(null);
+
+  useEffect(() => {
+    if (deletePasswordModal) {
+      setTimeout(() => {
+        passwordInputRef.current?.select();
+        passwordInputRef.current?.focus();
+      }, 100);
+    }
+  }, [deletePasswordModal]);
 
   useEffect(() => {
     if (currentCompany) {
@@ -66,18 +84,64 @@ const Warehouses: React.FC = () => {
     }
   };
 
-  const handleDelete = async (id: number) => {
-    try {
-      const result = await (window as any).electronAPI.db.warehouses.delete(id);
-      if (result.success) {
-        message.success('Warehouse deleted successfully');
-        loadWarehouses();
-      } else {
-        notification.error({ message: 'Error', description: result.error || 'Failed to delete warehouse', duration: 0 });
-      }
-    } catch (error) {
-      notification.error({ message: 'Error', description: 'Failed to delete warehouse', duration: 0 });
+  const handleRequestDelete = (id: number) => {
+    setPendingDeleteId(id);
+    setPendingDeleteIds([]);
+    setAdminPassword('');
+    setDeletePasswordModal(true);
+  };
+
+  const handleRequestBulkDelete = () => {
+    setPendingDeleteIds(selectedRowKeys.map(k => Number(k)));
+    setPendingDeleteId(null);
+    setAdminPassword('');
+    setDeletePasswordModal(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    const verify = await (window as any).electronAPI.db.auth.verifyAdminPassword(adminPassword);
+    if (!verify.success || !verify.data) {
+        notification.error({ message: 'Error', description: 'Incorrect admin password' });
+        setAdminPassword('');
+        return;
     }
+
+    if (pendingDeleteId != null) {
+      try {
+        const result = await (window as any).electronAPI.db.warehouses.delete(pendingDeleteId);
+        if (result.success) {
+          message.success('Warehouse deleted successfully');
+          loadWarehouses();
+        } else {
+          notification.error({ message: 'Error', description: result.error || 'Failed to delete warehouse' });
+        }
+      } catch (error) {
+        notification.error({ message: 'Error', description: 'Failed to delete warehouse' });
+      }
+    } else if (pendingDeleteIds.length > 0) {
+      try {
+        const result = await (window as any).electronAPI.db.warehouses.deleteMultiple(pendingDeleteIds);
+        if (result.success) {
+          const { total, deleted, skipped } = result.data;
+          if (skipped === 0) {
+            message.success(`Deleted ${deleted} warehouses successfully`);
+          } else {
+            message.warning(`Deleted ${deleted} warehouses. ${skipped} were skipped.`);
+          }
+          setSelectedRowKeys([]);
+          loadWarehouses();
+        } else {
+          notification.error({ message: 'Error', description: result.error || 'Failed to delete warehouses' });
+        }
+      } catch (error) {
+        notification.error({ message: 'Error', description: 'Failed to delete warehouses' });
+      }
+    }
+    
+    setDeletePasswordModal(false);
+    setPendingDeleteId(null);
+    setPendingDeleteIds([]);
+    setAdminPassword('');
   };
 
   const columns = [
@@ -118,12 +182,7 @@ const Warehouses: React.FC = () => {
               setModalVisible(true);
             }}
           />
-          <Popconfirm
-            title="Are you sure you want to delete this warehouse?"
-            onConfirm={() => handleDelete(record.id)}
-          >
-            <Button danger icon={<DeleteOutlined />} />
-          </Popconfirm>
+          <Button danger icon={<DeleteOutlined />} onClick={() => handleRequestDelete(record.id)} />
         </Space>
       ),
     },
@@ -131,19 +190,30 @@ const Warehouses: React.FC = () => {
 
   return (
     <div>
-      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
+      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h1>Warehouses</h1>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={() => {
-            setEditingWarehouse(null);
-            form.resetFields();
-            setModalVisible(true);
-          }}
-        >
-          Add Warehouse
-        </Button>
+        <Space>
+          {selectedRowKeys.length > 0 && (
+            <Button 
+                danger 
+                icon={<DeleteOutlined />} 
+                onClick={handleRequestBulkDelete}
+            >
+                Delete Selected ({selectedRowKeys.length})
+            </Button>
+          )}
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => {
+              setEditingWarehouse(null);
+              form.resetFields();
+              setModalVisible(true);
+            }}
+          >
+            Add Warehouse
+          </Button>
+        </Space>
       </div>
 
       <Table
@@ -151,6 +221,10 @@ const Warehouses: React.FC = () => {
         dataSource={warehouses}
         loading={loading}
         rowKey="id"
+        rowSelection={{
+          selectedRowKeys,
+          onChange: (keys) => setSelectedRowKeys(keys),
+        }}
         pagination={{ pageSize: 10 }}
       />
 
@@ -186,6 +260,27 @@ const Warehouses: React.FC = () => {
             <Switch />
           </Form.Item>
         </Form>
+      </Modal>
+
+      {/* Admin password delete */}
+      <Modal
+        title="Admin Authorization Required"
+        open={deletePasswordModal}
+        onCancel={() => { setDeletePasswordModal(false); setPendingDeleteId(null); }}
+        onOk={handleConfirmDelete}
+        okText="Delete"
+        okButtonProps={{ danger: true }}
+      >
+        <p>Enter admin password to delete {pendingDeleteId ? 'this warehouse' : `${pendingDeleteIds.length} warehouses`}:</p>
+        <Input.Password
+          prefix={<LockOutlined />}
+          value={adminPassword}
+          onChange={e => setAdminPassword(e.target.value)}
+          placeholder="Admin password"
+          onKeyDown={e => { if (e.key === 'Enter') handleConfirmDelete(); }}
+          ref={passwordInputRef}
+          autoFocus
+        />
       </Modal>
     </div>
   );

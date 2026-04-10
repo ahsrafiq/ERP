@@ -23,6 +23,7 @@ const Users: React.FC = () => {
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
+  const [modalLoading, setModalLoading] = useState(false);
   const [editingUser, setEditingUser] = useState<any>(null);
   const [form] = Form.useForm();
 
@@ -50,6 +51,7 @@ const Users: React.FC = () => {
   const getDefaultSectionPermissions = () => Object.fromEntries(SECTIONS.map(s => [s.key, 'read']));
 
   const handleSave = async (values: any) => {
+    setModalLoading(true);
     try {
       const dataToSave = { ...values };
       if (editingUser && !dataToSave.password_hash) {
@@ -61,6 +63,7 @@ const Users: React.FC = () => {
         const company_ids = Array.isArray(values.company_ids) ? values.company_ids.filter((id: number) => id != null) : [];
         if (company_ids.length === 0) {
           notification.error({ message: 'Error', description: 'Please assign at least one company', duration: 0 });
+          setModalLoading(false);
           return;
         }
         dataToSave.company_ids = company_ids;
@@ -75,6 +78,10 @@ const Users: React.FC = () => {
         const result = await (window as any).electronAPI.db.users.update(editingUser.id, dataToSave);
         if (result.success) {
           message.success('User updated successfully');
+          setModalVisible(false);
+          setEditingUser(null);
+          form.resetFields();
+          loadUsers();
         } else {
           notification.error({ message: 'Error', description: result.error || 'Failed to update user', duration: 0 });
         }
@@ -85,16 +92,18 @@ const Users: React.FC = () => {
         });
         if (result.success) {
           message.success('User created successfully');
+          setModalVisible(false);
+          setEditingUser(null);
+          form.resetFields();
+          loadUsers();
         } else {
           notification.error({ message: 'Error', description: result.error || 'Failed to create user', duration: 0 });
         }
       }
-      setModalVisible(false);
-      setEditingUser(null);
-      form.resetFields();
-      loadUsers();
     } catch (error) {
       notification.error({ message: 'Error', description: 'Operation failed', duration: 0 });
+    } finally {
+      setModalLoading(false);
     }
   };
 

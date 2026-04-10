@@ -31,6 +31,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       create: (customer: any) => ipcRenderer.invoke('db:customers:create', customer),
       update: (id: number, customer: any) => ipcRenderer.invoke('db:customers:update', id, customer),
       delete: (id: number) => ipcRenderer.invoke('db:customers:delete', id),
+      deleteMultiple: (ids: number[]) => ipcRenderer.invoke('db:customers:deleteMultiple', ids),
     },
     vendors: {
       getAll: (companyId: number) => ipcRenderer.invoke('db:vendors:getAll', companyId),
@@ -38,6 +39,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       create: (vendor: any) => ipcRenderer.invoke('db:vendors:create', vendor),
       update: (id: number, vendor: any) => ipcRenderer.invoke('db:vendors:update', id, vendor),
       delete: (id: number) => ipcRenderer.invoke('db:vendors:delete', id),
+      deleteMultiple: (ids: number[]) => ipcRenderer.invoke('db:vendors:deleteMultiple', ids),
     },
     brands: {
       getAll: () => ipcRenderer.invoke('db:brands:getAll'),
@@ -45,6 +47,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       create: (brand: any) => ipcRenderer.invoke('db:brands:create', brand),
       update: (id: number, brand: any) => ipcRenderer.invoke('db:brands:update', id, brand),
       delete: (id: number) => ipcRenderer.invoke('db:brands:delete', id),
+      deleteMultiple: (ids: number[]) => ipcRenderer.invoke('db:brands:deleteMultiple', ids),
       deleteAll: () => ipcRenderer.invoke('db:brands:deleteAll'),
     },
     items: {
@@ -53,6 +56,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       create: (item: any) => ipcRenderer.invoke('db:items:create', item),
       update: (id: number, item: any) => ipcRenderer.invoke('db:items:update', id, item),
       delete: (id: number) => ipcRenderer.invoke('db:items:delete', id),
+      deleteMultiple: (ids: number[]) => ipcRenderer.invoke('db:items:deleteMultiple', ids),
       deleteAll: () => ipcRenderer.invoke('db:items:deleteAll'),
     },
     salesInvoices: {
@@ -65,6 +69,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       delete: (id: number) => ipcRenderer.invoke('db:salesInvoices:delete', id),
       createFromQuotation: (quotationId: number, createdBy?: number) => ipcRenderer.invoke('db:salesInvoices:createFromQuotation', quotationId, createdBy),
       createFromChallan: (challanId: number, createdBy?: number) => ipcRenderer.invoke('db:salesInvoices:createFromChallan', challanId, createdBy),
+      getSalesByItem: (companyId: number, filters?: any) => ipcRenderer.invoke('db:salesInvoices:getSalesByItem', companyId, filters),
+      getPendingWithItems: (companyId: number, filters?: any) => ipcRenderer.invoke('db:salesInvoices:getPendingWithItems', companyId, filters),
     },
     salesQuotations: {
       getAll: (companyId: number, filters?: any) => ipcRenderer.invoke('db:salesQuotations:getAll', companyId, filters),
@@ -128,6 +134,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
     search: {
       global: (companyId: number, query: string) => ipcRenderer.invoke('db:search:global', companyId, query),
+    },
+    warehouses: {
+      getAll: (companyId: number) => ipcRenderer.invoke('db:warehouses:getAll', companyId),
+      create: (warehouse: any) => ipcRenderer.invoke('db:warehouses:create', warehouse),
+      update: (id: number, warehouse: any) => ipcRenderer.invoke('db:warehouses:update', id, warehouse),
+      delete: (id: number) => ipcRenderer.invoke('db:warehouses:delete', id),
+      deleteMultiple: (ids: number[]) => ipcRenderer.invoke('db:warehouses:deleteMultiple', ids),
+    },
+    customReports: {
+      getAll: (companyId: number) => ipcRenderer.invoke('db:customReports:getAll', companyId),
+      create: (report: any) => ipcRenderer.invoke('db:customReports:create', report),
+      delete: (id: number) => ipcRenderer.invoke('db:customReports:delete', id),
     },
     heartbeat: () => ipcRenderer.invoke('db:heartbeat'),
     config: {

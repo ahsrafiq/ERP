@@ -14,6 +14,7 @@ import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   FileTextOutlined,
+  FileSearchOutlined,
   CloseOutlined,
   CalendarOutlined,
 } from '@ant-design/icons';
@@ -178,15 +179,20 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       ],
     },
     {
+      key: '/reports/custom-builder',
+      icon: <FileSearchOutlined />,
+      label: 'Custom Report Builder',
+    },
+    {
       key: 'reports',
       icon: <BarChartOutlined />,
       label: 'Reports',
       children: [
         { key: '/reports', label: 'All Reports' },
         { key: '/reports/sales', label: 'Sales Report' },
+        { key: '/reports/sales-by-item', label: 'Sales by Item' },
         { key: '/reports/purchase', label: 'Purchase Report' },
         { key: '/reports/inventory', label: 'Stock Report' },
-        { key: '/reports/custom-builder', label: 'Custom Report Builder' },
         { key: '/reports/customer-ledger', label: 'Customer Ledger' },
         { key: '/reports/vendor-ledger', label: 'Vendor Ledger' },
         { key: '/reports/tax', label: 'Tax Deduction Report' },

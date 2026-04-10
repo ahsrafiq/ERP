@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import dayjs from 'dayjs';
 
-const { Title } = Typography;
+const { Title, Text } = Typography;
 
 const CustomerOutstandingReport: React.FC = () => {
   const { currentCompany } = useApp();
@@ -17,6 +17,8 @@ const CustomerOutstandingReport: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null);
 
+  const [searchTrigger, setSearchTrigger] = useState(0);
+
   useEffect(() => {
     if (!currentCompany) return;
     void (async () => {
@@ -24,15 +26,14 @@ const CustomerOutstandingReport: React.FC = () => {
       try {
         const [custRes, invRes] = await Promise.all([
           (window as any).electronAPI.db.customers.getAll(currentCompany.id),
-          (window as any).electronAPI.db.salesInvoices.getAll(currentCompany.id)
+          (window as any).electronAPI.db.salesInvoices.getPendingWithItems(currentCompany.id)
         ]);
 
         if (custRes?.success) setCustomers(custRes.data || []);
         else setCustomers([]);
 
         if (invRes?.success) {
-          const pending = (invRes.data || []).filter((inv: any) => Number(inv.balance) > 0);
-          setInvoices(pending);
+          setInvoices(invRes.data || []);
         } else {
           setInvoices([]);
         }
@@ -46,102 +47,113 @@ const CustomerOutstandingReport: React.FC = () => {
     })();
   }, [currentCompany]);
 
-  const filtered = useMemo(() => {
+  const filteredInvoices = useMemo(() => {
     const q = searchQuery.toLowerCase();
-    return (customers || [])
-      .filter((c: any) => Number(c.balance) > 0)
-      .filter((c: any) => (selectedCustomerId ? c.id === selectedCustomerId : true))
-      .filter((c: any) => {
+    return invoices
+      .filter((inv: any) => (selectedCustomerId ? Number(inv.customer_id) === Number(selectedCustomerId) : true))
+      .filter((inv: any) => {
         if (!q) return true;
-        return (c.name || '').toLowerCase().includes(q) || (c.code || '').toLowerCase().includes(q);
+        return (
+          (inv.invoice_number || '').toLowerCase().includes(q) ||
+          (inv.customer_name || '').toLowerCase().includes(q) ||
+          (inv.po_number || '').toLowerCase().includes(q)
+        );
       });
-  }, [customers, searchQuery, selectedCustomerId]);
+    // We include searchTrigger to allow manual re-calc if needed, though useMemo is reactive to others
+  }, [invoices, searchQuery, selectedCustomerId, searchTrigger]);
+
+  const handleSearch = () => {
+    setSearchTrigger(prev => prev + 1);
+  };
+
+  const itemColumns = [
+    { title: 'Item', dataIndex: 'item_name', render: (v: string, r: any) => v || r.description || '-' },
+    { title: 'Brand', dataIndex: 'brand' },
+    { title: 'Qty', dataIndex: 'quantity', align: 'right' as const },
+    { title: 'Rate', dataIndex: 'unit_price', align: 'right' as const, render: (v: number) => Number(v || 0).toLocaleString() },
+    { title: 'Total', dataIndex: 'line_total', align: 'right' as const, render: (v: number) => <strong>{Number(v || 0).toLocaleString()}</strong> },
+  ];
+
+  const columns = [
+    {
+      title: 'Date',
+      dataIndex: 'invoice_date',
+      key: 'date',
+      width: 120,
+      render: (v: string) => dayjs(v).format('DD-MMM-YYYY')
+    },
+    {
+      title: 'Invoice #',
+      dataIndex: 'invoice_number',
+      key: 'invoice_number',
+      width: 140,
+      render: (v: string) => <Text strong>{v}</Text>
+    },
+    {
+      title: 'Customer',
+      dataIndex: 'customer_name',
+      key: 'customer_name',
+      render: (v: string) => <Text>{v}</Text>
+    },
+    {
+      title: 'PO #',
+      dataIndex: 'po_number',
+      key: 'po_number',
+      render: (v: string) => v || '—'
+    },
+    {
+      title: currentCompany?.is_gst_enabled ? 'Amount (incl GST)' : 'Amount',
+      dataIndex: 'total_amount',
+      key: 'total_amount',
+      align: 'right' as const,
+      render: (v: number) => Number(v || 0).toLocaleString()
+    },
+    {
+      title: 'Balance Due',
+      dataIndex: 'balance',
+      key: 'balance',
+      align: 'right' as const,
+      render: (v: number) => <span style={{ color: '#cf1322', fontWeight: 700 }}>{Number(v || 0).toLocaleString()}</span>
+    },
+    {
+      title: 'Overdue',
+      key: 'overdue',
+      width: 120,
+      render: (_: any, inv: any) => {
+        if (!inv?.due_date) return '—';
+        const due = dayjs(inv.due_date);
+        const diff = dayjs().diff(due, 'days');
+        return diff > 0 ? <Tag color="error">{diff} Days</Tag> : <Tag color="success">Not Due</Tag>;
+      }
+    }
+  ];
+
+  const totalOutstanding = useMemo(() => {
+    return filteredInvoices.reduce((s, inv) => s + (Number(inv.balance) || 0), 0);
+  }, [filteredInvoices]);
 
   const expandedRowRender = (record: any) => {
-    const custInvoices = invoices.filter(inv => inv.customer_id === record.id);
-    const invColumns = [
-      { title: 'Date', dataIndex: 'invoice_date', key: 'date', render: (v: string) => dayjs(v).format('DD-MMM-YYYY') },
-      { title: 'Invoice #', dataIndex: 'invoice_number', key: 'inv_num' },
-      { title: 'PO #', dataIndex: 'po_number', key: 'po', render: (v: any) => v || '—' },
-      { 
-        title: currentCompany?.is_gst_enabled ? 'Amount (incl GST)' : 'Amount',
-        dataIndex: 'total_amount',
-        key: 'amt',
-        align: 'right' as const,
-        render: (v: number) => <strong>{Number(v || 0).toLocaleString()}</strong>,
-      },
-      { 
-        title: 'Balance', 
-        dataIndex: 'balance', 
-        key: 'bal', 
-        align: 'right' as const,
-        render: (v: number) => <strong>{v.toLocaleString()}</strong> 
-      },
-      {
-        title: 'Overdue Days',
-        key: 'overdue',
-        render: (_: any, inv: any) => {
-          if (!inv?.due_date) return '—';
-          const due = dayjs(inv.due_date);
-          const diff = dayjs().diff(due, 'days');
-          return diff > 0 ? <Tag color="error">{diff} Days</Tag> : <Tag color="success">Not Due</Tag>;
-        }
-      }
-    ];
-
     return (
-      <Table 
-        columns={invColumns} 
-        dataSource={custInvoices} 
-        pagination={false} 
-        size="small" 
+      <Table
+        columns={itemColumns}
+        dataSource={record.items}
+        pagination={false}
+        size="small"
         rowKey="id"
+        style={{ margin: '8px 0', backgroundColor: '#f9f9f9', border: '1px solid #f0f0f0', borderRadius: 4 }}
       />
     );
   };
 
-  const columns = [
-    {
-      title: 'Sr.',
-      key: 'sr',
-      width: 60,
-      align: 'center' as const,
-      render: (_: any, __: any, i: number) => i + 1,
-    },
-    { title: 'Code', dataIndex: 'code', key: 'code', width: 100, render: (v: any) => (v ? String(v) : '—') },
-    {
-      title: 'Customer',
-      dataIndex: 'name',
-      key: 'name',
-      render: (v: any, row: any) => (
-        <div>
-          <span style={{ fontWeight: 600 }}>{v ? String(v) : '—'}</span>
-          {row.phone ? <div style={{ fontSize: 11, color: '#888' }}>{row.phone}</div> : null}
-        </div>
-      ),
-    },
-    {
-      title: 'Outstanding',
-      dataIndex: 'balance',
-      key: 'balance',
-      align: 'right' as const,
-      render: (v: any) => <span style={{ color: '#cf1322', fontWeight: 700 }}>{Number(v || 0).toLocaleString()}</span>,
-    },
-  ];
-
-  const totalOutstanding = useMemo(() => {
-    return filtered.reduce((s: number, c: any) => s + (Number(c.balance) || 0), 0);
-  }, [filtered]);
-
   return (
-    <div>
+    <div style={{ padding: '0 24px 24px 24px' }}>
       <div className="no-print" style={{ marginBottom: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
           <Space>
             <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/reports')}>Back</Button>
             <Title level={4} style={{ margin: 0 }}>Customer Outstanding — {currentCompany?.name}</Title>
           </Space>
-          <Space>
+          <Space size="middle">
             <Select
               allowClear
               showSearch
@@ -160,16 +172,23 @@ const CustomerOutstandingReport: React.FC = () => {
             <Input
               allowClear
               value={searchQuery}
-              placeholder="Search by name or code"
+              placeholder="Search Invoice #, Customer, PO #"
               prefix={<SearchOutlined />}
               style={{ width: 260 }}
               onChange={(e) => setSearchQuery(e.target.value)}
+              onPressEnter={handleSearch}
             />
             <Button
               type="primary"
+              icon={<SearchOutlined />}
+              onClick={handleSearch}
+            >
+              Search
+            </Button>
+            <Button
               icon={<PrinterOutlined />}
               onClick={() => window.print()}
-              disabled={filtered.length === 0}
+              disabled={filteredInvoices.length === 0}
             >
               Print
             </Button>
@@ -178,30 +197,41 @@ const CustomerOutstandingReport: React.FC = () => {
 
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
           <div style={{ background: '#fafafa', border: '1px solid #f0f0f0', padding: '8px 12px', borderRadius: 6 }}>
-            <div style={{ fontSize: 12, color: '#666' }}>Total Outstanding</div>
-            <div style={{ fontWeight: 800, color: '#cf1322' }}>{totalOutstanding.toLocaleString()}</div>
+            <div style={{ fontSize: 12, color: '#666' }}>Total Outstanding Items</div>
+            <div style={{ fontWeight: 800, color: '#cf1322', fontSize: 18 }}>{totalOutstanding.toLocaleString()}</div>
+          </div>
+          <div style={{ background: '#fafafa', border: '1px solid #f0f0f0', padding: '8px 12px', borderRadius: 6 }}>
+            <div style={{ fontSize: 12, color: '#666' }}>Count</div>
+            <div style={{ fontWeight: 600, fontSize: 18 }}>{filteredInvoices.length} Invoices</div>
           </div>
           <div style={{ background: '#fafafa', border: '1px solid #f0f0f0', padding: '8px 12px', borderRadius: 6 }}>
             <div style={{ fontSize: 12, color: '#666' }}>As on</div>
-            <div style={{ fontWeight: 600 }}>{dayjs().format('DD-MMM-YYYY')}</div>
+            <div style={{ fontWeight: 600, fontSize: 18 }}>{dayjs().format('DD-MMM-YYYY')}</div>
           </div>
         </div>
       </div>
 
       <Table
-        className="print-only"
         columns={columns}
-        dataSource={filtered}
-        rowKey={(r: any) => String(r?.id || Math.random())}
+        dataSource={filteredInvoices}
+        rowKey="id"
         loading={loading}
         size="small"
-        pagination={{ pageSize: 20 }}
+        pagination={{ pageSize: 20, showSizeChanger: true }}
         expandable={{
           expandedRowRender,
           defaultExpandAllRows: true
         }}
         scroll={{ x: 1000 }}
+        bordered
       />
+
+      <style>{`
+        @media print {
+          .no-print { display: none !important; }
+          .ant-table-expanded-row { background-color: #f9f9f9 !important; }
+        }
+      `}</style>
     </div>
   );
 };

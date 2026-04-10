@@ -18,7 +18,8 @@ import {
   searchHandlers,
   fileHandlers,
   salesQuotationHandlers,
-  deliveryChallanHandlers
+  deliveryChallanHandlers,
+  customReportHandlers
 } from './database/handlers';
 import { isMasterMode, getConfig, saveConfig } from './config';
 import { dbBridge } from './database/bridge';
@@ -562,6 +563,9 @@ ipcMain.handle('db:customers:update', async (event, id: number, customer: any) =
 ipcMain.handle('db:customers:delete', async (event, id: number) => {
   return dbBridge.customers.delete(id);
 });
+ipcMain.handle('db:customers:deleteMultiple', async (event, ids: number[]) => {
+  return dbBridge.customers.deleteMultiple(ids);
+});
 
 ipcMain.handle('db:vendors:getAll', async (event, companyId: number) => {
   return dbBridge.vendors.getAll(companyId);
@@ -582,6 +586,9 @@ ipcMain.handle('db:vendors:update', async (event, id: number, vendor: any) => {
 ipcMain.handle('db:vendors:delete', async (event, id: number) => {
   return dbBridge.vendors.delete(id);
 });
+ipcMain.handle('db:vendors:deleteMultiple', async (event, ids: number[]) => {
+  return dbBridge.vendors.deleteMultiple(ids);
+});
 
 ipcMain.handle('db:brands:getAll', async () => {
   return dbBridge.brands.getAll();
@@ -597,6 +604,9 @@ ipcMain.handle('db:brands:update', async (event, id: number, brand: any) => {
 });
 ipcMain.handle('db:brands:delete', async (event, id: number) => {
   return dbBridge.brands.delete(id);
+});
+ipcMain.handle('db:brands:deleteMultiple', async (event, ids: number[]) => {
+  return dbBridge.brands.deleteMultiple(ids);
 });
 
 // Danger: delete ALL brands
@@ -622,6 +632,9 @@ ipcMain.handle('db:items:update', async (event, id: number, item: any) => {
 
 ipcMain.handle('db:items:delete', async (event, id: number) => {
   return dbBridge.items.delete(id);
+});
+ipcMain.handle('db:items:deleteMultiple', async (event, ids: number[]) => {
+  return dbBridge.items.deleteMultiple(ids);
 });
 
 // Danger: delete ALL items
@@ -662,7 +675,15 @@ ipcMain.handle('db:salesInvoices:createFromQuotation', async (event, quotationId
 });
 
 ipcMain.handle('db:salesInvoices:createFromChallan', async (event, challanId: number, createdBy?: number) => {
-  return dbBridge.salesInvoices.createFromChallan(challanId, createdBy);
+  return salesInvoiceHandlers.createFromChallan(challanId, createdBy);
+});
+
+ipcMain.handle('db:salesInvoices:getSalesByItem', async (event, companyId: number, filters?: any) => {
+  return salesInvoiceHandlers.getSalesByItem(companyId, filters);
+});
+
+ipcMain.handle('db:salesInvoices:getPendingWithItems', async (event, companyId: number, filters?: any) => {
+  return salesInvoiceHandlers.getPendingWithItems(companyId, filters);
 });
 
 ipcMain.handle('db:salesQuotations:getAll', async (event, companyId: number, filters?: any) => {
@@ -801,6 +822,19 @@ ipcMain.handle('db:expenses:createCategory', async (event, category: any) => {
   return dbBridge.expenses.createCategory(category);
 });
 
+// Custom Reports
+ipcMain.handle('db:customReports:getAll', async (event, companyId: number) => {
+  return customReportHandlers.getAll(companyId);
+});
+
+ipcMain.handle('db:customReports:create', async (event, report: any) => {
+  return customReportHandlers.create(report);
+});
+
+ipcMain.handle('db:customReports:delete', async (event, id: number) => {
+  return customReportHandlers.delete(id);
+});
+
 ipcMain.handle('db:payments:getAll', async (event, companyId: number, filters?: any) => {
   return dbBridge.payments.getAll(companyId, filters);
 });
@@ -857,6 +891,23 @@ ipcMain.handle('db:auth:verifyAdminPassword', async (event, password: string) =>
 // Global search handler
 ipcMain.handle('db:search:global', async (event, companyId: number, query: string) => {
   return dbBridge.search.global(companyId, query);
+});
+
+// Warehouse handlers
+ipcMain.handle('db:warehouses:getAll', async (event, companyId: number) => {
+  return dbBridge.warehouses.getAll(companyId);
+});
+ipcMain.handle('db:warehouses:create', async (event, warehouse: any) => {
+  return dbBridge.warehouses.create(warehouse);
+});
+ipcMain.handle('db:warehouses:update', async (event, id: number, warehouse: any) => {
+  return dbBridge.warehouses.update(id, warehouse);
+});
+ipcMain.handle('db:warehouses:delete', async (event, id: number) => {
+  return dbBridge.warehouses.delete(id);
+});
+ipcMain.handle('db:warehouses:deleteMultiple', async (event, ids: number[]) => {
+  return dbBridge.warehouses.deleteMultiple(ids);
 });
 
 // Heartbeat handler

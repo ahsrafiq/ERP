@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Card, Row, Col, Button, DatePicker, Select, Space } from 'antd';
 import { FilePdfOutlined, FileExcelOutlined, PrinterOutlined, FileTextOutlined } from '@ant-design/icons';
-import { useApp } from '../../context/AppContext';
 import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
 
@@ -9,7 +8,6 @@ const { RangePicker } = DatePicker;
 const { Option } = Select;
 
 const Reports: React.FC = () => {
-  const { currentCompany } = useApp();
   const navigate = useNavigate();
   const [dateRange, setDateRange] = useState<[any, any]>([
     dayjs().startOf('month'),
@@ -28,7 +26,7 @@ const Reports: React.FC = () => {
     {
       title: 'Sales Report',
       description: 'View invoices, revenue, tax, and customer balances',
-      icon: <FilePdfOutlined />,
+      icon: <FileTextOutlined />, // Changed from FilePdfOutlined
       type: 'sales',
       route: '/reports/sales',
       available: true,
@@ -44,7 +42,7 @@ const Reports: React.FC = () => {
     {
       title: 'Stock Report',
       description: 'Stock levels, location, valuation, and low-stock alerts',
-      icon: <FilePdfOutlined />,
+      icon: <FileTextOutlined />, // Changed from FilePdfOutlined
       type: 'inventory',
       route: '/reports/inventory',
       available: true,
@@ -119,6 +117,14 @@ const Reports: React.FC = () => {
       icon: <PrinterOutlined />,
       type: 'stock_movement',
       route: '/reports/stock-movement',
+      available: true,
+    },
+    {
+      title: 'Sales by Item Details',
+      description: 'Per-item sales breakdown with quantities, rates, and individual line totals',
+      icon: <FileTextOutlined />,
+      type: 'sales_by_item',
+      route: '/reports/sales-by-item',
       available: true,
     },
   ];
