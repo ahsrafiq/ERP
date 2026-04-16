@@ -9,7 +9,7 @@ import { useApp } from '../../context/AppContext';
 const { Text } = Typography;
 
 const Dashboard: React.FC = () => {
-  const { currentCompany, fiscalYear } = useApp();
+  const { currentCompany, fiscalYear, globalRefreshKey } = useApp();
   const [loading, setLoading] = useState(false);
   const [kpis, setKpis] = useState<any>({});
   const [history, setHistory] = useState<any>({ sales: [], recovery: [] });
@@ -18,7 +18,7 @@ const Dashboard: React.FC = () => {
     if (currentCompany) {
       loadDashboardData();
     }
-  }, [currentCompany, fiscalYear]);
+  }, [currentCompany?.id, fiscalYear, globalRefreshKey]);
 
   const loadDashboardData = async () => {
     if (!currentCompany) return;

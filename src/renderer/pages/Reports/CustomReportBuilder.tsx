@@ -32,6 +32,7 @@ type FilterDef = {
 
 type TemplateConfig = {
   module: ModuleKey;
+  dataFocus?: string;
   columns: string[];
   filters: FilterDef[];
 };
@@ -92,6 +93,23 @@ const CustomReportBuilder: React.FC = () => {
   const [loadModalOpen, setLoadModalOpen] = useState(false);
   const [templateName, setTemplateName] = useState('');
   const [savedTemplates, setSavedTemplates] = useState<any[]>([]);
+  const [dataFocus, setDataFocus] = useState<string>('all');
+
+  const FOCAL_OPTIONS: Record<ModuleKey, Array<{ label: string; value: string }>> = {
+    sales: [
+      { label: 'All Sales', value: 'all' },
+      { label: 'Invoices Only', value: 'invoices' },
+      { label: 'Quotations Only', value: 'quotations' },
+      { label: 'Challans (DC) Only', value: 'challans' },
+    ],
+    payments: [
+      { label: 'All Payments', value: 'all' },
+      { label: 'Receipts (IN) Only', value: 'in' },
+      { label: 'Payments (OUT) Only', value: 'out' },
+    ],
+    purchases: [{ label: 'All Purchases', value: 'all' }],
+    inventory: [{ label: 'All Inventory', value: 'all' }],
+  };
 
   // Filter builders state
   const [pendingFilterField, setPendingFilterField] = useState<string>('');
@@ -110,6 +128,7 @@ const CustomReportBuilder: React.FC = () => {
     setSelectedColumns(defaults);
     setFilters([]);
     setPendingFilterField('');
+    setDataFocus('all'); // Reset focus when module changes
   }, [moduleKey, fields]);
 
   const loadData = async () => {
@@ -120,16 +139,23 @@ const CustomReportBuilder: React.FC = () => {
       let rows: UnifiedRow[] = [];
 
       if (moduleKey === 'sales') {
-        const [inv, quo, dc] = await Promise.all([
-          db.salesInvoices.getAll(currentCompany.id),
-          db.salesQuotations.getAll(currentCompany.id),
-          db.deliveryChallans.getAll(currentCompany.id),
-        ]);
-        
-        const invoices = (inv?.success ? inv.data : inv) || [];
-        const quotations = (quo?.success ? quo.data : quo) || [];
-        const challans = (dc?.success ? dc.data : dc) || [];
+        let invoices: any[] = [];
+        let quotations: any[] = [];
+        let challans: any[] = [];
 
+        if (dataFocus === 'all' || dataFocus === 'invoices') {
+          const res = await db.salesInvoices.getAll(currentCompany.id);
+          invoices = (res?.success ? res.data : res) || [];
+        }
+        if (dataFocus === 'all' || dataFocus === 'quotations') {
+          const res = await db.salesQuotations.getAll(currentCompany.id);
+          quotations = (res?.success ? res.data : res) || [];
+        }
+        if (dataFocus === 'all' || dataFocus === 'challans') {
+          const res = await db.deliveryChallans.getAll(currentCompany.id);
+          challans = (res?.success ? res.data : res) || [];
+        }
+        
         rows = [
           ...invoices.map((r: any) => ({ ...r, __module: 'sales', __type: 'Invoice', number: r.invoice_number, date: r.invoice_date, customer: r.customer_name, total: r.total_amount })),
           ...quotations.map((r: any) => ({ ...r, __module: 'sales', __type: 'Quotation', number: r.quotation_number, date: r.quotation_date, customer: r.customer_name, total: r.total_amount })),
@@ -146,7 +172,13 @@ const CustomReportBuilder: React.FC = () => {
       } else if (moduleKey === 'payments') {
         const res = await db.payments.getAll(currentCompany.id);
         const data = (res?.success ? res.data : res) || [];
-        rows = data.map((r: any) => ({ ...r, __module: 'payments', __type: 'Payment', number: r.payment_number, date: r.payment_date, party: r.customer_name || r.vendor_name, type: r.payment_type, method: r.payment_method }));
+        const baseRows = data.map((r: any) => ({ ...r, __module: 'payments', __type: 'Payment', number: r.payment_number, date: r.payment_date, party: r.customer_name || r.vendor_name, type: r.payment_type, method: r.payment_method }));
+        
+        if (dataFocus !== 'all') {
+            rows = baseRows.filter((r: any) => r.type === dataFocus);
+        } else {
+            rows = baseRows;
+        }
       }
 
       setAllRows(rows);
@@ -160,7 +192,7 @@ const CustomReportBuilder: React.FC = () => {
 
   useEffect(() => {
     loadData();
-  }, [moduleKey, currentCompany?.id]);
+  }, [moduleKey, dataFocus, currentCompany?.id]);
 
   const applyFilters = (rows: UnifiedRow[]) => {
     return rows.filter(row => {
@@ -233,6 +265,7 @@ const CustomReportBuilder: React.FC = () => {
 
     const config: TemplateConfig = {
       module: moduleKey,
+      dataFocus: dataFocus,
       columns: selectedColumns,
       filters: filters
     };
@@ -278,6 +311,9 @@ const CustomReportBuilder: React.FC = () => {
       setTimeout(() => {
         setSelectedColumns(config.columns);
         setFilters(config.filters);
+        if (config.dataFocus) {
+            setDataFocus(config.dataFocus);
+        }
         setLoadModalOpen(false);
         message.success(`Loaded "${template.name}"`);
       }, 0);
@@ -319,23 +355,24 @@ const CustomReportBuilder: React.FC = () => {
           <Card title="1. Select Module" size="small">
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {MODULES.map(m => (
-                <div 
-                  key={m.key}
-                  onClick={() => setModuleKey(m.key)}
-                  style={{
-                    padding: '12px',
-                    borderRadius: '8px',
-                    cursor: 'pointer',
-                    border: `1px solid ${moduleKey === m.key ? m.color : '#f0f0f0'}`,
-                    background: moduleKey === m.key ? `${m.color}10` : '#fff',
-                    transition: 'all 0.3s'
-                  }}
-                >
-                  <Space>
-                    <Badge color={m.color} />
-                    <Text strong style={{ color: moduleKey === m.key ? m.color : 'inherit' }}>{m.label}</Text>
-                    {moduleKey === m.key && <ArrowRightOutlined style={{ color: m.color }} />}
-                  </Space>
+                <div key={m.key}>
+                  <div 
+                    onClick={() => setModuleKey(m.key)}
+                    style={{
+                      padding: '12px',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      border: `1px solid ${moduleKey === m.key ? m.color : '#f0f0f0'}`,
+                      background: moduleKey === m.key ? `${m.color}10` : '#fff',
+                      transition: 'all 0.3s'
+                    }}
+                  >
+                    <Space>
+                      <Badge color={m.color} />
+                      <Text strong style={{ color: moduleKey === m.key ? m.color : 'inherit' }}>{m.label}</Text>
+                      {moduleKey === m.key && <ArrowRightOutlined style={{ color: m.color }} />}
+                    </Space>
+                  </div>
                 </div>
               ))}
             </div>
@@ -360,6 +397,18 @@ const CustomReportBuilder: React.FC = () => {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
           {/* Filters Section */}
           <Card title={<Space><FilterOutlined /> Filters</Space>} size="small">
+            <div style={{ marginBottom: '16px', paddingBottom: '16px', borderBottom: '1px solid #f0f0f0' }}>
+              <Space direction="vertical" style={{ width: '100%' }}>
+                <Text type="secondary" style={{ fontSize: '12px' }}>Report Focus / Section</Text>
+                <Select 
+                  style={{ width: 250 }}
+                  value={dataFocus}
+                  onChange={setDataFocus}
+                  options={FOCAL_OPTIONS[moduleKey]}
+                />
+              </Space>
+            </div>
+
             <div style={{ marginBottom: '16px' }}>
               <Space wrap>
                 <Select 

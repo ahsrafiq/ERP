@@ -26,7 +26,7 @@ const DATE_KEYS = [
 ] as const;
 
 export function getOperationalFiscalYearDateRange(fiscalYear: number): { start: string; end: string } {
-  const startYear = 2000 + (Number(fiscalYear) % 100);
+  const startYear = (2000 + (Number(fiscalYear) % 100)) - 1;
   return {
     start: `${startYear}-07-01`,
     end: `${startYear + 1}-06-30`,

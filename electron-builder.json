@@ -12,8 +12,21 @@
     "dist/renderer/pdf.worker.min.mjs"
   ],
   "win": {
-    "target": "nsis",
+    "target": [
+      "nsis",
+      "portable"
+    ],
     "icon": "assets/icon.ico"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "ERP Desktop",
+    "differentialPackage": false,
+    "deleteAppDataOnUninstall": true,
+    "include": "build/installer.nsh"
   },
   "mac": {
     "target": "dmg",

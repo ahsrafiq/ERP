@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage, protocol, dialog } from 'electron';
 import path from 'path';
 import fs from 'fs';
-import { initializeDatabase } from './database/schema';
+import { initializeDatabase, closeDatabase } from './database/schema';
 import {
   authHandlers,
   userHandlers,
@@ -30,6 +30,31 @@ import { apiClient } from './apiClient';
 protocol.registerSchemesAsPrivileged([
   { scheme: 'atom', privileges: { secure: true, standard: true, supportFetchAPI: true, bypassCSP: true } }
 ]);
+
+// --- Isolated Client Testing Mode ---
+// This allows running two separate instances of the app on a single laptop for testing.
+// The second instance uses a different data folder so it can have its own config (Client mode).
+if (process.argv.includes('--is-client')) {
+  const currentPath = app.getPath('userData');
+  app.setPath('userData', path.join(path.dirname(currentPath), 'erp-client-test'));
+  console.log('Running in CLIENT mode. Connecting to Master server.');
+}
+
+// Bypass SSL errors in development to prevent handshake failures on local network/testing
+if (process.env.NODE_ENV === 'development') {
+  app.commandLine.appendSwitch('ignore-certificate-errors');
+  app.commandLine.appendSwitch('allow-insecure-localhost');
+}
+
+// Allow forcing Master mode via command line if it gets stuck in Client mode
+if (process.argv.includes('--is-master')) {
+    const { getConfig, saveConfig } = require('./config');
+    const config = getConfig();
+    if (config.mode !== 'MASTER') {
+        config.mode = 'MASTER';
+        saveConfig(config);
+    }
+}
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
@@ -206,9 +231,10 @@ function createMenu() {
 
               if (filePaths && filePaths.length > 0) {
                 try {
-                  const dbPath = path.join(app.getPath('userData'), 'database', 'erp.db');
-                  // We don't need to close connection here because our handlers open/close per request
-                  fs.copyFileSync(filePaths[0], dbPath);
+                const dbPath = path.join(app.getPath('userData'), 'database', 'erp.db');
+                // Close singleton connection before overwriting the file
+                closeDatabase();
+                fs.copyFileSync(filePaths[0], dbPath);
 
                   dialog.showMessageBox({
                     type: 'info',
@@ -636,6 +662,9 @@ ipcMain.handle('db:items:delete', async (event, id: number) => {
 ipcMain.handle('db:items:deleteMultiple', async (event, ids: number[]) => {
   return dbBridge.items.deleteMultiple(ids);
 });
+ipcMain.handle('db:items:getNextCode', async () => {
+  return dbBridge.items.getNextCode();
+});
 
 // Danger: delete ALL items
 ipcMain.handle('db:items:deleteAll', async () => {
@@ -675,15 +704,15 @@ ipcMain.handle('db:salesInvoices:createFromQuotation', async (event, quotationId
 });
 
 ipcMain.handle('db:salesInvoices:createFromChallan', async (event, challanId: number, createdBy?: number) => {
-  return salesInvoiceHandlers.createFromChallan(challanId, createdBy);
+  return dbBridge.salesInvoices.createFromChallan(challanId, createdBy);
 });
 
 ipcMain.handle('db:salesInvoices:getSalesByItem', async (event, companyId: number, filters?: any) => {
-  return salesInvoiceHandlers.getSalesByItem(companyId, filters);
+  return dbBridge.salesInvoices.getSalesByItem(companyId, filters);
 });
 
 ipcMain.handle('db:salesInvoices:getPendingWithItems', async (event, companyId: number, filters?: any) => {
-  return salesInvoiceHandlers.getPendingWithItems(companyId, filters);
+  return dbBridge.salesInvoices.getPendingWithItems(companyId, filters);
 });
 
 ipcMain.handle('db:salesQuotations:getAll', async (event, companyId: number, filters?: any) => {
@@ -824,15 +853,15 @@ ipcMain.handle('db:expenses:createCategory', async (event, category: any) => {
 
 // Custom Reports
 ipcMain.handle('db:customReports:getAll', async (event, companyId: number) => {
-  return customReportHandlers.getAll(companyId);
+  return dbBridge.customReports.getAll(companyId);
 });
 
 ipcMain.handle('db:customReports:create', async (event, report: any) => {
-  return customReportHandlers.create(report);
+  return dbBridge.customReports.create(report);
 });
 
 ipcMain.handle('db:customReports:delete', async (event, id: number) => {
-  return customReportHandlers.delete(id);
+  return dbBridge.customReports.delete(id);
 });
 
 ipcMain.handle('db:payments:getAll', async (event, companyId: number, filters?: any) => {
@@ -921,7 +950,23 @@ ipcMain.handle('db:config:get', async () => {
   return getConfig();
 });
 
-ipcMain.handle('db:config:save', async (event, config: any) => {
-  saveConfig(config);
+ipcMain.handle('db:config:save', async (event, newConfig: any) => {
+  const oldConfig = getConfig();
+  saveConfig(newConfig);
+  
+  // If mode changed (MASTER -> CLIENT or vice-versa), prompt for restart
+  if (oldConfig.mode !== newConfig.mode) {
+    dialog.showMessageBox({
+      type: 'info',
+      title: 'Restart Required',
+      message: 'Mode changed. The application will now restart to apply changes.',
+      buttons: ['OK'],
+      defaultId: 0
+    }).then(() => {
+      app.relaunch();
+      app.exit();
+    });
+  }
+  
   return { success: true };
 });

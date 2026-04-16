@@ -6,7 +6,7 @@ import { useLocation } from 'react-router-dom';
 import { parseExcelToRows, getCol, getColNum } from '../../utils/excelImport';
 
 const Items: React.FC = () => {
-  const { currentCompany, user, minimizeModal } = useApp();
+  const { currentCompany, user, globalRefreshKey } = useApp();
   const location = useLocation();
   const [items, setItems] = useState<any[]>([]);
   const [brands, setBrands] = useState<any[]>([]);
@@ -14,6 +14,7 @@ const Items: React.FC = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [editingItem, setEditingItem] = useState<any>(null);
   const [form] = Form.useForm();
+  const [modalLoading, setModalLoading] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importFormatModal, setImportFormatModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -49,13 +50,9 @@ const Items: React.FC = () => {
 
   useEffect(() => {
     if (currentCompany?.id) {
-      if (location.pathname === '/inventory/items') {
-        loadItems();
-      } else if (items.length === 0) {
-        loadItems();
-      }
+      loadItems();
     }
-  }, [currentCompany?.id, location.pathname]);
+  }, [currentCompany?.id, globalRefreshKey]);
 
   const loadItems = async () => {
     setLoading(true);
@@ -94,19 +91,14 @@ const Items: React.FC = () => {
     try {
       let code = editingItem ? editingItem.code : '';
       if (!editingItem) {
-        // Auto-generate code
-        const allItemsResult = await (window as any).electronAPI.db.items.getAll(currentCompany.id);
-        let nextCodeNum = 1;
-        if (allItemsResult.success && Array.isArray(allItemsResult.data)) {
-          const codes = allItemsResult.data
-            .map((i: any) => {
-              const match = (i.code || '').match(/I-(\d+)/);
-              return match ? parseInt(match[1], 10) : 0;
-            })
-            .filter((n: number) => !isNaN(n));
-          nextCodeNum = codes.length > 0 ? Math.max(...codes) + 1 : 1;
+        // Auto-generate code using the backend to ensure global uniqueness including soft-deleted items
+        const nextResult = await (window as any).electronAPI.db.items.getNextCode();
+        if (nextResult.success) {
+          code = nextResult.data;
+        } else {
+          notification.error({ message: 'Error', description: 'Failed to generate next item code' });
+          return;
         }
-        code = `I-${String(nextCodeNum).padStart(4, '0')}`;
       }
 
       const itemData = {
@@ -455,6 +447,7 @@ const Items: React.FC = () => {
       <Modal
         title={editingItem ? 'Edit Item' : 'Add New Item'}
         open={modalVisible}
+        confirmLoading={modalLoading}
         onCancel={() => {
           setModalVisible(false);
           setEditingItem(null);

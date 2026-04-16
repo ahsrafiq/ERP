@@ -7,7 +7,7 @@ import { filterRowsByOperationalFiscalYear } from '../../utils/fiscalYearFilter'
 import { useLocation } from 'react-router-dom';
 
 const Expenses: React.FC = () => {
-  const { currentCompany, user, fiscalYear, minimizeModal } = useApp();
+  const { currentCompany, user, fiscalYear, minimizeModal, globalRefreshKey, triggerGlobalRefresh } = useApp();
   const location = useLocation();
   const [expenses, setExpenses] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
@@ -40,7 +40,7 @@ const Expenses: React.FC = () => {
 
   useEffect(() => {
     if (currentCompany) {
-      if (location.pathname === '/expenses/list') {
+      if (location.pathname === '/expenses') {
         loadExpenses();
         loadCategories();
       } else if (expenses.length === 0) {
@@ -48,7 +48,7 @@ const Expenses: React.FC = () => {
         loadCategories();
       }
     }
-  }, [currentCompany, location.pathname, fiscalYear]);
+  }, [currentCompany, location.pathname, fiscalYear, globalRefreshKey]);
 
   const loadExpenses = async () => {
     if (!currentCompany) return;
@@ -107,6 +107,7 @@ const Expenses: React.FC = () => {
       setEditingExpense(null);
       form.resetFields();
       loadExpenses();
+      triggerGlobalRefresh();
     } catch (error) {
       notification.error({ message: 'Error', description: 'Operation failed', duration: 0 });
     }

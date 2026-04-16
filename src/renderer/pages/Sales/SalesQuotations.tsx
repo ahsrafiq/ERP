@@ -37,7 +37,7 @@ function saveSuggestion(key: string, value: string, defaults: string[] = []) {
 }
 
 const SalesQuotations: React.FC = () => {
-    const { currentCompany, companies, user, fiscalYear, minimizeModal } = useApp();
+    const { currentCompany, companies, user, fiscalYear, minimizeModal, globalRefreshKey } = useApp();
     const navigate = useNavigate();
     const location = useLocation();
     const [quotations, setQuotations] = useState<any[]>([]);
@@ -48,6 +48,7 @@ const SalesQuotations: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [modalVisible, setModalVisible] = useState(false);
     const [editingQuotation, setEditingQuotation] = useState<any>(null);
+    const [defaultQuotationNumber, setDefaultQuotationNumber] = useState<string>('');
     const [form] = Form.useForm();
     const [printData, setPrintData] = useState<any>(null);
     const [isPreviewVisible, setIsPreviewVisible] = useState(false);
@@ -142,7 +143,7 @@ const SalesQuotations: React.FC = () => {
                 loadBrands();
             }
         }
-    }, [currentCompany, location.pathname, fiscalYear]);
+    }, [currentCompany, location.pathname, fiscalYear, globalRefreshKey]);
 
     useEffect(() => {
         if (location.state?.editQuotationId && customers.length > 0) {
@@ -269,6 +270,7 @@ const SalesQuotations: React.FC = () => {
         try {
             const result = await (window as any).electronAPI.db.salesQuotations.getNextNumber(currentCompany.id, fiscalYear);
             if (result.success) {
+                setDefaultQuotationNumber(result.data);
                 form.setFieldsValue({
                     quotation_number: result.data,
                 });
@@ -333,7 +335,7 @@ const SalesQuotations: React.FC = () => {
         }
     };
 
-    const confirmCreateDC = async () => {
+    const confirmCreateDC = async (force: boolean = false) => {
         if (!dcSourceQuotation || dcSelectedItems.length === 0) {
             message.warning('Select at least one item');
             return;
@@ -357,18 +359,34 @@ const SalesQuotations: React.FC = () => {
                     brand_id: it.brand_id, // backend should handle this
                 })),
                 dcPoNumber?.trim(),
-                fiscalYear
+                fiscalYear,
+                force
             );
             if (result.success && result.data) {
                 message.success(`Delivery Challan ${result.data.challan_number} created`);
                 setDcSelectionModal(false);
                 setDcSourceQuotation(null);
                 navigate('/sales/delivery-challans');
+            } else if (result.error === 'ALREADY_EXISTS') {
+                Modal.confirm({
+                    title: 'Delivery Challan already exists',
+                    content: `A delivery challan (${result.existingNumber}) already exists for this quotation. Do you want to create another one?`,
+                    okText: 'Yes, create duplicate',
+                    cancelText: 'Cancel',
+                    onOk: () => confirmCreateDC(true),
+                });
             } else {
                 notification.error({ message: 'Error', description: result.error || 'Failed to create delivery challan', duration: 0 });
+                // If it's a conflict, refresh data to show current status
+                if (result.code === 'CONFLICT' || (result.error && result.error.includes('already created'))) {
+                    loadQuotations();
+                }
             }
         } catch (error: any) {
             notification.error({ message: 'Error', description: error.message || 'Failed to create delivery challan', duration: 0 });
+            if (error.message && error.message.includes('already created')) {
+                loadQuotations();
+            }
         }
     };
 
@@ -458,6 +476,7 @@ const SalesQuotations: React.FC = () => {
                 created_by: user?.id,
                 terms_and_conditions: JSON.stringify((values.terms_and_conditions || []).filter((t: string) => t?.trim())),
                 pr_number: values.pr_number || null,
+                isDefaultNumber: !editingQuotation && values.quotation_number === defaultQuotationNumber,
             };
 
             delete quotationData.payment_terms;
@@ -487,7 +506,7 @@ const SalesQuotations: React.FC = () => {
             } else {
                 const result = await (window as any).electronAPI.db.salesQuotations.create(quotationData);
                 if (result.success) {
-                    message.success('Quotation created successfully');
+                    message.success(`Quotation ${result.data?.quotation_number || ''} created successfully`);
                     setModalVisible(false);
                     setEditingQuotation(null);
                     loadQuotations();

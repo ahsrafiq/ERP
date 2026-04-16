@@ -7,7 +7,7 @@ import { useLocation } from 'react-router-dom';
 import { filterRowsByOperationalFiscalYear } from '../../utils/fiscalYearFilter';
 
 const PurchaseInvoices: React.FC = () => {
-  const { currentCompany, user, fiscalYear, minimizeModal } = useApp();
+  const { currentCompany, companies, user, fiscalYear, minimizeModal, globalRefreshKey } = useApp();
   const location = useLocation();
   const [invoices, setInvoices] = useState<any[]>([]);
   const [vendors, setVendors] = useState<any[]>([]);
@@ -57,7 +57,7 @@ const PurchaseInvoices: React.FC = () => {
         loadBrands();
       }
     }
-  }, [currentCompany, location.pathname, fiscalYear]);
+  }, [currentCompany, location.pathname, fiscalYear, globalRefreshKey]);
 
   const loadBrands = async () => {
     try {
@@ -324,6 +324,8 @@ const PurchaseInvoices: React.FC = () => {
             <Button
               icon={<EditOutlined />}
               onClick={async () => {
+                loadItems();
+                loadBrands();
                 const hide = message.loading('Fetching invoice details...', 0);
                 try {
                   const result = await (window as any).electronAPI.db.purchaseInvoices.getById(record.id);
@@ -391,6 +393,8 @@ const PurchaseInvoices: React.FC = () => {
             type="primary"
             icon={<PlusOutlined />}
             onClick={() => {
+              loadItems();
+              loadBrands();
               setEditingInvoice(null);
               form.resetFields();
               setModalVisible(true);
@@ -419,6 +423,8 @@ const PurchaseInvoices: React.FC = () => {
             id: editingInvoice ? `pi-edit-${editingInvoice.id}` : 'pi-new',
             title: editingInvoice ? `Edit PI ${invNum}` : `New PI ${invNum}`,
             onRestore: () => {
+              loadItems();
+              loadBrands();
               setEditingInvoice(editingInvoice);
               setModalVisible(true);
             }

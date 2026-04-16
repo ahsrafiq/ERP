@@ -5,7 +5,7 @@ import { useApp } from '../../context/AppContext';
 import { useLocation } from 'react-router-dom';
 
 const Vendors: React.FC = () => {
-  const { currentCompany, user, minimizeModal } = useApp();
+  const { currentCompany, user, minimizeModal, globalRefreshKey } = useApp();
   const location = useLocation();
   const [vendors, setVendors] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -40,13 +40,9 @@ const Vendors: React.FC = () => {
 
   useEffect(() => {
     if (currentCompany) {
-      if (location.pathname === '/purchases/vendors') {
-        loadVendors();
-      } else if (vendors.length === 0) {
-        loadVendors();
-      }
+      loadVendors();
     }
-  }, [currentCompany, location.pathname]);
+  }, [currentCompany, globalRefreshKey]);
 
   const loadVendors = async () => {
     if (!currentCompany) return;

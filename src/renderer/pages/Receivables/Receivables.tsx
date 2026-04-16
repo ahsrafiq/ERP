@@ -6,7 +6,7 @@ import { useApp } from '../../context/AppContext';
 import { documentMatchesFiscalYearSuffix, paymentMatchesOperationalFiscalYear } from '../../utils/fiscalYearFilter';
 
 const Receivables: React.FC = () => {
-  const { currentCompany, user, fiscalYear, minimizeModal } = useApp();
+  const { currentCompany, user, fiscalYear, minimizeModal, globalRefreshKey } = useApp();
   const [customers, setCustomers] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
@@ -22,6 +22,7 @@ const Receivables: React.FC = () => {
   const [editingPayment, setEditingPayment] = useState<any>(null);
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editForm] = Form.useForm();
+  const [maxAllowedAmount, setMaxAllowedAmount] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
   // Delete authorization
@@ -46,7 +47,7 @@ const Receivables: React.FC = () => {
 
   useEffect(() => {
     if (currentCompany?.id) loadCustomers();
-  }, [currentCompany?.id, fiscalYear]);
+  }, [currentCompany, location.pathname, fiscalYear, globalRefreshKey]);
 
   useEffect(() => {
     if (deletePasswordModal) {
@@ -83,7 +84,9 @@ const Receivables: React.FC = () => {
         });
         const withFyBalance = custRes.data.map((c: any) => ({
           ...c,
-          balance: Number(outstandingByCustomer[c.id] || 0),
+          // Use the actual balance from the database instead of overriding it with only invoice sums.
+          // This ensures opening balances are covered in the main list.
+          balance: Number(c.balance || 0),
         }));
         setCustomers(withFyBalance);
       } else {
@@ -158,11 +161,12 @@ const Receivables: React.FC = () => {
       
       const mappedDues = dues.map((d: any) => ({ ...d, key: `invoice_${d.id}` }));
       
-      if (openingBal > 0.01) {
+      // Always show Opening Balance row if it exists, to allow the required selection workflow
+      if (Math.abs(openingBal) > 0.01) {
           mappedDues.unshift({
               id: 'opening_balance',
               key: 'opening_balance',
-              invoice_number: 'Opening/General Balance',
+              invoice_number: 'Customer Opening Balance',
               invoice_date: null,
               total_amount: openingBal,
               balance: openingBal,
@@ -187,8 +191,45 @@ const Receivables: React.FC = () => {
     setLoading(false);
   };
 
-  const openEditModal = (payment: any) => {
+  const openEditModal = async (payment: any) => {
     setEditingPayment(payment);
+    
+    let max = null;
+    
+    try {
+        // Always check customer balance as the primary limit
+        const custResult = await (window as any).electronAPI.db.customers.getById(payment.customer_id);
+        if (custResult.success && custResult.data) {
+            max = Math.round((Number(custResult.data.balance) + Number(payment.amount)) * 100) / 100;
+        }
+
+        // Check invoice balance if linked
+        if (payment.reference_id && payment.reference_type && String(payment.reference_id) !== 'null') {
+            const result = await (window as any).electronAPI.db.salesInvoices.getById(payment.reference_id);
+            if (result.success && result.data) {
+                const invMax = Math.round((Number(result.data.balance) + Number(payment.amount)) * 100) / 100;
+                // If invoice limit is lower than customer limit, use invoice limit
+                if (max === null || invMax < max) {
+                    max = invMax;
+                }
+            }
+        } else {
+            // General / Opening Balance payment: Cap it by the opening portion only
+            // OpeningPortion = TotalBalance - Sum(UnpaidInvoices)
+            const duesRes = await (window as any).electronAPI.db.customers.getUnpaidInvoices(payment.customer_id, currentCompany!.id);
+            const dues = (duesRes.data || []).filter((inv: any) =>
+                documentMatchesFiscalYearSuffix(inv?.invoice_number, fiscalYear)
+            );
+            const invoiceSum = dues.reduce((sum: number, i: any) => sum + i.balance, 0);
+            const currentOpeningPortion = Math.round((Number(custResult.data.balance) - invoiceSum + Number(payment.amount)) * 100) / 100;
+            
+            if (max === null || currentOpeningPortion < max) {
+                max = currentOpeningPortion;
+            }
+        }
+    } catch (e) {}
+    
+    setMaxAllowedAmount(max);
     editForm.setFieldsValue({
       amount: payment.amount,
       tax_deduction_rate: payment.tax_deduction_rate || 0,
@@ -211,6 +252,7 @@ const Receivables: React.FC = () => {
     setSelectedReceiptKeys(newSelectedRowKeys);
     if (newSelectedRowKeys.length > 0) {
       const total = calculateSelectedTotal(newSelectedRowKeys);
+      // Auto-set amount to the total of selection
       receiptForm.setFieldsValue({ amount: total });
     } else {
       receiptForm.setFieldsValue({ amount: 0 });
@@ -241,6 +283,11 @@ const Receivables: React.FC = () => {
         notes: values.notes || null,
         created_by: user?.id,
       };
+
+      if (selectedReceiptKeys.length === 0) {
+        notification.error({ message: 'Error', description: 'Please select at least one invoice or opening balance row first.', duration: 0 });
+        return;
+      }
 
       // Handle new payment(s) - Distribute across selection
       let remainingAmount = amount;
@@ -276,19 +323,9 @@ const Receivables: React.FC = () => {
          }
       }
 
-      // If any amount remains (or no selection was made)
-      if (remainingAmount > 0.001 || selectedReceiptKeys.length === 0) {
-         const taxAmount = remainingAmount * (taxDeductionRate / 100);
-         const paymentData = {
-             ...basePayment,
-             amount: remainingAmount,
-             tax_deduction: taxAmount,
-             tax_deduction_rate: taxDeductionRate,
-             reference_type: null,
-             reference_id: null,
-         };
-         await (window as any).electronAPI.db.payments.create(paymentData);
-      }
+      // Selection is now required, so remainingAmount (if any) is treated as an overpayment?
+      // Actually, we force selection, so if anything is left after filling selected, we just apply it to the last selection
+      // OR we just don't allow general payments here.
 
       message.success(`Receipt recorded for ${selectedCustomer.name}`);
       receiptForm.resetFields();
@@ -560,22 +597,26 @@ const Receivables: React.FC = () => {
             />
           </div>
 
-          {/* Right Side: Payment Form */}
           <div style={{ flex: 1 }}>
             <h3 style={{ marginTop: 0, marginBottom: 16 }}>Record Payment</h3>
+            <div style={{ marginBottom: 16, display: selectedReceiptKeys.length === 0 ? 'block' : 'none' }}>
+              <div style={{ padding: '8px 12px', background: '#fff7e6', border: '1px solid #ffd591', borderRadius: 4, color: '#d46b08', fontSize: 13 }}>
+                Select dues from the left to enable payment details.
+              </div>
+            </div>
             <Form form={receiptForm} layout="vertical" onFinish={handleRecordReceipt}>
               <Form.Item
                 name="amount"
                 label="Amount received"
                 rules={[{ required: true, message: 'Enter amount received' }]}
               >
-                <InputNumber min={1} precision={0} style={{ width: '100%' }} placeholder="Amount" />
+                <InputNumber min={1} precision={0} style={{ width: '100%' }} placeholder="Amount" disabled={selectedReceiptKeys.length === 0} />
               </Form.Item>
               <Form.Item name="tax_deduction_rate" label="Tax deduction %" initialValue={0} required tooltip="Percentage of tax deducted (0-100)">
-                <InputNumber min={0} max={100} style={{ width: '100%' }} placeholder="%" addonAfter="%" />
+                <InputNumber min={0} max={100} style={{ width: '100%' }} placeholder="%" addonAfter="%" disabled={selectedReceiptKeys.length === 0} />
               </Form.Item>
               
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24, background: '#fafafa', padding: 12, borderRadius: 4, border: '1px solid #f0f0f0' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24, background: '#fafafa', padding: 12, borderRadius: 4, border: '1px solid #f0f0f0', opacity: selectedReceiptKeys.length === 0 ? 0.5 : 1 }}>
                 <div>
                   <div style={{ fontSize: 12, color: '#888' }}>Tax Amount</div>
                   <div style={{ fontWeight: 600, color: '#cf1322' }}>{receiptTaxAmount.toLocaleString()}</div>
@@ -587,10 +628,10 @@ const Receivables: React.FC = () => {
               </div>
 
               <Form.Item name="payment_date" label="Payment date" rules={[{ required: true }]} initialValue={dayjs()}>
-                <DatePicker style={{ width: '100%' }} />
+                <DatePicker style={{ width: '100%' }} disabled={selectedReceiptKeys.length === 0} />
               </Form.Item>
               <Form.Item name="payment_method" label="Payment method" initialValue="cash">
-                <Select>
+                <Select disabled={selectedReceiptKeys.length === 0}>
                   <Select.Option value="cash">Cash</Select.Option>
                   <Select.Option value="bank">Bank Transfer</Select.Option>
                   <Select.Option value="cheque">Cheque</Select.Option>
@@ -598,7 +639,7 @@ const Receivables: React.FC = () => {
                 </Select>
               </Form.Item>
               <Form.Item name="notes" label="Notes" style={{ marginBottom: 0 }}>
-                <Input.TextArea rows={2} placeholder="Optional" />
+                <Input.TextArea rows={2} placeholder="Optional" disabled={selectedReceiptKeys.length === 0} />
               </Form.Item>
             </Form>
           </div>
@@ -667,9 +708,20 @@ const Receivables: React.FC = () => {
           <Form.Item
             name="amount"
             label="Amount"
-            rules={[{ required: true, message: 'Enter amount' }]}
+            extra={maxAllowedAmount !== null ? `Max allowed based on current balance: ${maxAllowedAmount.toLocaleString()}` : undefined}
+            rules={[
+                { required: true, message: 'Enter amount' },
+                {
+                    validator: (_, value) => {
+                        if (maxAllowedAmount !== null && value > maxAllowedAmount) {
+                            return Promise.reject(`Amount exceeds total due (${maxAllowedAmount.toLocaleString()})`);
+                        }
+                        return Promise.resolve();
+                    }
+                }
+            ]}
           >
-            <InputNumber min={1} precision={0} style={{ width: '100%' }} />
+            <InputNumber min={1} max={maxAllowedAmount ?? undefined} precision={0} style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item name="tax_deduction_rate" label="Tax deduction %">
             <InputNumber min={0} max={100} style={{ width: '100%' }} addonAfter="%" />

@@ -9,7 +9,7 @@ import PrintTemplate from '../../components/PrintTemplate';
 import XLSX from 'xlsx-js-style';
 
 const SalesInvoices: React.FC = () => {
-  const { currentCompany, companies, user, fiscalYear, minimizeModal } = useApp();
+  const { currentCompany, companies, user, fiscalYear, minimizeModal, globalRefreshKey } = useApp();
   const location = useLocation();
   const navigate = useNavigate();
   const isGst = currentCompany?.is_gst_enabled === 1;
@@ -67,7 +67,7 @@ const SalesInvoices: React.FC = () => {
         loadItems();
       }
     }
-  }, [currentCompany, location.pathname, fiscalYear]);
+  }, [currentCompany, location.pathname, fiscalYear, globalRefreshKey]);
 
   const [selectedCustomerInfo, setSelectedCustomerInfo] = useState<any>(null);
   const [isPreviewVisible, setIsPreviewVisible] = useState(false);
@@ -99,6 +99,8 @@ const SalesInvoices: React.FC = () => {
   }, [isPreviewVisible]);
 
   const handleEdit = async (record: any) => {
+    loadItems();
+    loadCustomers();
     const hide = message.loading(`Fetching ${docLabel.toLowerCase()} details...`, 0);
     try {
       const result = await (window as any).electronAPI.db.salesInvoices.getById(record.id);
@@ -315,7 +317,7 @@ const SalesInvoices: React.FC = () => {
       else notification.error({ message: 'Error', description: result.error || `Failed to update ${docLabel.toLowerCase()}`, duration: 0 });
     } else {
       const result = await (window as any).electronAPI.db.salesInvoices.create(invoiceData);
-      if (result.success) message.success(`${docLabel} created successfully`);
+      if (result.success) message.success(`${docLabel} ${result.data?.invoice_number || ''} created successfully`);
       else notification.error({ message: 'Error', description: result.error || `Failed to create ${docLabel.toLowerCase()}`, duration: 0 });
     }
     setModalVisible(false);
@@ -650,6 +652,8 @@ const SalesInvoices: React.FC = () => {
                   id: editingInvoice ? `inv-edit-${editingInvoice.id}` : 'inv-new',
                   title: editingInvoice ? `Edit ${docLabel} ${invNum}` : `New ${docLabel} ${invNum}`,
                   onRestore: () => {
+                    loadItems();
+                    loadCustomers();
                     setEditingInvoice(editingInvoice);
                     setModalVisible(true);
                   }

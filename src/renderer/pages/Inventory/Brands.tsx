@@ -4,7 +4,7 @@ import { PlusOutlined, EditOutlined, DeleteOutlined, LockOutlined } from '@ant-d
 import { useApp } from '../../context/AppContext';
 
 const Brands: React.FC = () => {
-  const { user } = useApp();
+  const { user, globalRefreshKey } = useApp();
   const [brands, setBrands] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
@@ -38,7 +38,7 @@ const Brands: React.FC = () => {
 
   useEffect(() => {
     loadBrands();
-  }, []);
+  }, [globalRefreshKey]);
 
   const loadBrands = async () => {
     setLoading(true);

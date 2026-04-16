@@ -7,7 +7,7 @@ import dayjs from 'dayjs';
 import { parseExcelToRows, getCol, getColNum } from '../../utils/excelImport';
 
 const Customers: React.FC = () => {
-  const { currentCompany, user, minimizeModal } = useApp();
+  const { currentCompany, user, globalRefreshKey, minimizeModal } = useApp();
   const location = useLocation();
   const [customers, setCustomers] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -51,13 +51,9 @@ const Customers: React.FC = () => {
 
   useEffect(() => {
     if (currentCompany) {
-      if (location.pathname === '/sales/customers') {
-        loadCustomers();
-      } else if (customers.length === 0) {
-        loadCustomers();
-      }
+      loadCustomers();
     }
-  }, [currentCompany, location.pathname]);
+  }, [currentCompany, globalRefreshKey]);
 
   const loadCustomers = async () => {
     if (!currentCompany) return;

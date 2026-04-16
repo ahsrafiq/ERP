@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Layout as AntLayout, Menu, Avatar, Dropdown, Select, Space, Typography } from 'antd';
+import { Layout as AntLayout, Menu, Avatar, Dropdown, Select, Space, Typography, Button, message } from 'antd';
 import {
   DashboardOutlined,
   UserOutlined,
@@ -17,6 +17,7 @@ import {
   FileSearchOutlined,
   CloseOutlined,
   CalendarOutlined,
+  SyncOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
@@ -44,7 +45,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     logout,
     minimizedModals,
     restoreModal,
-    removeMinimizedModal
+    removeMinimizedModal,
+    triggerGlobalRefresh
   } = useApp();
 
   // Load company logo as base64 whenever logo_path changes
@@ -82,10 +84,11 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     starts.sort((a, b) => a - b);
 
     return starts.map((startYear) => {
-      const endYY = String((startYear + 1) % 100).padStart(2, '0');
+      const endYear = startYear + 1;
+      const value = endYear % 100;
       return {
-        value: startYear % 100,
-        label: `${startYear}\u2013${endYY}`,
+        value,
+        label: `${startYear}\u2013${String(endYear % 100).padStart(2, '0')}`,
       };
     });
   }, [defaultFyOptions, fiscalYear]);
@@ -277,7 +280,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             icon={!logoDataUrl && <h2 style={{ fontSize: '18px', margin: 0 }}>{currentCompany?.name?.[0].toUpperCase() || 'E'}</h2>}
             style={{ flexShrink: 0 }}
           />
-          {!collapsed && <h2 style={{ whiteSpace: 'nowrap', overflow: 'hidden', fontSize: '18px', margin: 0 }}>{currentCompany?.name || 'ERP'}</h2>}
+          {!collapsed && <h2 style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: '15px', margin: 0, flex: 1 }}>{currentCompany?.name || 'ERP'}</h2>}
         </div>
         <Menu
           mode="inline"
@@ -321,6 +324,18 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 options={fyOptions}
               />
             </Space>
+            <Button 
+              type="text" 
+              icon={<SyncOutlined />} 
+              onClick={() => {
+                triggerGlobalRefresh();
+                message.success('System data refreshed', 1);
+              }}
+              style={{ marginLeft: 16 }}
+              title="Refresh Data"
+            >
+              Refresh
+            </Button>
           </div>
             <Space size="large">
               <Dropdown menu={{ items: userMenuItems, onClick: handleUserMenuClick }} placement="bottomRight">

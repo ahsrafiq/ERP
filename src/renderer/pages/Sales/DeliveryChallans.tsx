@@ -9,7 +9,7 @@ import PrintTemplate from '../../components/PrintTemplate';
 import XLSX from 'xlsx-js-style';
 
 const DeliveryChallans: React.FC = () => {
-    const { currentCompany, companies, user, fiscalYear, minimizeModal } = useApp();
+    const { currentCompany, companies, user, fiscalYear, minimizeModal, globalRefreshKey } = useApp();
     const navigate = useNavigate();
     const location = useLocation();
     const docLabel = currentCompany?.is_gst_enabled ? 'Invoice' : 'Bill';
@@ -21,6 +21,7 @@ const DeliveryChallans: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [modalVisible, setModalVisible] = useState(false);
     const [editingChallan, setEditingChallan] = useState<any>(null);
+    const [defaultChallanNumber, setDefaultChallanNumber] = useState<string>('');
     const [form] = Form.useForm();
     const [printData, setPrintData] = useState<any>(null);
     const [isPreviewVisible, setIsPreviewVisible] = useState(false);
@@ -137,7 +138,7 @@ const DeliveryChallans: React.FC = () => {
                 loadBrands();
             }
         }
-    }, [currentCompany, location.pathname, fiscalYear]);
+    }, [currentCompany, location.pathname, fiscalYear, globalRefreshKey]);
 
     useEffect(() => {
         if (location.state?.editChallanId && customers.length > 0 && items.length > 0) {
@@ -236,6 +237,7 @@ const DeliveryChallans: React.FC = () => {
             try {
                 const res = await (window as any).electronAPI.db.deliveryChallans.getNextNumber(currentCompany.id, fiscalYear);
                 if (res.success) {
+                    setDefaultChallanNumber(res.data);
                     form.setFieldsValue({
                         challan_number: res.data,
                         challan_date: dayjs(),
@@ -289,17 +291,31 @@ const DeliveryChallans: React.FC = () => {
         }
     };
 
-    const doCreateInvoiceFromChallan = async (challanId: number) => {
+    const doCreateInvoiceFromChallan = async (challanId: number, force: boolean = false) => {
         try {
-            const result = await (window as any).electronAPI.db.salesInvoices.createFromChallan(challanId, user?.id, fiscalYear);
+            const result = await (window as any).electronAPI.db.salesInvoices.createFromChallan(challanId, user?.id, fiscalYear, force);
             if (result.success && result.data) {
                 message.success(`${docLabel} ${result.data.invoice_number} created from challan`);
                 navigate('/sales/invoices');
+            } else if (result.error === 'ALREADY_EXISTS') {
+                Modal.confirm({
+                    title: 'Invoice already exists',
+                    content: `An invoice (${result.existingNumber}) has already been created for this delivery challan by another user. Do you still want to create another one?`,
+                    okText: 'Yes, create duplicate',
+                    cancelText: 'Cancel',
+                    onOk: () => doCreateInvoiceFromChallan(challanId, true),
+                });
             } else {
                 notification.error({ message: 'Error', description: result.error || `Failed to create ${docLabel.toLowerCase()}`, duration: 0 });
+                if (result.code === 'CONFLICT' || (result.error && result.error.includes('already created'))) {
+                    loadChallans();
+                }
             }
         } catch (error: any) {
             notification.error({ message: 'Error', description: error.message || `Failed to create ${docLabel.toLowerCase()}`, duration: 0 });
+            if (error.message && error.message.includes('already created')) {
+                loadChallans();
+            }
         }
     };
 
@@ -370,6 +386,7 @@ const DeliveryChallans: React.FC = () => {
                 challan_date: values.challan_date.format('YYYY-MM-DD'),
                 created_by: user?.id,
                 terms_and_conditions: JSON.stringify((values.terms_and_conditions || []).filter((t: string) => t?.trim())),
+                isDefaultNumber: !editingChallan && values.challan_number === defaultChallanNumber,
             };
 
             // Ensure each item has brand (text) for backend; total quantity
@@ -397,7 +414,7 @@ const DeliveryChallans: React.FC = () => {
             } else {
                 const result = await (window as any).electronAPI.db.deliveryChallans.create(challanData);
                 if (result.success) {
-                    message.success('Delivery Challan created successfully');
+                    message.success(`Delivery Challan ${result.data?.challan_number || ''} created successfully`);
                     setModalVisible(false);
                     setEditingChallan(null);
                     loadChallans();

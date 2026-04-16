@@ -46,6 +46,8 @@ interface AppContextType {
   minimizeModal: (modal: any) => void;
   restoreModal: (modal: { id: string; onRestore?: () => void }) => void;
   removeMinimizedModal: (id: string) => void;
+  globalRefreshKey: number;
+  triggerGlobalRefresh: () => void;
 }
 
 export const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -64,30 +66,50 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         if (n >= 0 && n <= 99) return n;
       }
     } catch (_) { }
-    return new Date().getFullYear() % 100;
+    const now = new Date();
+    const currYear = now.getFullYear();
+    const currMonth = now.getMonth() + 1; // 1-12
+    // If July or later, the suffix is for the next calendar year
+    const suffix = currMonth >= 7 ? (currYear + 1) : currYear;
+    return suffix % 100;
   });
   const setFiscalYear = (year: number) => {
     setFiscalYearState(year);
     localStorage.setItem(FISCAL_YEAR_KEY, String(year));
   };
   const [serverStatus, setServerStatus] = useState<'online' | 'offline'>('online');
+  const [globalRefreshKey, setGlobalRefreshKey] = useState<number>(0);
   const [isSettingsModalVisible, setIsSettingsModalVisible] = useState(false);
   const [appConfig, setAppConfig] = useState<any>(null);
+  const consecutiveFailures = useRef(0);
 
   useEffect(() => {
     // Load config on first mount only
     loadConfig();
 
-    // Heartbeat check every 10 seconds
+    // Trigger immediate check to avoid initial 5-second "Offline" gap
+    checkHeartbeat();
+    
+    // Heartbeat check every 5 seconds
     const interval = setInterval(async () => {
       checkHeartbeat();
-    }, 10000);
+    }, 5000);
 
     return () => {
       clearInterval(interval);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Auto-refresh data every 30 seconds if in CLIENT mode and a user is logged in
+  useEffect(() => {
+    if (appConfig?.mode === 'CLIENT' && user) {
+      const refreshInterval = setInterval(() => {
+        triggerGlobalRefresh();
+      }, 30000);
+      return () => clearInterval(refreshInterval);
+    }
+  }, [appConfig?.mode, user?.id]);
 
   useEffect(() => {
     // Listen for menu action to open settings.
@@ -115,10 +137,58 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const checkHeartbeat = async () => {
     try {
       const result = await (window as any).electronAPI.db.heartbeat();
-      setServerStatus(result.success ? 'online' : 'offline');
+      if (result.success) {
+        setServerStatus('online');
+        consecutiveFailures.current = 0;
+        if (user) syncUser(user.id);
+      } else {
+        throw new Error('Heartbeat failed');
+      }
     } catch (error) {
-      setServerStatus('offline');
+      consecutiveFailures.current += 1;
+      
+      // Only set status to offline and logout after 5 consecutive failures (~25 seconds)
+      // This allows for Master server warm-up and transient network jitter.
+      if (consecutiveFailures.current >= 5) {
+        setServerStatus('offline');
+        
+        // Auto-logout if in client mode and user is logged in
+        if (appConfig?.mode === 'CLIENT' && user) {
+          logout();
+          message.error('Connection to Master lost. You have been logged out.', 5);
+        }
+      } else {
+        console.warn(`[Heartbeat] Transient failure count: ${consecutiveFailures.current}`);
+      }
     }
+  };
+
+  const syncUser = async (userId: number) => {
+    try {
+      const result = await (window as any).electronAPI.db.users.getById(userId);
+      // In bridge mode, results are wrapped in { success, data }
+      if (!result?.success || !result?.data) return;
+      
+      const updatedUser = result.data;
+      
+      if (updatedUser.is_active === 0) {
+        logout();
+        message.warning('Your account has been deactivated or removed by an administrator.');
+        return;
+      }
+
+      // Deep compare to avoid unnecessary re-renders
+      if (JSON.stringify(updatedUser) !== JSON.stringify(user)) {
+        console.log('[SyncUser] User profile changed, updating state...', updatedUser.company_ids);
+        setUser(updatedUser);
+      }
+    } catch (error) {
+      // Ignore background sync errors to avoid flickering
+    }
+  };
+
+  const triggerGlobalRefresh = () => {
+    setGlobalRefreshKey(prev => prev + 1);
   };
 
   const saveSettings = async (values: any) => {
@@ -137,7 +207,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (serverStatus === 'online') {
       loadCompanies();
     }
-  }, [serverStatus]);
+    // Listen for changes in user's company assignments to auto-refresh list
+  }, [serverStatus, user?.id, JSON.stringify(user?.company_ids), globalRefreshKey]);
 
   // Clear minimized modals when company changes to avoid conflicts
   useEffect(() => {
@@ -148,13 +219,29 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     try {
       const result = await (window as any).electronAPI.db.companies.getAll();
       if (result.success && result.data) {
-        setCompanies(result.data);
-        if (result.data.length > 0 && !currentCompany) {
-          setCurrentCompany(result.data[0]);
-        } else if (currentCompany) {
-          // Refresh currentCompany with the latest data (e.g. logo_path changes)
-          const updated = result.data.find((c: any) => c.id === currentCompany.id);
-          if (updated) setCurrentCompany(updated);
+        const allFetched = result.data as Company[];
+        console.log('[LoadCompanies] Fetched', allFetched.length, 'companies from server');
+        
+        // Filter based on user access
+        let allowedCompanies = allFetched;
+        if (user && user.role !== 'admin' && user.role_id !== 1) {
+          const allowedIds = user.company_ids || [];
+          allowedCompanies = allFetched.filter(c => allowedIds.includes(c.id));
+        }
+
+        setCompanies(allowedCompanies);
+
+        // Update currentCompany if invalid or missing
+        if (allowedCompanies.length > 0) {
+          if (!currentCompany || !allowedCompanies.find(c => c.id === currentCompany.id)) {
+            setCurrentCompany(allowedCompanies[0]);
+          } else {
+            // Refresh details of the current company
+            const updated = allowedCompanies.find(c => c.id === currentCompany.id);
+            if (updated) setCurrentCompany(updated);
+          }
+        } else {
+          setCurrentCompany(null);
         }
       }
     } catch (error) {
@@ -165,28 +252,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const login = async (username: string, password?: string): Promise<boolean> => {
     const result = await (window as any).electronAPI.db.auth.login(username, password);
     if (result.success && result.data) {
-      const userData = result.data;
-      setUser(userData);
-
-      // Filter companies based on user's assigned companies
-      if (userData.role === 'admin' || userData.role_id === 1) {
-        loadCompanies(); // Reloads all
-      } else {
-        // Filter companies
-        const allowedIds = userData.company_ids || [];
-        if (allowedIds.length > 0) {
-          const allowedCompanies = companies.filter(c => allowedIds.includes(c.id));
-          setCompanies(allowedCompanies);
-          if (allowedCompanies.length > 0) {
-            setCurrentCompany(allowedCompanies[0]);
-          } else {
-            setCurrentCompany(null);
-          }
-        } else {
-          setCompanies([]);
-          setCurrentCompany(null);
-        }
-      }
+      setUser(result.data);
+      // loadCompanies is now triggered by the useEffect on [user?.id]
       return true;
     }
     if (result.error) {
@@ -234,7 +301,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   return (
     <AppContext.Provider value={{
       currentCompany, setCurrentCompany, companies, setCompanies, user, fiscalYear, setFiscalYear, login, logout,
-      minimizedModals, minimizeModal, restoreModal, removeMinimizedModal
+      minimizedModals, minimizeModal, restoreModal, removeMinimizedModal, globalRefreshKey, triggerGlobalRefresh
     }}>
       {serverStatus === 'offline' && (
         <Alert
@@ -256,7 +323,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           type="error"
           showIcon
           banner
-          style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 1000, height: 'auto' }}
+          style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 2000, height: 'auto' }}
         />
       )}
 

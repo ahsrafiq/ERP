@@ -31,13 +31,12 @@ const Users: React.FC = () => {
 
   useEffect(() => {
     loadUsers();
-  }, [currentCompany]);
+  }, []);
 
   const loadUsers = async () => {
-    if (!currentCompany) return;
     setLoading(true);
     try {
-      const result = await (window as any).electronAPI.db.users.getAll(currentCompany.id);
+      const result = await (window as any).electronAPI.db.users.getAll();
       if (result.success) {
         setUsers(result.data || []);
       }

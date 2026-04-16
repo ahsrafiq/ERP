@@ -8,7 +8,7 @@ import { useApp } from '../../context/AppContext';
 import { filterRowsByOperationalFiscalYear } from '../../utils/fiscalYearFilter';
 
 const AdjustmentNotes: React.FC = () => {
-    const { currentCompany, user, fiscalYear, minimizeModal } = useApp();
+    const { currentCompany, user, fiscalYear, minimizeModal, globalRefreshKey } = useApp();
     const location = useLocation();
     
     const [notes, setNotes] = useState<any[]>([]);
@@ -60,7 +60,7 @@ const AdjustmentNotes: React.FC = () => {
             loadItems();
             loadBrands();
         }
-    }, [currentCompany, location.pathname, fiscalYear]);
+    }, [currentCompany, location.pathname, fiscalYear, globalRefreshKey]);
 
     const loadNotes = async () => {
         if (!currentCompany) return;
@@ -289,9 +289,9 @@ const AdjustmentNotes: React.FC = () => {
                 }}
                 maskClosable={true}
                 onOk={() => noteStep === 1 ? null : form.submit()} 
-                width={noteStep === 1 ? 500 : 800} 
+                width={noteStep === 1 ? 600 : 800} 
                 footer={noteStep === 1 ? null : [
-                    <Button key="back" onClick={() => !editingNote && setNoteStep(1)}>Change Type</Button>,
+                    <Button key="back" onClick={() => setNoteStep(1)}>Change Type</Button>,
                     <Button key="cancel" onClick={() => setModalVisible(false)}>Cancel</Button>,
                     <Button key="submit" type="primary" onClick={() => form.submit()}>Save</Button>
                 ]}
@@ -320,33 +320,70 @@ const AdjustmentNotes: React.FC = () => {
                 }
             >
                 {noteStep === 1 ? (
-                    <div style={{ padding: '20px 0', textAlign: 'center' }}>
-                        <Title level={4} style={{ marginBottom: 24 }}>Select Adjustment Type</Title>
-                        <Space size="large">
+                    <div style={{ padding: '30px 0', textAlign: 'center' }}>
+                        <Title level={4} style={{ marginBottom: 32 }}>Select Adjustment Type</Title>
+                        <Space size={32}>
                             <Button 
                                 type="primary" 
                                 size="large" 
-                                style={{ width: 180, height: 100, fontSize: 16, background: '#52c41a', borderColor: '#52c41a' }}
+                                style={{ 
+                                    width: 220, 
+                                    height: 140, 
+                                    background: '#52c41a', 
+                                    borderColor: '#52c41a',
+                                    borderRadius: 12,
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    justifyContent: 'center',
+                                    alignItems: 'center',
+                                    boxShadow: '0 4px 12px rgba(82, 196, 26, 0.25)',
+                                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                                    cursor: 'pointer'
+                                }}
+                                className="adj-type-btn"
                                 onClick={() => {
                                     form.setFieldsValue({ adjustment_type: 'IN' });
                                     setNoteStep(2);
                                 }}
                             >
-                                Adjustment IN<br/><span style={{ fontSize: 12, opacity: 0.8 }}>(Increase Stock)</span>
+                                <span style={{ fontSize: 20, fontWeight: 700, marginBottom: 8, display: 'block' }}>Adjustment IN</span>
+                                <span style={{ fontSize: 14, opacity: 0.9 }}>(Increase Stock)</span>
                             </Button>
                             <Button 
                                 type="primary" 
                                 danger 
                                 size="large" 
-                                style={{ width: 180, height: 100, fontSize: 16 }}
+                                style={{ 
+                                    width: 220, 
+                                    height: 140, 
+                                    borderRadius: 12,
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    justifyContent: 'center',
+                                    alignItems: 'center',
+                                    boxShadow: '0 4px 12px rgba(255, 77, 79, 0.25)',
+                                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                                    cursor: 'pointer'
+                                }}
+                                className="adj-type-btn"
                                 onClick={() => {
                                     form.setFieldsValue({ adjustment_type: 'OUT' });
                                     setNoteStep(2);
                                 }}
                             >
-                                Adjustment OUT<br/><span style={{ fontSize: 12, opacity: 0.8 }}>(Decrease Stock)</span>
+                                <span style={{ fontSize: 20, fontWeight: 700, marginBottom: 8, display: 'block' }}>Adjustment OUT</span>
+                                <span style={{ fontSize: 14, opacity: 0.9 }}>(Decrease Stock)</span>
                             </Button>
                         </Space>
+                        <style>{`
+                            .adj-type-btn:hover {
+                                transform: translateY(-5px) scale(1.02);
+                                filter: brightness(1.05);
+                            }
+                            .adj-type-btn:active {
+                                transform: translateY(0) scale(0.98);
+                            }
+                        `}</style>
                     </div>
                 ) : (
                     <Form form={form} layout="vertical" onFinish={handleSave}>
@@ -354,7 +391,7 @@ const AdjustmentNotes: React.FC = () => {
                             <Tag color={form.getFieldValue('adjustment_type') === 'IN' ? 'green' : 'red'} style={{ fontSize: 14, padding: '4px 12px' }}>
                                 {form.getFieldValue('adjustment_type') === 'IN' ? 'ADJUSTMENT IN' : 'ADJUSTMENT OUT'}
                             </Tag>
-                            <Text type="secondary">Type selection locked. Use 'Change Type' to revert.</Text>
+                            <Text type="secondary">To change the adjustment type, use the 'Change Type' button below.</Text>
                         </div>
 
                         <Space align="start" wrap>

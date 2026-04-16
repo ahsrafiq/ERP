@@ -7,6 +7,8 @@
   "license": "MIT",
   "scripts": {
     "dev": "npm run build:main && concurrently \"npm run dev:renderer\" \"wait-on tcp:127.0.0.1:5173 && cross-env NODE_ENV=development electron dist/main.js\"",
+    "dev:master": "npm run build:main && concurrently \"npm run dev:renderer\" \"wait-on tcp:127.0.0.1:5173 && cross-env NODE_ENV=development electron dist/main.js --is-master\"",
+    "dev:client": "wait-on tcp:127.0.0.1:5173 && cross-env NODE_ENV=development electron dist/main.js --is-client",
     "dev:main": "tsc -p tsconfig.main.json && cross-env NODE_ENV=development electron dist/main.js",
     "dev:renderer": "vite --host 127.0.0.1",
     "build": "npm run build:main && npm run build:renderer",

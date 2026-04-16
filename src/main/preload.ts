@@ -58,6 +58,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       delete: (id: number) => ipcRenderer.invoke('db:items:delete', id),
       deleteMultiple: (ids: number[]) => ipcRenderer.invoke('db:items:deleteMultiple', ids),
       deleteAll: () => ipcRenderer.invoke('db:items:deleteAll'),
+      getNextCode: () => ipcRenderer.invoke('db:items:getNextCode'),
     },
     salesInvoices: {
       getAll: (companyId: number, filters?: any) => ipcRenderer.invoke('db:salesInvoices:getAll', companyId, filters),
