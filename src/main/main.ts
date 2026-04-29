@@ -85,9 +85,17 @@ function performAutomaticDatabaseBackup(now: Date) {
     fs.mkdirSync(targetDir, { recursive: true });
     const targetPath = path.join(targetDir, 'erp.db');
     fs.copyFileSync(dbPath, targetPath);
-    console.log('[AutoBackup] Database backed up to:', targetPath);
+
+    // Also backup the uploads folder (logos, letterheads, etc.)
+    const uploadsPath = path.join(app.getPath('userData'), 'uploads');
+    if (fs.existsSync(uploadsPath)) {
+      const targetUploadsPath = path.join(targetDir, 'uploads');
+      fs.cpSync(uploadsPath, targetUploadsPath, { recursive: true });
+    }
+
+    console.log('[AutoBackup] Full data backup created at:', targetDir);
   } catch (err) {
-    console.error('[AutoBackup] Failed to back up database:', err);
+    console.error('[AutoBackup] Failed to back up data:', err);
   }
 }
 
@@ -170,7 +178,7 @@ function createMenu() {
         },
         { type: 'separator' },
         {
-          label: 'Backup Database',
+          label: 'Backup All Data (DB + Files)',
           click: async () => {
             if (!isMasterMode()) {
               dialog.showMessageBox({
@@ -181,20 +189,36 @@ function createMenu() {
               return;
             }
 
+            const now = new Date();
+            const datePart = now.toISOString().slice(0, 10);
+            const timePart = now.toTimeString().slice(0, 8).replace(/:/g, '-');
+            const defaultFolderName = `ERP_Full_Backup_${datePart}_${timePart}`;
+
             const { filePath } = await dialog.showSaveDialog({
-              title: 'Backup Database',
-              defaultPath: path.join(app.getPath('downloads'), `erp_backup_${new Date().toISOString().split('T')[0]}.db`),
-              filters: [{ name: 'SQLite Database', extensions: ['db'] }],
+              title: 'Create Backup Folder',
+              defaultPath: path.join(app.getPath('downloads'), defaultFolderName),
+              buttonLabel: 'Create Backup Here',
             });
 
             if (filePath) {
               try {
+                const targetDir = filePath;
+                fs.mkdirSync(targetDir, { recursive: true });
+
+                // Backup DB
                 const dbPath = path.join(app.getPath('userData'), 'database', 'erp.db');
-                fs.copyFileSync(dbPath, filePath);
+                fs.copyFileSync(dbPath, path.join(targetDir, 'erp.db'));
+
+                // Backup Uploads
+                const uploadsPath = path.join(app.getPath('userData'), 'uploads');
+                if (fs.existsSync(uploadsPath)) {
+                  fs.cpSync(uploadsPath, path.join(targetDir, 'uploads'), { recursive: true });
+                }
+
                 dialog.showMessageBox({
                   type: 'info',
                   title: 'Backup Success',
-                  message: 'Database backed up successfully.',
+                  message: `Full backup created successfully in:\n${targetDir}`,
                 });
               } catch (error: any) {
                 dialog.showErrorBox('Backup Failed', error.message);
@@ -203,21 +227,97 @@ function createMenu() {
           },
         },
         {
-          label: 'Restore Database',
+          label: 'Backup Database Only (.db file)',
           click: async () => {
             if (!isMasterMode()) {
-              dialog.showMessageBox({
-                type: 'info',
-                title: 'Master Only',
-                message: 'Database restore is only available on the Master machine.',
-              });
+              dialog.showMessageBox({ type: 'info', title: 'Master Only', message: 'Database backup is only available on the Master machine.' });
+              return;
+            }
+
+            const { filePath } = await dialog.showSaveDialog({
+              title: 'Backup Database',
+              defaultPath: path.join(app.getPath('downloads'), `erp_db_backup_${new Date().toISOString().split('T')[0]}.db`),
+              filters: [{ name: 'SQLite Database', extensions: ['db'] }],
+            });
+
+            if (filePath) {
+              try {
+                const dbPath = path.join(app.getPath('userData'), 'database', 'erp.db');
+                fs.copyFileSync(dbPath, filePath);
+                dialog.showMessageBox({ type: 'info', title: 'Backup Success', message: 'Database file backed up successfully.' });
+              } catch (error: any) {
+                dialog.showErrorBox('Backup Failed', error.message);
+              }
+            }
+          },
+        },
+        {
+          label: 'Restore All Data (DB + Files)',
+          click: async () => {
+            if (!isMasterMode()) {
+              dialog.showMessageBox({ type: 'info', title: 'Master Only', message: 'Database restore is only available on the Master machine.' });
               return;
             }
 
             const { response } = await dialog.showMessageBox({
               type: 'warning',
               title: 'Confirm Restore',
-              message: 'Restoring will overwrite all current data. Are you sure?',
+              message: 'Restoring will overwrite all current data (DB and Files). Are you sure?',
+              buttons: ['Cancel', 'Restore'],
+              defaultId: 0,
+            });
+
+            if (response === 1) {
+              const { filePaths } = await dialog.showOpenDialog({
+                title: 'Select Backup Folder',
+                properties: ['openDirectory'],
+              });
+
+              if (filePaths && filePaths.length > 0) {
+                try {
+                  const selectedPath = filePaths[0];
+                  const dbToRestore = path.join(selectedPath, 'erp.db');
+                  const uploadsToRestore = path.join(selectedPath, 'uploads');
+                  
+                  if (!fs.existsSync(dbToRestore)) {
+                    throw new Error('Selected folder does not contain erp.db');
+                  }
+
+                  const dbPath = path.join(app.getPath('userData'), 'database', 'erp.db');
+                  closeDatabase();
+                  fs.copyFileSync(dbToRestore, dbPath);
+
+                  if (fs.existsSync(uploadsToRestore)) {
+                    const targetUploadsPath = path.join(app.getPath('userData'), 'uploads');
+                    if (fs.existsSync(targetUploadsPath)) {
+                      fs.rmSync(targetUploadsPath, { recursive: true, force: true });
+                    }
+                    fs.cpSync(uploadsToRestore, targetUploadsPath, { recursive: true });
+                  }
+
+                  dialog.showMessageBox({ type: 'info', title: 'Restore Success', message: 'All data restored successfully. The application will now restart.' }).then(() => {
+                    app.relaunch();
+                    app.exit();
+                  });
+                } catch (error: any) {
+                  dialog.showErrorBox('Restore Failed', error.message);
+                }
+              }
+            }
+          },
+        },
+        {
+          label: 'Restore Database Only (.db file)',
+          click: async () => {
+            if (!isMasterMode()) {
+              dialog.showMessageBox({ type: 'info', title: 'Master Only', message: 'Database restore is only available on the Master machine.' });
+              return;
+            }
+
+            const { response } = await dialog.showMessageBox({
+              type: 'warning',
+              title: 'Confirm Restore',
+              message: 'Restoring will overwrite your current database. Files will remain unchanged. Are you sure?',
               buttons: ['Cancel', 'Restore'],
               defaultId: 0,
             });
@@ -231,16 +331,11 @@ function createMenu() {
 
               if (filePaths && filePaths.length > 0) {
                 try {
-                const dbPath = path.join(app.getPath('userData'), 'database', 'erp.db');
-                // Close singleton connection before overwriting the file
-                closeDatabase();
-                fs.copyFileSync(filePaths[0], dbPath);
+                  const dbPath = path.join(app.getPath('userData'), 'database', 'erp.db');
+                  closeDatabase();
+                  fs.copyFileSync(filePaths[0], dbPath);
 
-                  dialog.showMessageBox({
-                    type: 'info',
-                    title: 'Restore Success',
-                    message: 'Database restored successfully. The application will now restart.',
-                  }).then(() => {
+                  dialog.showMessageBox({ type: 'info', title: 'Restore Success', message: 'Database restored successfully. The application will now restart.' }).then(() => {
                     app.relaunch();
                     app.exit();
                   });
@@ -373,15 +468,18 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle('file:print', (event) => {
-    console.log('[Print Handler] Starting print dialog...');
-    try {
-      event.sender.print({ silent: false, printBackground: true });
-      console.log('[Print Handler] Print dialog opened successfully');
-      return { success: true };
-    } catch (error) {
-      console.error('[Print Handler] Failed to open print dialog:', error);
-      return { success: false, error: String(error) };
-    }
+    return new Promise((resolve) => {
+      console.log('[Print Handler] Starting print dialog...');
+      try {
+        event.sender.print({ silent: false, printBackground: true }, (success: boolean, failureReason: string) => {
+          console.log('[Print Handler] Print dialog closed', { success, failureReason });
+          resolve({ success, error: failureReason });
+        });
+      } catch (error) {
+        console.error('[Print Handler] Failed to open print dialog:', error);
+        resolve({ success: false, error: String(error) });
+      }
+    });
   });
 
   try {
@@ -433,8 +531,11 @@ ipcMain.handle('file:printToPDF', async (event) => {
     try {
       const data = await event.sender.printToPDF({
         printBackground: true,
-        margins: { marginType: 'none' },
+        margins: { marginType: 'custom', top: 0.5, bottom: 0.8, left: 0.5, right: 0.5 },
         pageSize: 'A4',
+        displayHeaderFooter: true,
+        headerTemplate: '<span></span>',
+        footerTemplate: '<div style="font-size:10px; width:100%; text-align:right; padding-right:20px;"><span class="pageNumber"></span> / <span class="totalPages"></span></div>',
       });
       fs.writeFileSync(filePath, data);
       return { success: true, filePath };
@@ -466,8 +567,11 @@ ipcMain.handle('file:captureAndSave', async (event, filePath: string, heightMM?:
       : 'A4' as const;
     const data = await event.sender.printToPDF({
       printBackground: true,
-      margins: { marginType: 'none' },
+      margins: { marginType: 'custom', top: 0.5, bottom: 0.8, left: 0.5, right: 0.5 },
       pageSize,
+      displayHeaderFooter: true,
+      headerTemplate: '<span></span>',
+      footerTemplate: '<div style="font-size:10px; width:100%; text-align:right; padding-right:20px;"><span class="pageNumber"></span> / <span class="totalPages"></span></div>',
     });
     fs.writeFileSync(filePath, data);
     return { success: true, filePath };
@@ -500,8 +604,11 @@ ipcMain.handle('file:printHtmlToPDF', async (_event, html: string, filePath: str
       : 'A4';
     const pdfData = await win.webContents.printToPDF({
       printBackground: true,
-      margins: { marginType: 'none' },
+      margins: { marginType: 'custom', top: 0.5, bottom: 0.8, left: 0.5, right: 0.5 },
       pageSize,
+      displayHeaderFooter: true,
+      headerTemplate: '<span></span>',
+      footerTemplate: '<div style="font-size:10px; width:100%; text-align:right; padding-right:20px;"><span class="pageNumber"></span> / <span class="totalPages"></span></div>',
     });
     fs.writeFileSync(filePath, pdfData);
     return { success: true, filePath };
@@ -515,11 +622,11 @@ ipcMain.handle('file:printHtmlToPDF', async (_event, html: string, filePath: str
 
 // IPC Handlers
 ipcMain.handle('file:save', async (event, base64Data: string, fileName: string, subDir: string) => {
-  return fileHandlers.saveFile(base64Data, fileName, subDir);
+  return dbBridge.files.saveFile(base64Data, fileName, subDir);
 });
 
 ipcMain.handle('file:readAsDataURL', async (event, path: string) => {
-  return fileHandlers.readAsDataURL(path);
+  return dbBridge.files.readAsDataURL(path);
 });
 
 ipcMain.handle('db:users:getAll', async (event, companyId?: number) => {
@@ -699,12 +806,12 @@ ipcMain.handle('db:salesInvoices:delete', async (event, id: number) => {
   return dbBridge.salesInvoices.delete(id);
 });
 
-ipcMain.handle('db:salesInvoices:createFromQuotation', async (event, quotationId: number, createdBy?: number) => {
-  return dbBridge.salesInvoices.createFromQuotation(quotationId, createdBy);
+ipcMain.handle('db:salesInvoices:createFromQuotation', async (event, quotationId: number, createdBy?: number, fiscalYear?: number | string, force: boolean = false) => {
+  return dbBridge.salesInvoices.createFromQuotation(quotationId, createdBy, fiscalYear, force);
 });
 
-ipcMain.handle('db:salesInvoices:createFromChallan', async (event, challanId: number, createdBy?: number) => {
-  return dbBridge.salesInvoices.createFromChallan(challanId, createdBy);
+ipcMain.handle('db:salesInvoices:createFromChallan', async (event, challanId: number, createdBy?: number, fiscalYear?: number | string, force: boolean = false) => {
+  return dbBridge.salesInvoices.createFromChallan(challanId, createdBy, fiscalYear, force);
 });
 
 ipcMain.handle('db:salesInvoices:getSalesByItem', async (event, companyId: number, filters?: any) => {
@@ -767,12 +874,16 @@ ipcMain.handle('db:deliveryChallans:delete', async (event, id: number) => {
   return dbBridge.deliveryChallans.delete(id);
 });
 
-ipcMain.handle('db:deliveryChallans:createFromInvoice', async (event, invoiceId: number, createdBy?: number) => {
-  return dbBridge.deliveryChallans.createFromInvoice(invoiceId, createdBy);
+ipcMain.handle('db:deliveryChallans:createFromInvoice', async (event, invoiceId: number, createdBy?: number, fiscalYear?: number | string, force: boolean = false) => {
+  return dbBridge.deliveryChallans.createFromInvoice(invoiceId, createdBy, fiscalYear, force);
 });
 
-ipcMain.handle('db:deliveryChallans:createFromQuotation', async (event, quotationId: number, createdBy?: number, selectedItems?: any[], poNumber?: string) => {
-  return dbBridge.deliveryChallans.createFromQuotation(quotationId, createdBy, selectedItems, poNumber);
+ipcMain.handle('db:deliveryChallans:createFromQuotation', async (event, quotationId: number, createdBy?: number, selectedItems?: any[], poNumber?: string, fiscalYear?: number | string, force: boolean = false) => {
+  return dbBridge.deliveryChallans.createFromQuotation(quotationId, createdBy, selectedItems, poNumber, fiscalYear, force);
+});
+
+ipcMain.handle('db:deliveryChallans:getChallansByItem', async (event, companyId: number, filters?: any) => {
+  return dbBridge.deliveryChallans.getChallansByItem(companyId, filters);
 });
 
 ipcMain.handle('db:adjustmentNotes:getAll', async (event, companyId: number, filters?: any) => {
@@ -943,6 +1054,23 @@ ipcMain.handle('db:warehouses:deleteMultiple', async (event, ids: number[]) => {
 ipcMain.handle('db:heartbeat', async () => {
   if (isMasterMode()) return { success: true };
   return apiClient.heartbeat();
+});
+
+// Settings handlers
+ipcMain.handle('db:settings:getAll', async () => {
+  return dbBridge.settings.getAll();
+});
+ipcMain.handle('db:settings:get', async (event, key: string) => {
+  return dbBridge.settings.get(key);
+});
+ipcMain.handle('db:settings:set', async (event, key: string, value: string) => {
+  return dbBridge.settings.set(key, value);
+});
+
+// App restart handler
+ipcMain.handle('app:restart', async () => {
+  app.relaunch();
+  app.exit();
 });
 
 // Config handlers

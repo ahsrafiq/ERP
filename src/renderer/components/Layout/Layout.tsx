@@ -46,7 +46,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     minimizedModals,
     restoreModal,
     removeMinimizedModal,
-    triggerGlobalRefresh
+    triggerGlobalRefresh,
+    isPurchaseEnabled
   } = useApp();
 
   // Load company logo as base64 whenever logo_path changes
@@ -154,19 +155,21 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       icon: <FileTextOutlined />,
       label: 'Adjustment Notes',
     },
-    {
-      key: 'purchase',
-      icon: <ShoppingOutlined />,
-      label: 'Purchase',
-      children: [
-        { key: '/purchase/vendors', label: 'Vendors' },
-        { key: '/purchase/invoices', label: 'Invoices' },
-      ],
-    },
+    ...(isPurchaseEnabled ? [
+      {
+        key: 'purchase',
+        icon: <ShoppingOutlined />,
+        label: 'Purchase',
+        children: [
+          { key: '/purchase/vendors', label: 'Vendors' },
+          { key: '/purchase/invoices', label: 'Invoices' },
+        ],
+      }
+    ] : []),
     {
       key: 'inventory',
       icon: <DatabaseOutlined />,
-      label: 'Stock',
+      label: 'Stock', // Always show as Stock now to be consistent with reports
       children: [
         { key: '/inventory/items', label: 'Items' },
         { key: '/inventory/brands', label: 'Brands' },
@@ -194,10 +197,11 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         { key: '/reports', label: 'All Reports' },
         { key: '/reports/sales', label: 'Sales Report' },
         { key: '/reports/sales-by-item', label: 'Sales by Item' },
-        { key: '/reports/purchase', label: 'Purchase Report' },
+        { key: '/reports/sales-by-salesperson', label: 'Sales by Sales Person' },
+        ...(isPurchaseEnabled ? [{ key: '/reports/purchase', label: 'Purchase Report' }] : []),
         { key: '/reports/inventory', label: 'Stock Report' },
         { key: '/reports/customer-ledger', label: 'Customer Ledger' },
-        { key: '/reports/vendor-ledger', label: 'Vendor Ledger' },
+        ...(isPurchaseEnabled ? [{ key: '/reports/vendor-ledger', label: 'Vendor Ledger' }] : []),
         { key: '/reports/tax', label: 'Tax Deduction Report' },
         { key: '/reports/recovery', label: 'Recovery Report' },
         { key: '/reports/expenses', label: 'Expense Report' },

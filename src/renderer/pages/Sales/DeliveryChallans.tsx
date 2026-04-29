@@ -196,11 +196,21 @@ const DeliveryChallans: React.FC = () => {
     };
 
     const actualPrint = () => {
+        // Apply capturing class to hide UI and render only print container
+        const body = document.body;
+        body.classList.add('capturing-pdf');
+        // Force reflow to ensure styles are applied
+        void body.offsetHeight;
         setTimeout(async () => {
             try {
+                // Use IPC print which returns a promise that resolves when dialog closes
                 await (window as any).electronAPI.db.files.print();
             } catch (err) {
+                console.error('IPC print failed, falling back to window.print():', err);
                 window.print();
+            } finally {
+                // Clean up class after print
+                body.classList.remove('capturing-pdf');
             }
         }, 300);
     };
@@ -280,20 +290,37 @@ const DeliveryChallans: React.FC = () => {
         const alreadyHasInvoice = record.sales_invoice_id != null && record.sales_invoice_id !== '';
         if (alreadyHasInvoice) {
             Modal.confirm({
-                title: 'Duplicate invoice',
-                content: 'This delivery challan already has an invoice. You are creating another invoice (a duplicate). Do you want to continue?',
+                title: `Duplicate ${docLabel.toLowerCase()}`,
+                content: `This delivery challan already has a ${docLabel.toLowerCase()}. You are creating another ${docLabel.toLowerCase()} (a duplicate). Do you want to continue?`,
                 okText: 'Yes, create duplicate',
                 cancelText: 'Cancel',
                 onOk: () => doCreateInvoiceFromChallan(record.id),
             });
         } else {
-            await doCreateInvoiceFromChallan(record.id);
+            Modal.confirm({
+                title: `Create ${docLabel}`,
+                content: `Are you sure you want to create a ${docLabel.toLowerCase()} from this Delivery Challan?`,
+                okText: 'Yes, Create',
+                cancelText: 'Cancel',
+                onOk: () => doCreateInvoiceFromChallan(record.id),
+            });
         }
     };
 
     const doCreateInvoiceFromChallan = async (challanId: number, force: boolean = false) => {
         try {
-            const result = await (window as any).electronAPI.db.salesInvoices.createFromChallan(challanId, user?.id, fiscalYear, force);
+            // Ensure all data is plain and serializable for IPC
+            const plainChallanId = JSON.parse(JSON.stringify(challanId));
+            const plainUserId = user?.id ? JSON.parse(JSON.stringify(user.id)) : undefined;
+            const plainFy = fiscalYear ? JSON.parse(JSON.stringify(fiscalYear)) : undefined;
+            const plainForce = Boolean(force);
+
+            const result = await (window as any).electronAPI.db.salesInvoices.createFromChallan(
+                plainChallanId,
+                plainUserId,
+                plainFy,
+                plainForce
+            );
             if (result.success && result.data) {
                 message.success(`${docLabel} ${result.data.invoice_number} created from challan`);
                 navigate('/sales/invoices');
@@ -434,6 +461,14 @@ const DeliveryChallans: React.FC = () => {
         { title: 'Customer', dataIndex: 'customer_name', key: 'customer' },
         { title: 'Date', dataIndex: 'challan_date', key: 'date', render: (d: string) => dayjs(d).format('DD/MM/YYYY') },
         { title: 'Total Qty', dataIndex: 'total_quantity', key: 'qty' },
+        {
+            title: `${docLabel} Made`,
+            key: 'invoice_made',
+            render: (_: any, record: any) => {
+                const hasInvoice = record.sales_invoice_id != null && record.sales_invoice_id !== '';
+                return hasInvoice ? <Tag color="green">Yes</Tag> : <Tag color="default">No</Tag>;
+            }
+        },
         {
             title: 'Actions',
             key: 'actions',
@@ -715,11 +750,11 @@ const DeliveryChallans: React.FC = () => {
                                                     {itemsForBrand.map((i: any) => <Select.Option key={i.id} value={i.id}>{i.name} ({i.code})</Select.Option>)}
                                                 </Select>
                                             </Form.Item>
-                                             <Form.Item {...restField} name={[name, 'unit_price']} label="Price" initialValue={0} style={{ marginBottom: 0, width: 100, flexShrink: 0 }}>
-                                                <InputNumber placeholder="Price" min={0} style={{ width: 100 }} />
-                                            </Form.Item>
                                             <Form.Item {...restField} name={[name, 'quantity']} label="Qty" rules={[{ required: true, message: 'Qty' }]} style={{ marginBottom: 0, width: 80, flexShrink: 0 }}>
                                                 <InputNumber placeholder="Qty" min={0} style={{ width: 80 }} />
+                                            </Form.Item>
+                                             <Form.Item {...restField} name={[name, 'unit_price']} label="Price" initialValue={0} style={{ marginBottom: 0, width: 100, flexShrink: 0 }}>
+                                                <InputNumber placeholder="Price" min={0} style={{ width: 100 }} />
                                             </Form.Item>
                                             <Button danger onClick={() => remove(name)} icon={<DeleteOutlined />} style={{ flexShrink: 0 }} />
                                         </div>

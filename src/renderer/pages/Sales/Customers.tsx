@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Table, Button, Space, Modal, Form, Input, InputNumber, Select, DatePicker, message, notification, Tag, Tooltip, Alert } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, DollarOutlined, WarningOutlined, MinusCircleOutlined, BoldOutlined, UploadOutlined, SearchOutlined, LockOutlined, MinusSquareOutlined, CloseOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, DeleteOutlined, DollarOutlined, WarningOutlined, MinusCircleOutlined, BoldOutlined, UploadOutlined, SearchOutlined, LockOutlined, MinusSquareOutlined, CloseOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useApp } from '../../context/AppContext';
 import { useLocation } from 'react-router-dom';
 import dayjs from 'dayjs';
 import { parseExcelToRows, getCol, getColNum } from '../../utils/excelImport';
+import { documentMatchesFiscalYearSuffix } from '../../utils/fiscalYearFilter';
 
 const Customers: React.FC = () => {
-  const { currentCompany, user, globalRefreshKey, minimizeModal } = useApp();
+  const { currentCompany, user, fiscalYear, globalRefreshKey, minimizeModal } = useApp();
   const location = useLocation();
   const [customers, setCustomers] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -53,14 +54,40 @@ const Customers: React.FC = () => {
     if (currentCompany) {
       loadCustomers();
     }
-  }, [currentCompany, globalRefreshKey]);
+  }, [currentCompany, globalRefreshKey, fiscalYear, location.pathname]);
+
+  // Auto-refresh when window gains focus (useful for multi-user/multi-window sync)
+  useEffect(() => {
+    const handleFocus = () => {
+      if (currentCompany) loadCustomers();
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [currentCompany]);
 
   const loadCustomers = async () => {
     if (!currentCompany) return;
     setLoading(true);
     try {
-      const result = await (window as any).electronAPI.db.customers.getAll(currentCompany.id);
-      if (result.success) setCustomers(result.data || []);
+      const [custRes, invRes] = await Promise.all([
+        (window as any).electronAPI.db.customers.getAll(currentCompany.id),
+        (window as any).electronAPI.db.salesInvoices.getAll(currentCompany.id),
+      ]);
+
+      if (custRes.success) {
+        const invoices = (invRes.success ? invRes.data : []) || [];
+        const customersWithRemaining = (custRes.data || []).map((c: any) => {
+          const customerInvoices = invoices.filter((inv: any) => 
+            inv.customer_id === c.id && 
+            documentMatchesFiscalYearSuffix(inv.invoice_number, fiscalYear)
+          );
+          const invoiceBalanceSum = customerInvoices.reduce((sum: number, inv: any) => sum + (Number(inv.balance) || 0), 0);
+          let remainingOpening = Math.round((Number(c.balance) - invoiceBalanceSum) * 100) / 100;
+          if (Math.abs(remainingOpening) < 0.01) remainingOpening = 0;
+          return { ...c, remaining_opening_balance: remainingOpening };
+        });
+        setCustomers(customersWithRemaining);
+      }
     } catch { notification.error({ message: 'Error', description: 'Failed to load customers', duration: 0 }); }
     finally { setLoading(false); }
   };
@@ -354,6 +381,7 @@ const Customers: React.FC = () => {
           )}
         </div>
         <Space>
+          <Button icon={<ReloadOutlined />} onClick={loadCustomers} loading={loading}>Refresh</Button>
           <Button icon={<UploadOutlined />} onClick={() => setImportFormatModal(true)}>Excel format</Button>
           {!isReadOnlySection && (
             <>
@@ -424,7 +452,16 @@ const Customers: React.FC = () => {
           <Form.Item name="credit_limit" label="Credit Limit (assigned at account opening)" rules={[{ required: true, message: 'Please set credit limit at customer opening' }]}>
             <InputNumber min={0} style={{ width: '100%' }} precision={2} placeholder="e.g. 50000" />
           </Form.Item>
-          <Form.Item name="opening_balance" label="Opening Balance" initialValue={0}>
+          <Form.Item 
+            name="opening_balance" 
+            label="Opening Balance" 
+            initialValue={0}
+            extra={editingCustomer && editingCustomer.remaining_opening_balance !== undefined ? (
+              <span style={{ color: editingCustomer.remaining_opening_balance > 0 ? '#fa8c16' : '#52c41a', fontWeight: 500 }}>
+                Remaining to settle: {editingCustomer.remaining_opening_balance.toLocaleString()}
+              </span>
+            ) : 'Initial balance at account opening'}
+          >
             <InputNumber style={{ width: '100%' }} min={0} />
           </Form.Item>
           <Form.Item name="attention_person" label="Attention Person" rules={[{ required: true, message: 'Please enter attention person' }]} tooltip="This name will appear automatically on quotations for this customer.">

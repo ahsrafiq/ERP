@@ -30,6 +30,7 @@ import StockMovementReport from './pages/Reports/StockMovementReport';
 import CustomerOutstandingReport from './pages/Reports/CustomerOutstandingReport';
 import CustomReportBuilder from './pages/Reports/CustomReportBuilder';
 import SalesByItemReport from './pages/Reports/SalesByItemReport';
+import SalesBySalesPersonReport from './pages/Reports/SalesBySalesPerson';
 import SalesQuotations from './pages/Sales/SalesQuotations';
 import DeliveryChallans from './pages/Sales/DeliveryChallans';
 import Receivables from './pages/Receivables/Receivables';
@@ -110,6 +111,7 @@ const AppContent: React.FC = () => {
       <KeepAliveRoute currentPath={location.pathname} path="/reports/balance" element={<BalanceSheetReport />} />
       <KeepAliveRoute currentPath={location.pathname} path="/reports/stock-movement" element={<StockMovementReport />} />
       <KeepAliveRoute currentPath={location.pathname} path="/reports/sales-by-item" element={<SalesByItemReport />} />
+      <KeepAliveRoute currentPath={location.pathname} path="/reports/sales-by-salesperson" element={<SalesBySalesPersonReport />} />
     </Layout>
   );
 };

@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Card, Row, Col, Button, DatePicker, Select, Space } from 'antd';
-import { FilePdfOutlined, FileExcelOutlined, PrinterOutlined, FileTextOutlined } from '@ant-design/icons';
+import { FilePdfOutlined, FileExcelOutlined, PrinterOutlined, FileTextOutlined, TeamOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
+import { useApp } from '../../context/AppContext';
 import dayjs from 'dayjs';
 
 const { RangePicker } = DatePicker;
@@ -9,6 +10,7 @@ const { Option } = Select;
 
 const Reports: React.FC = () => {
   const navigate = useNavigate();
+  const { isPurchaseEnabled } = useApp();
   const [dateRange, setDateRange] = useState<[any, any]>([
     dayjs().startOf('month'),
     dayjs().endOf('month'),
@@ -127,7 +129,18 @@ const Reports: React.FC = () => {
       route: '/reports/sales-by-item',
       available: true,
     },
-  ];
+    {
+      title: 'Sales by Sales Person',
+      description: 'Analyze salesperson performance — total revenue, invoice counts, and item breakdown',
+      icon: <TeamOutlined />,
+      type: 'sales_by_salesperson',
+      route: '/reports/sales-by-salesperson',
+      available: true,
+    },
+  ].filter(r => {
+    if (!isPurchaseEnabled && (r.type === 'purchase' || r.type === 'vendor_ledger')) return false;
+    return true;
+  });
 
   const handleGenerateReport = (report: any) => {
     if (report.route) {

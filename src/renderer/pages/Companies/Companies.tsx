@@ -152,7 +152,10 @@ const Companies: React.FC = () => {
             icon={<EditOutlined />}
             onClick={() => {
               setEditingCompany(record);
-              form.setFieldsValue(record);
+              form.setFieldsValue({
+                ...record,
+                is_gst_enabled: record.is_gst_enabled !== 0
+              });
               setModalVisible(true);
             }}
           />
@@ -350,24 +353,6 @@ const Companies: React.FC = () => {
             initialValue={false}
           >
             <Switch checkedChildren="Enabled" unCheckedChildren="Disabled" />
-          </Form.Item>
-          <Form.Item
-            noStyle
-            shouldUpdate={(prevValues, currentValues) =>
-              prevValues.is_gst_enabled !== currentValues.is_gst_enabled
-            }
-          >
-            {({ getFieldValue }) =>
-              getFieldValue('is_gst_enabled') ? (
-                <Form.Item
-                  name="gst_registration_number"
-                  label="GST Registration Number"
-                  rules={[{ required: true, message: 'Please enter GST registration number' }]}
-                >
-                  <Input placeholder="e.g., 12-345678-9" />
-                </Form.Item>
-              ) : null
-            }
           </Form.Item>
         </Form>
       </Modal>

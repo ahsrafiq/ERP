@@ -79,6 +79,7 @@ const SalesQuotations: React.FC = () => {
     const [dcSelectedItems, setDcSelectedItems] = useState<React.Key[]>([]);
     const [dcItemQuantities, setDcItemQuantities] = useState<{ [key: number]: number }>({});
     const [dcPoNumber, setDcPoNumber] = useState('');
+    const [dcForceCreate, setDcForceCreate] = useState(false);
 
     // Autocomplete suggestions
     const [validitySuggestions, setValiditySuggestions] = useState<string[]>([]);
@@ -236,15 +237,25 @@ const SalesQuotations: React.FC = () => {
         }
     };
 
-    const actualPrint = () => {
-        setTimeout(async () => {
-            try {
-                await (window as any).electronAPI.db.files.print();
-            } catch (err) {
-                window.print();
-            }
-        }, 300);
-    };
+  const actualPrint = () => {
+  // Apply capturing class to hide UI and render only print container
+  const body = document.body;
+  body.classList.add('capturing-pdf');
+  // Force reflow to ensure styles are applied
+  void body.offsetHeight;
+  setTimeout(async () => {
+    try {
+      // Use IPC print which returns a promise that resolves when dialog closes
+      await (window as any).electronAPI.db.files.print();
+    } catch (err) {
+      console.error('IPC print failed, falling back to window.print():', err);
+      window.print();
+    } finally {
+      // Clean up class after print dialog is closed
+      body.classList.remove('capturing-pdf');
+    }
+  }, 300);
+};
 
     const handleSavePDF = async () => {
         try {
@@ -307,13 +318,12 @@ const SalesQuotations: React.FC = () => {
                 if (result.success && result.data && result.data.items?.length) {
                     setDcSourceQuotation(result.data);
                     setDcSelectedItems(result.data.items.map((_: any, i: number) => i));
+                    setDcForceCreate(hasExistingDc);
                     const initialQuants: any = {};
                     result.data.items.forEach((it: any, i: number) => { initialQuants[i] = it.quantity; });
                     setDcItemQuantities(initialQuants);
-                    if (result.data.items.length > 0) {
-                        setDcPoNumber('');
-                        setDcSelectionModal(true);
-                    }
+                    setDcPoNumber('');
+                    setDcSelectionModal(true);
                 } else {
                     notification.error({ message: 'Error', description: 'Quotation has no items', duration: 0 });
                 }
@@ -348,24 +358,35 @@ const SalesQuotations: React.FC = () => {
                     quantity: dcItemQuantities[i] || dcSourceQuotation.items[i].quantity
                 };
             });
+            // Ensure all data is plain and serializable for IPC
+            const plainQuotationId = JSON.parse(JSON.stringify(dcSourceQuotation.id));
+            const plainUserId = user?.id ? JSON.parse(JSON.stringify(user.id)) : undefined;
+            const plainItems = JSON.parse(JSON.stringify(selectedItems.map((it: any) => ({
+                item_id: it.item_id,
+                quantity: it.quantity,
+                description: it.description,
+                unit_price: it.unit_price,
+                brand_id: it.brand_id,
+            }))));
+            const plainPo = dcPoNumber?.trim() || '';
+            const plainFy = fiscalYear ? JSON.parse(JSON.stringify(fiscalYear)) : undefined;
+            const plainForce = Boolean(force || dcForceCreate);
+
             const result = await (window as any).electronAPI.db.deliveryChallans.createFromQuotation(
-                dcSourceQuotation.id,
-                user?.id,
-                selectedItems.map((it: any) => ({
-                    item_id: it.item_id,
-                    quantity: it.quantity,
-                    description: it.description,
-                    unit_price: it.unit_price,
-                    brand_id: it.brand_id, // backend should handle this
-                })),
-                dcPoNumber?.trim(),
-                fiscalYear,
-                force
+                plainQuotationId,
+                plainUserId,
+                plainItems,
+                plainPo,
+                plainFy,
+                plainForce
             );
             if (result.success && result.data) {
                 message.success(`Delivery Challan ${result.data.challan_number} created`);
                 setDcSelectionModal(false);
                 setDcSourceQuotation(null);
+                setDcForceCreate(false);
+                setDcPoNumber('');
+                setDcItemQuantities({});
                 navigate('/sales/delivery-challans');
             } else if (result.error === 'ALREADY_EXISTS') {
                 Modal.confirm({
@@ -978,8 +999,14 @@ const SalesQuotations: React.FC = () => {
             <Modal
                 title="Create Delivery Challan — Select Items"
                 open={dcSelectionModal}
-                onCancel={() => { setDcSelectionModal(false); setDcSourceQuotation(null); }}
-                onOk={confirmCreateDC}
+                onCancel={() => { 
+                    setDcSelectionModal(false); 
+                    setDcSourceQuotation(null); 
+                    setDcForceCreate(false); 
+                    setDcPoNumber(''); 
+                    setDcItemQuantities({}); 
+                }}
+                onOk={() => confirmCreateDC()}
                 okText="Create DC"
                 width={700}
             >

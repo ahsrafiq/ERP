@@ -91,6 +91,9 @@ export const ReportLedgerPdfDocument: React.FC<ReportLedgerPdfDocumentProps> = (
       )}
     </table>
     {footerNote ? <div className="erp-report-pdf-footer">{footerNote}</div> : null}
+    <div className="report-page-number">
+      <span className="report-page-count" />
+    </div>
   </div>
 );
 

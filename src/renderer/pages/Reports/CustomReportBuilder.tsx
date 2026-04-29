@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Button, Card, Checkbox, DatePicker, Input, InputNumber, Modal, Select, Space, Table, Tag, Typography, message, Badge } from 'antd';
-import { PlusOutlined, SaveOutlined, FilterOutlined, ReloadOutlined, DeleteOutlined, FolderOpenOutlined, ArrowRightOutlined } from '@ant-design/icons';
+import { PlusOutlined, SaveOutlined, FilterOutlined, ReloadOutlined, DeleteOutlined, FolderOpenOutlined, ArrowRightOutlined, FileExcelOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
+import * as XLSX from 'xlsx';
 import { useApp } from '../../context/AppContext';
 
 const { RangePicker } = DatePicker;
@@ -47,12 +48,23 @@ const MODULES: Array<{ key: ModuleKey; label: string; color: string }> = [
 const FIELDS_BY_MODULE: Record<ModuleKey, FieldDef[]> = {
   sales: [
     { key: '__type', label: 'Doc Type', type: 'enum', filterable: true, columnVisibleByDefault: true },
-    { key: 'number', label: 'Number', type: 'string', filterable: true, columnVisibleByDefault: true },
+    { key: 'number', label: 'Invoice No', type: 'string', filterable: true, columnVisibleByDefault: true },
     { key: 'date', label: 'Date', type: 'date', filterable: true, columnVisibleByDefault: true },
     { key: 'customer', label: 'Customer', type: 'string', filterable: true, columnVisibleByDefault: true },
+    { key: 'customer_ntn', label: 'NTN', type: 'string', filterable: true, columnVisibleByDefault: false },
+    { key: 'customer_gst', label: 'GST #', type: 'string', filterable: true, columnVisibleByDefault: false },
+    { key: 'salesperson_name', label: 'Sales Person', type: 'string', filterable: true, columnVisibleByDefault: false },
     { key: 'po_number', label: 'PO #', type: 'string', filterable: true, columnVisibleByDefault: true },
-    { key: 'total', label: 'Amount', type: 'number', filterable: true, columnVisibleByDefault: true },
-    { key: 'balance', label: 'Balance', type: 'number', filterable: true, columnVisibleByDefault: true },
+    { key: 'item_name', label: 'Item Name', type: 'string', filterable: true, columnVisibleByDefault: false },
+    { key: 'hs_code', label: 'HS Code', type: 'string', filterable: true, columnVisibleByDefault: false },
+    { key: 'brand', label: 'Brand', type: 'string', filterable: true, columnVisibleByDefault: false },
+    { key: 'quantity', label: 'Qty', type: 'number', filterable: true, columnVisibleByDefault: false },
+    { key: 'unit_price', label: 'Unit Price', type: 'number', filterable: true, columnVisibleByDefault: false },
+    { key: 'gross_amount', label: 'Gross Amount', type: 'number', filterable: true, columnVisibleByDefault: false },
+    { key: 'gst_rate', label: 'GST %', type: 'number', filterable: true, columnVisibleByDefault: false },
+    { key: 'gst_amount', label: 'GST (18%)', type: 'number', filterable: true, columnVisibleByDefault: false },
+    { key: 'total', label: 'Total Amount', type: 'number', filterable: true, columnVisibleByDefault: true },
+    { key: 'balance', label: 'Balance', type: 'number', filterable: true, columnVisibleByDefault: false },
     { key: 'status', label: 'Status', type: 'enum', filterable: true, columnVisibleByDefault: true },
   ],
   purchases: [
@@ -94,6 +106,7 @@ const CustomReportBuilder: React.FC = () => {
   const [templateName, setTemplateName] = useState('');
   const [savedTemplates, setSavedTemplates] = useState<any[]>([]);
   const [dataFocus, setDataFocus] = useState<string>('all');
+  const [isGrouped, setIsGrouped] = useState(false);
 
   const FOCAL_OPTIONS: Record<ModuleKey, Array<{ label: string; value: string }>> = {
     sales: [
@@ -107,8 +120,15 @@ const CustomReportBuilder: React.FC = () => {
       { label: 'Receipts (IN) Only', value: 'in' },
       { label: 'Payments (OUT) Only', value: 'out' },
     ],
-    purchases: [{ label: 'All Purchases', value: 'all' }],
-    inventory: [{ label: 'All Inventory', value: 'all' }],
+    purchases: [
+      { label: 'All Purchases', value: 'all' },
+      { label: 'Purchase Invoices', value: 'invoices' },
+    ],
+    inventory: [
+      { label: 'All Inventory', value: 'all' },
+      { label: 'Standard Items', value: 'product' },
+      { label: 'Services', value: 'service' },
+    ],
   };
 
   // Filter builders state
@@ -122,14 +142,30 @@ const CustomReportBuilder: React.FC = () => {
   const filterableFields = useMemo(() => fields.filter(f => f.filterable), [fields]);
   const selectedFieldDef = useMemo(() => fields.find(f => f.key === pendingFilterField), [fields, pendingFilterField]);
 
-  // Default columns when module changes
+  // Reset values when field changes to prevent type-mismatch crashes
   useEffect(() => {
-    const defaults = fields.filter(f => f.columnVisibleByDefault).map(f => f.key);
-    setSelectedColumns(defaults);
+    setPendingValue(undefined);
+    setPendingFrom(undefined);
+    setPendingTo(undefined);
+    setPendingOperator('contains');
+  }, [pendingFilterField]);
+
+  // Default columns and filter reset when module changes
+  useEffect(() => {
+    const defaultKeys = fields
+      .filter(f => f.columnVisibleByDefault !== false)
+      .map(f => f.key);
+    
+    setSelectedColumns(defaultKeys);
     setFilters([]);
     setPendingFilterField('');
-    setDataFocus('all'); // Reset focus when module changes
-  }, [moduleKey, fields]);
+    setPendingValue(undefined);
+    setPendingFrom(undefined);
+    setPendingFrom(undefined);
+    setPendingTo(undefined);
+    setDataFocus('all'); 
+    setIsGrouped(false); // Reset grouping on module change
+  }, [moduleKey]);
 
   const loadData = async () => {
     if (!currentCompany) return;
@@ -143,41 +179,153 @@ const CustomReportBuilder: React.FC = () => {
         let quotations: any[] = [];
         let challans: any[] = [];
 
-        if (dataFocus === 'all' || dataFocus === 'invoices') {
-          const res = await db.salesInvoices.getAll(currentCompany.id);
-          invoices = (res?.success ? res.data : res) || [];
+        if (dataFocus === 'challans') {
+          const res = await db.deliveryChallans.getChallansByItem(currentCompany.id);
+          const challanItems = (res?.success ? res.data : (Array.isArray(res) ? res : [])) || [];
+          rows = challanItems.map((r: any) => ({ 
+            ...r, 
+            __module: 'sales', 
+            __type: 'Challan', 
+            number: r.challan_number, 
+            date: r.challan_date, 
+            customer: r.customer_name, 
+            customer_ntn: r.customer_ntn,
+            customer_gst: r.customer_gst,
+            salesperson_name: r.salesperson_name,
+            po_number: r.po_number,
+            item_name: r.item_name,
+            hs_code: r.hs_code,
+            description: r.description,
+            brand: r.brand,
+            quantity: r.quantity,
+            unit_price: r.unit_price,
+            gross_amount: r.gross_amount,
+            total: Number(r.quantity || 0) * Number(r.unit_price || 0),
+            status: r.status,
+            raw: r,
+          }));
+        } else if (dataFocus === 'invoices') {
+          const res = await db.salesInvoices.getSalesByItem(currentCompany.id);
+          const invoiceItems = (res?.success ? res.data : (Array.isArray(res) ? res : [])) || [];
+          rows = invoiceItems.map((r: any) => ({ 
+            ...r, 
+            __module: 'sales', 
+            __type: 'Invoice', 
+            number: r.invoice_number,
+            date: r.invoice_date,
+            customer: r.customer_name,
+            customer_ntn: r.customer_ntn,
+            customer_gst: r.customer_gst,
+            salesperson_name: r.salesperson_name,
+            po_number: r.po_number,
+            item_name: r.item_name,
+            hs_code: r.hs_code,
+            description: r.description,
+            brand: r.brand,
+            quantity: r.quantity,
+            unit_price: r.unit_price,
+            gross_amount: r.gross_amount,
+            gst_rate: r.gst_rate,
+            gst_amount: r.gst_amount,
+            total: r.line_total,
+            balance: r.balance,
+            status: r.status,
+            raw: r,
+          }));
+        } else {
+          if (dataFocus === 'all' || dataFocus === 'invoices') {
+            const res = await db.salesInvoices.getAll(currentCompany.id);
+            invoices = (res?.success ? res.data : (Array.isArray(res) ? res : [])) || [];
+          }
+          if (dataFocus === 'all' || dataFocus === 'quotations') {
+            const res = await db.salesQuotations.getAll(currentCompany.id);
+            quotations = (res?.success ? res.data : (Array.isArray(res) ? res : [])) || [];
+          }
+          if (dataFocus === 'all' || dataFocus === 'challans') {
+            const res = await db.deliveryChallans.getAll(currentCompany.id);
+            challans = (res?.success ? res.data : (Array.isArray(res) ? res : [])) || [];
+          }
+          
+          rows = [
+            ...invoices.map((r: any) => ({ 
+              id: r.id,
+              __module: 'sales', 
+              __type: 'Invoice', 
+              number: r.invoice_number, 
+              date: r.invoice_date, 
+              customer: r.customer_name, 
+              total: r.total_amount,
+              status: r.status,
+              balance: r.balance
+            })),
+            ...quotations.map((r: any) => ({ 
+              id: r.id,
+              __module: 'sales', 
+              __type: 'Quotation', 
+              number: r.quotation_number, 
+              date: r.quotation_date, 
+              customer: r.customer_name, 
+              total: r.total_amount,
+              status: r.status
+            })),
+            ...challans.map((r: any) => ({ 
+              id: r.id,
+              __module: 'sales', 
+              __type: 'Challan', 
+              number: r.challan_number, 
+              date: r.challan_date, 
+              customer: r.customer_name, 
+              total: 0,
+              status: r.status
+            })),
+          ];
         }
-        if (dataFocus === 'all' || dataFocus === 'quotations') {
-          const res = await db.salesQuotations.getAll(currentCompany.id);
-          quotations = (res?.success ? res.data : res) || [];
-        }
-        if (dataFocus === 'all' || dataFocus === 'challans') {
-          const res = await db.deliveryChallans.getAll(currentCompany.id);
-          challans = (res?.success ? res.data : res) || [];
-        }
-        
-        rows = [
-          ...invoices.map((r: any) => ({ ...r, __module: 'sales', __type: 'Invoice', number: r.invoice_number, date: r.invoice_date, customer: r.customer_name, total: r.total_amount })),
-          ...quotations.map((r: any) => ({ ...r, __module: 'sales', __type: 'Quotation', number: r.quotation_number, date: r.quotation_date, customer: r.customer_name, total: r.total_amount })),
-          ...challans.map((r: any) => ({ ...r, __module: 'sales', __type: 'Challan', number: r.challan_number, date: r.challan_date, customer: r.customer_name, total: 0 })),
-        ];
       } else if (moduleKey === 'purchases') {
         const res = await db.purchaseInvoices.getAll(currentCompany.id);
         const data = (res?.success ? res.data : res) || [];
-        rows = data.map((r: any) => ({ ...r, __module: 'purchases', __type: 'Purchase', number: r.invoice_number, date: r.invoice_date, vendor: r.vendor_name, total: r.total_amount }));
+        rows = data.map((r: any) => ({ 
+          id: r.id,
+          __module: 'purchases', 
+          __type: 'Purchase', 
+          number: r.invoice_number, 
+          date: r.invoice_date, 
+          vendor: r.vendor_name, 
+          total: r.total_amount,
+          balance: r.balance,
+          status: r.status
+        }));
       } else if (moduleKey === 'inventory') {
         const res = await db.items.getAll(currentCompany.id);
         const data = (res?.success ? res.data : res) || [];
-        rows = data.map((r: any) => ({ ...r, __module: 'inventory', __type: 'Item', brand: r.brand_name, category: r.category_name, sell_price: r.selling_price }));
+        rows = data.map((r: any) => ({ 
+          id: r.id,
+          __module: 'inventory', 
+          __type: 'Item', 
+          code: r.item_code,
+          name: r.name,
+          brand: r.brand_name, 
+          category: r.category_name, 
+          quantity: r.quantity,
+          sell_price: r.selling_price,
+          purchase_price: r.purchase_price
+        }));
       } else if (moduleKey === 'payments') {
         const res = await db.payments.getAll(currentCompany.id);
         const data = (res?.success ? res.data : res) || [];
-        const baseRows = data.map((r: any) => ({ ...r, __module: 'payments', __type: 'Payment', number: r.payment_number, date: r.payment_date, party: r.customer_name || r.vendor_name, type: r.payment_type, method: r.payment_method }));
+        rows = data.map((r: any) => ({ 
+          id: r.id,
+          __module: 'payments', 
+          __type: 'Payment', 
+          number: r.payment_number, 
+          date: r.payment_date, 
+          party: r.customer_name || r.vendor_name, 
+          type: r.payment_type, 
+          method: r.payment_method,
+          amount: r.amount
+        }));
         
         if (dataFocus !== 'all') {
-            rows = baseRows.filter((r: any) => r.type === dataFocus);
-        } else {
-            rows = baseRows;
+            rows = rows.filter((r: any) => r.type === dataFocus);
         }
       }
 
@@ -195,55 +343,106 @@ const CustomReportBuilder: React.FC = () => {
   }, [moduleKey, dataFocus, currentCompany?.id]);
 
   const applyFilters = (rows: UnifiedRow[]) => {
-    return rows.filter(row => {
-      for (const f of filters) {
-        const val = row[f.fieldKey];
-        const fieldDef = fields.find(fd => fd.key === f.fieldKey);
-        if (!fieldDef) continue;
+    try {
+      return rows.filter(row => {
+        for (const f of filters) {
+          const val = row[f.fieldKey];
+          const fieldDef = fields.find(fd => fd.key === f.fieldKey);
+          if (!fieldDef) continue;
 
-        if (fieldDef.type === 'string' || fieldDef.type === 'enum') {
-          const sVal = String(val || '').toLowerCase();
-          const fVal = String(f.value || '').toLowerCase();
-          if (f.operator === 'contains' && !sVal.includes(fVal)) return false;
-          if (f.operator === 'equals' && sVal !== fVal) return false;
-        } else if (fieldDef.type === 'number') {
-          const nVal = Number(val || 0);
-          if (f.operator === 'equals' && nVal !== Number(f.value)) return false;
-          if (f.operator === 'gt' && nVal <= Number(f.value)) return false;
-          if (f.operator === 'lt' && nVal >= Number(f.value)) return false;
-          if (f.operator === 'between' && (nVal < Number(f.from) || nVal > Number(f.to))) return false;
-        } else if (fieldDef.type === 'date') {
-          const dVal = dayjs(val);
-          if (!dVal.isValid()) return false;
-          if (f.operator === 'before' && !dVal.isBefore(dayjs(f.value), 'day')) return false;
-          if (f.operator === 'after' && !dVal.isAfter(dayjs(f.value), 'day')) return false;
-          if (f.operator === 'between' && (!dVal.isAfter(dayjs(f.from).subtract(1, 'day')) || !dVal.isBefore(dayjs(f.to).add(1, 'day')))) return false;
+          if (fieldDef.type === 'string' || fieldDef.type === 'enum') {
+            const sVal = String(val || '').toLowerCase();
+            const fVal = String(f.value || '').toLowerCase();
+            if (f.operator === 'contains' && !sVal.includes(fVal)) return false;
+            if (f.operator === 'equals' && sVal !== fVal) return false;
+          } else if (fieldDef.type === 'number') {
+            const nVal = Number(val || 0);
+            if (f.operator === 'equals' && nVal !== Number(f.value)) return false;
+            if (f.operator === 'gt' && nVal <= Number(f.value)) return false;
+            if (f.operator === 'lt' && nVal >= Number(f.value)) return false;
+            if (f.operator === 'between' && (nVal < Number(f.from) || nVal > Number(f.to))) return false;
+          } else if (fieldDef.type === 'date') {
+            const dVal = dayjs(val);
+            if (!dVal.isValid()) return false;
+            if (f.operator === 'before' && !dVal.isBefore(dayjs(f.value), 'day')) return false;
+            if (f.operator === 'after' && !dVal.isAfter(dayjs(f.value), 'day')) return false;
+            if (f.operator === 'between' && (!dVal.isAfter(dayjs(f.from).subtract(1, 'day')) || !dVal.isBefore(dayjs(f.to).add(1, 'day')))) return false;
+          }
         }
-      }
-      return true;
-    });
+        return true;
+      });
+    } catch (err) {
+      console.error('Filter crash:', err);
+      return rows;
+    }
   };
 
   const filteredRows = useMemo(() => applyFilters(allRows), [allRows, filters]);
 
-  const columns = useMemo(() => {
-    return selectedColumns.map(colKey => {
-      const field = fields.find(f => f.key === colKey);
-      return {
-        title: field?.label || colKey,
-        dataIndex: colKey,
-        key: colKey,
-        render: (val: any) => {
-          if (field?.type === 'date') return val ? dayjs(val).format('DD-MM-YYYY') : '-';
-          if (field?.type === 'number') return typeof val === 'number' ? val.toLocaleString(undefined, { minimumFractionDigits: 2 }) : val;
-          return val || '-';
+  const finalDisplayRows = useMemo(() => {
+    if (!isGrouped) return filteredRows;
+
+    // Group by 'number' (Invoice No / Voucher # / etc)
+    const groups: Record<string, any> = {};
+    filteredRows.forEach(row => {
+      const key = String(row.number || row.id || 'unassigned');
+      if (!groups[key]) {
+        groups[key] = { ...row };
+      } else {
+        // Accumulate numeric fields
+        fields.forEach(f => {
+          if (f.type === 'number') {
+            groups[key][f.key] = (Number(groups[key][f.key]) || 0) + (Number(row[f.key]) || 0);
+          }
+        });
+        // Combine HS Code uniquely
+        if (row.hs_code) {
+          const existingCodes = String(groups[key].hs_code || '').split(',').map(s => s.trim());
+          if (!existingCodes.includes(row.hs_code)) {
+             groups[key].hs_code = groups[key].hs_code ? `${groups[key].hs_code}, ${row.hs_code}` : row.hs_code;
+          }
         }
-      };
+      }
     });
-  }, [selectedColumns, fields]);
+    return Object.values(groups);
+  }, [filteredRows, isGrouped, fields]);
+
+  const columns = useMemo(() => {
+    // Strictly follow the order defined in FIELDS_BY_MODULE
+    return fields
+      .filter(f => selectedColumns.includes(f.key))
+      .map(field => {
+        return {
+          title: field.label,
+          dataIndex: field.key,
+          key: `${moduleKey}-${field.key}`,
+          width: 120,
+          render: (val: any) => {
+            if (field.type === 'date') return val ? dayjs(val).format('DD-MM-YYYY') : '-';
+            if (field.type === 'number') {
+              const num = Number(val);
+              return isNaN(num) ? val || '-' : num.toLocaleString(undefined, { minimumFractionDigits: 2 });
+            }
+            return val !== null && val !== undefined && val !== '' ? val : '-';
+          }
+        };
+      });
+  }, [selectedColumns, fields, moduleKey]);
 
   const handleAddFilter = () => {
     if (!pendingFilterField) return;
+    
+    // Validation: ensure value(s) are provided
+    if (pendingOperator === 'between') {
+      if (pendingFrom === undefined || pendingFrom === null || pendingTo === undefined || pendingTo === null) {
+        return message.error('Please provide both range values');
+      }
+    } else {
+      if (pendingValue === undefined || pendingValue === null || pendingValue === '') {
+        return message.error('Please provide a filter value');
+      }
+    }
+
     const newFilter: FilterDef = {
       id: Math.random().toString(36).substr(2, 9),
       fieldKey: pendingFilterField,
@@ -281,6 +480,8 @@ const CustomReportBuilder: React.FC = () => {
         message.success('Report template saved');
         setSaveModalOpen(false);
         setTemplateName('');
+      } else if (res?.code === 'CONFLICT') {
+        message.error('A report template with this name already exists');
       } else {
         message.error(res?.error || 'Failed to save template');
       }
@@ -322,18 +523,94 @@ const CustomReportBuilder: React.FC = () => {
     }
   };
 
-  const handleDeleteTemplate = async (id: number) => {
-      try {
-          const res = await (window as any).electronAPI.db.customReports.delete(id);
-          if (res?.success) {
-            setSavedTemplates(savedTemplates.filter(t => t.id !== id));
-            message.success('Template deleted');
+  const handleExportExcel = () => {
+    if (filteredRows.length === 0) {
+      return message.warning('No data to export');
+    }
+
+    try {
+      // Prepare data for Excel based on selected columns
+      const exportData = filteredRows.map(row => {
+        const rowData: any = {};
+        selectedColumns.forEach(colKey => {
+          const field = fields.find(f => f.key === colKey);
+          let val = row[colKey];
+          
+          if (field?.type === 'date' && val) {
+            val = dayjs(val).format('DD-MM-YYYY');
+          } else if (field?.type === 'number' && typeof val === 'number') {
+            // Keep as number for Excel formatting
           } else {
-            message.error(res?.error || 'Failed to delete template');
+            val = val || '-';
           }
-      } catch (err) {
-          message.error('Failed to delete template');
+          
+          const label = field?.label || colKey;
+          rowData[label] = val;
+        });
+        return rowData;
+      });
+
+      const worksheet = XLSX.utils.json_to_sheet(exportData);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Custom Report');
+      
+      // Auto-size columns (basic implementation)
+      const max_width = exportData.reduce((w, r) => Math.max(w, Object.values(r).join('').length), 10);
+      worksheet['!cols'] = selectedColumns.map(() => ({ wch: 15 }));
+
+      const fileName = `Custom_Report_${moduleKey}_${dayjs().format('YYYYMMDD_HHmm')}.xlsx`;
+      XLSX.writeFile(workbook, fileName);
+      message.success('Report exported successfully');
+    } catch (error) {
+      console.error('Excel Export Error:', error);
+      message.error('Failed to export to Excel');
+    }
+  };
+
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [adminPassword, setAdminPassword] = useState('');
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
+  const handleDeleteConfirm = async () => {
+    if (!deletingId || !adminPassword) {
+      message.error('Admin password is required');
+      return;
+    }
+
+    setDeleteLoading(true);
+    try {
+      const verifyRes = await (window as any).electronAPI.db.auth.verifyAdminPassword(adminPassword);
+      const isVerified = verifyRes?.success ? verifyRes.data : verifyRes;
+
+      if (!isVerified) {
+        message.error('Incorrect admin password');
+        setDeleteLoading(false);
+        return;
       }
+
+      const res = await (window as any).electronAPI.db.customReports.delete(deletingId);
+      if (res?.success) {
+        setSavedTemplates(savedTemplates.filter(t => t.id !== deletingId));
+        message.success('Template deleted successfully');
+        setDeleteModalVisible(false);
+        setDeletingId(null);
+        setAdminPassword('');
+      } else {
+        message.error(res?.error || 'Failed to delete template');
+      }
+    } catch (err) {
+      console.error('Delete template error:', err);
+      message.error('An error occurred during deletion');
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
+  const handleDeleteTemplate = (id: number) => {
+    setDeletingId(id);
+    setAdminPassword('');
+    setDeleteModalVisible(true);
   };
 
   return (
@@ -345,6 +622,7 @@ const CustomReportBuilder: React.FC = () => {
         </div>
         <Space>
           <Button icon={<FolderOpenOutlined />} onClick={loadTemplates}>Saved Reports</Button>
+          <Button icon={<FileExcelOutlined />} onClick={handleExportExcel} disabled={filteredRows.length === 0}>Export Excel</Button>
           <Button type="primary" icon={<SaveOutlined />} onClick={() => setSaveModalOpen(true)}>Save Template</Button>
         </Space>
       </div>
@@ -378,11 +656,35 @@ const CustomReportBuilder: React.FC = () => {
             </div>
           </Card>
 
-          <Card title="2. Select Columns" size="small">
+          <Card 
+            title="2. Select Columns" 
+            size="small"
+            extra={
+              <Checkbox 
+                indeterminate={selectedColumns.length > 0 && selectedColumns.length < fields.length}
+                checked={selectedColumns.length === fields.length}
+                onChange={(e) => {
+                  if (e.target.checked) {
+                    setSelectedColumns(fields.map(f => f.key));
+                  } else {
+                    setSelectedColumns([]);
+                  }
+                }}
+              >
+                All
+              </Checkbox>
+            }
+          >
             <Checkbox.Group 
               style={{ width: '100%' }} 
               value={selectedColumns} 
-              onChange={(vals) => setSelectedColumns(vals as string[])}
+              onChange={(vals) => {
+                // Ensure columns maintain their defined order in FIELDS_BY_MODULE
+                const ordered = fields
+                  .filter(f => (vals as string[]).includes(f.key))
+                  .map(f => f.key);
+                setSelectedColumns(ordered);
+              }}
             >
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {fields.map(f => (
@@ -400,12 +702,27 @@ const CustomReportBuilder: React.FC = () => {
             <div style={{ marginBottom: '16px', paddingBottom: '16px', borderBottom: '1px solid #f0f0f0' }}>
               <Space direction="vertical" style={{ width: '100%' }}>
                 <Text type="secondary" style={{ fontSize: '12px' }}>Report Focus / Section</Text>
-                <Select 
-                  style={{ width: 250 }}
+                <Select
+                  style={{ width: 160 }}
                   value={dataFocus}
                   onChange={setDataFocus}
-                  options={FOCAL_OPTIONS[moduleKey]}
+                  options={FOCAL_OPTIONS[moduleKey] || []}
                 />
+                {moduleKey === 'sales' && dataFocus === 'invoices' && (
+                  <Button 
+                    type="primary" 
+                    ghost
+                    icon={<FileExcelOutlined />}
+                    onClick={() => {
+                      const fbrCols = ['date', 'number', 'customer', 'hs_code', 'customer_ntn', 'quantity', 'gross_amount', 'gst_amount', 'total'];
+                      setSelectedColumns(fbrCols);
+                      setIsGrouped(true); // FBR Report is usually per invoice
+                      message.success('FBR Report layout & summary applied');
+                    }}
+                  >
+                    Generate FBR Report
+                  </Button>
+                )}
               </Space>
             </div>
 
@@ -455,13 +772,27 @@ const CustomReportBuilder: React.FC = () => {
                   )
                 )}
 
-                <Button type="dashed" icon={<PlusOutlined />} onClick={handleAddFilter} disabled={!pendingFilterField}>Add</Button>
+                <Button type="primary" icon={<PlusOutlined />} onClick={handleAddFilter}>Add</Button>
+                <Checkbox 
+                  checked={isGrouped} 
+                  onChange={e => setIsGrouped(e.target.checked)}
+                  style={{ marginLeft: 16 }}
+                >
+                  <Text strong>Summary View (Group by No)</Text>
+                </Checkbox>
               </Space>
             </div>
 
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
               {filters.map(f => {
                 const field = fields.find(fd => fd.key === f.fieldKey);
+                if (!field) return null;
+                
+                const formatVal = (v: any) => {
+                  if (dayjs.isDayjs(v)) return v.format('DD-MM-YYYY');
+                  return String(v || '');
+                };
+
                 return (
                   <Tag 
                     key={f.id} 
@@ -470,10 +801,10 @@ const CustomReportBuilder: React.FC = () => {
                     color="blue"
                     style={{ padding: '4px 8px', borderRadius: '4px' }}
                   >
-                    <Text strong>{field?.label}</Text> {f.operator} {
+                    <Text strong>{field.label}</Text> {f.operator} {
                       f.operator === 'between' 
-                        ? `${f.from?.format?.('DD-MM-YYYY') || f.from} - ${f.to?.format?.('DD-MM-YYYY') || f.to}`
-                        : f.value?.format?.('DD-MM-YYYY') || f.value || ''
+                        ? `${formatVal(f.from)} - ${formatVal(f.to)}`
+                        : formatVal(f.value)
                     }
                   </Tag>
                 );
@@ -486,13 +817,14 @@ const CustomReportBuilder: React.FC = () => {
           <Card 
             title={<Space><ReloadOutlined spin={loading} /> Preview Results</Space>} 
             size="small"
-            extra={<Tag color="blue">{filteredRows.length} Items Found</Tag>}
+            extra={<Tag color="blue">{finalDisplayRows.length} Items Found</Tag>}
           >
             <Table 
-              dataSource={filteredRows} 
+              key={`${moduleKey}-${dataFocus}-${selectedColumns.length}-${selectedColumns[0] || 'none'}-${isGrouped}`}
+              dataSource={finalDisplayRows} 
               columns={columns} 
               loading={loading}
-              rowKey="id"
+              rowKey={(record) => record.id || record.number || `row-${Math.random()}`}
               size="middle"
               pagination={{ pageSize: 15 }}
               scroll={{ x: 'max-content' }}
@@ -501,6 +833,83 @@ const CustomReportBuilder: React.FC = () => {
           </Card>
         </div>
       </div>
+
+      {/* Delete Confirmation Modal with Premium Design */}
+      <Modal
+        title={null}
+        open={deleteModalVisible}
+        onCancel={() => {
+          if (!deleteLoading) {
+            setDeleteModalVisible(false);
+            setAdminPassword('');
+          }
+        }}
+        footer={null}
+        width={400}
+        centered
+        bodyStyle={{ padding: 0 }}
+      >
+        <div style={{
+          padding: '32px',
+          textAlign: 'center',
+          background: 'linear-gradient(135deg, #ffffff 0%, #f9f9f9 100%)',
+          borderRadius: '12px'
+        }}>
+          <div style={{
+            width: '64px',
+            height: '64px',
+            background: '#fff2f0',
+            borderRadius: '50%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            margin: '0 auto 20px',
+            boxShadow: '0 4px 12px rgba(255, 77, 79, 0.15)'
+          }}>
+            <DeleteOutlined style={{ fontSize: '28px', color: '#ff4d4f' }} />
+          </div>
+          
+          <Title level={4} style={{ marginBottom: '8px' }}>Security Verification</Title>
+          <Text type="secondary" style={{ display: 'block', marginBottom: '24px' }}>
+            This action requires administrator approval. Please enter your password to proceed.
+          </Text>
+
+          <Input.Password
+            placeholder="Admin password"
+            size="large"
+            value={adminPassword}
+            autoFocus
+            onChange={(e) => setAdminPassword(e.target.value)}
+            onPressEnter={handleDeleteConfirm}
+            style={{ marginBottom: '24px', borderRadius: '8px' }}
+            disabled={deleteLoading}
+          />
+
+          <Space style={{ width: '100%', justifyContent: 'center' }}>
+            <Button 
+              size="large" 
+              style={{ width: '120px', borderRadius: '8px' }}
+              onClick={() => {
+                setDeleteModalVisible(false);
+                setAdminPassword('');
+              }}
+              disabled={deleteLoading}
+            >
+              Cancel
+            </Button>
+            <Button 
+              type="primary" 
+              danger 
+              size="large" 
+              style={{ width: '120px', borderRadius: '8px' }}
+              loading={deleteLoading}
+              onClick={handleDeleteConfirm}
+            >
+              Verify & Delete
+            </Button>
+          </Space>
+        </div>
+      </Modal>
 
       {/* Save Template Modal */}
       <Modal

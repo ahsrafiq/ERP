@@ -23,7 +23,7 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
     const getTitle = () => {
         switch (type) {
             case 'invoice': return 'SALES TAX INVOICE';
-            case 'bill': return 'COMMERCIAL INVOICE';
+            case 'bill': return 'BILL';
             case 'quotation': return 'QUOTATION';
             case 'challan': return 'DELIVERY CHALLAN';
             default: return 'DOCUMENT';
@@ -326,51 +326,67 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
                         bordered
                         tableLayout="auto"
                         summary={(pageData) => {
-                            if (!isInvoice) return null;
-                            let totalQty = 0;
-                            let totalUnitPrice = 0;
-                            let totalExcl = 0;
-                            let totalTax = 0;
-                            let totalGrand = 0;
+                            if (isInvoice) {
+                                let totalQty = 0;
+                                let totalUnitPrice = 0;
+                                let totalExcl = 0;
+                                let totalTax = 0;
+                                let totalGrand = 0;
 
-                            (pageData as any[]).forEach(({ quantity, unit_price, gst_amount, line_total }) => {
-                                const qty = Number(quantity) || 0;
-                                const up = Number(unit_price) || 0;
-                                totalQty += qty;
-                                totalUnitPrice += up;
-                                totalExcl += (qty * up);
-                                totalTax += Number(gst_amount) || 0;
-                                totalGrand += Number(line_total) || 0;
-                            });
+                                (pageData as any[]).forEach(({ quantity, unit_price, gst_amount, line_total }) => {
+                                    const qty = Number(quantity) || 0;
+                                    const up = Number(unit_price) || 0;
+                                    totalQty += qty;
+                                    totalUnitPrice += up;
+                                    totalExcl += (qty * up);
+                                    totalTax += Number(gst_amount) || 0;
+                                    totalGrand += Number(line_total) || 0;
+                                });
 
-                            return (
-                                <Table.Summary.Row style={{ background: '#fafafa', fontWeight: 'bold' }}>
-                                    <Table.Summary.Cell index={0} colSpan={3} align="right">TOTAL</Table.Summary.Cell>
-                                    <Table.Summary.Cell index={1} align="center">{totalQty}</Table.Summary.Cell>
-                                    <Table.Summary.Cell index={2} align="right">{totalUnitPrice.toLocaleString()}</Table.Summary.Cell>
-                                    <Table.Summary.Cell index={3} align="right">{totalExcl.toLocaleString()}</Table.Summary.Cell>
-                                    <Table.Summary.Cell index={4} align="right">{totalTax.toLocaleString()}</Table.Summary.Cell>
-                                    <Table.Summary.Cell index={5} align="right">{totalGrand.toLocaleString()}</Table.Summary.Cell>
-                                </Table.Summary.Row>
-                            );
+                                return (
+                                    <Table.Summary.Row className="invoice-total-row" style={{ background: '#fafafa', fontWeight: 'bold' }}>
+                                        <Table.Summary.Cell index={0} colSpan={3} align="right">TOTAL</Table.Summary.Cell>
+                                        <Table.Summary.Cell index={1} align="center">{totalQty}</Table.Summary.Cell>
+                                        <Table.Summary.Cell index={2} align="right">{totalUnitPrice.toLocaleString()}</Table.Summary.Cell>
+                                        <Table.Summary.Cell index={3} align="right">{totalExcl.toLocaleString()}</Table.Summary.Cell>
+                                        <Table.Summary.Cell index={4} align="right">{totalTax.toLocaleString()}</Table.Summary.Cell>
+                                        <Table.Summary.Cell index={5} align="right">{totalGrand.toLocaleString()}</Table.Summary.Cell>
+                                    </Table.Summary.Row>
+                                );
+                            }
+
+                            if (type === 'challan') {
+                                return (
+                                    <Table.Summary.Row style={{ fontWeight: 'bold', background: '#fafafa' }}>
+                                        <Table.Summary.Cell index={0} colSpan={4} align="right">Total Quantity:</Table.Summary.Cell>
+                                        <Table.Summary.Cell index={1} align="right">{data.total_quantity}</Table.Summary.Cell>
+                                    </Table.Summary.Row>
+                                );
+                            }
+
+                            if (type === 'quotation') {
+                                return (
+                                    <>
+                                        <Table.Summary.Row style={{ background: '#fafafa' }}>
+                                            <Table.Summary.Cell index={0} colSpan={6} align="right">Subtotal:</Table.Summary.Cell>
+                                            <Table.Summary.Cell index={1} align="right">{data.subtotal?.toLocaleString()}</Table.Summary.Cell>
+                                        </Table.Summary.Row>
+                                        <Table.Summary.Row style={{ fontWeight: 'bold', background: '#fafafa' }}>
+                                            <Table.Summary.Cell index={0} colSpan={6} align="right">Grand Total ({company.currency}):</Table.Summary.Cell>
+                                            <Table.Summary.Cell index={1} align="right">{data.total_amount?.toLocaleString()}</Table.Summary.Cell>
+                                        </Table.Summary.Row>
+                                    </>
+                                );
+                            }
+                            return null;
                         }}
                     />
                 </div>
     );
 
-    /* Totals row(s) — scale with the table */
+    /* Totals row(s) — only for Bill as it uses a custom table structure */
     const totalsBlock = (
         <>
-            {isInvoice && (
-                <div className="totals-section inv-totals-section">
-                    <div className="totals">
-                        <div className="inv-total-row">
-                            <span>Total Invoice for Payment</span>
-                            <span>{company.currency || 'PKR'} {data.total_amount?.toLocaleString()}</span>
-                        </div>
-                    </div>
-                </div>
-            )}
             {isBill && (
                 <table className="bill-totals-table">
                     <tbody>
@@ -381,30 +397,6 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
                     </tbody>
                 </table>
             )}
-            {!isInvoice && !isBill && type !== 'challan' && (
-                <div className={type === 'quotation' ? 'extreme-right-totals' : 'totals-section'}>
-                    <div className="totals">
-                        <div className="total-row">
-                            <span>Subtotal:</span>
-                            <span>{data.subtotal?.toLocaleString()}</span>
-                        </div>
-                        <div className="total-row grand-total">
-                            <span>Grand Total:</span>
-                            <span>{data.total_amount?.toLocaleString()} ({company.currency})</span>
-                        </div>
-                    </div>
-                </div>
-            )}
-                {type === 'challan' && (
-                    <div className="extreme-right-totals">
-                        <div className="totals">
-                            <div className="total-row grand-total">
-                                <span>Total Quantity:</span>
-                                <span>{data.total_quantity}</span>
-                            </div>
-                        </div>
-                    </div>
-                )}
         </>
     );
 
@@ -413,25 +405,6 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
             <>
             {isBill && (
                 <div className="bill-totals-section">
-                    {data.terms_and_conditions != null && String(data.terms_and_conditions).trim() !== '' && (() => {
-                        let terms: string[] = [];
-                        try { const arr = JSON.parse(data.terms_and_conditions); terms = Array.isArray(arr) ? arr : []; } catch { terms = [String(data.terms_and_conditions)]; }
-                        terms = terms.filter((t: string) => t?.trim());
-                        if (!terms.length) return null;
-                        return (
-                            <div className="bill-terms">
-                                <p className="bill-terms-heading"><span style={{ borderBottom: '1px solid black' }}>Terms &amp; Conditions:</span></p>
-                                <ul style={{ margin: '4px 0 0 18px', padding: 0, fontSize: '11pt', listStyleType: 'disc' }}>
-                                    {terms.map((t: string, i: number) => {
-                                        const isBold = t.startsWith('**') && t.endsWith('**');
-                                        const text = isBold ? t.slice(2, -2) : t;
-                                        return <li key={i} style={isBold ? { fontWeight: 700 } : undefined}>{text}</li>;
-                                    })}
-                                </ul>
-                            </div>
-                        );
-                    })()}
-
                     {!showLetterhead && (
                         <div className="dc-footer" style={{ marginTop: 24, paddingBottom: 20 }}>
                             <div className="dc-stamp-box">
@@ -507,7 +480,7 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
                 </div>
             )}
             {type === 'challan' && (
-                <div style={{ marginTop: '20px' }}>
+                <div className="dc-confirmation-block" style={{ marginTop: '20px' }}>
                     <div style={{ fontSize: '11pt', marginBottom: '20px' }}>
                         <p>We confirm that above items are received in good order and sound condition</p>
                     </div>
@@ -596,9 +569,26 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
             {/* No letterhead fallback â€” shown when no letterhead set OR user chose without */}
             {/* For quotations without letterhead: skip company details, only show doc content */}
             {/* Document content: details above/below table stay fixed; only the table is scaled when scale < 100% */}
+            <div className="page-number-footer">
+                <span className="page-count" />
+            </div>
             <div className="print-content">
                 {showLetterhead ? (
-                    documentContent
+                    <table className="print-layout-table">
+                        <thead>
+                            <tr><td><div className="lh-header-spacer" /></td></tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>
+                                    {documentContent}
+                                </td>
+                            </tr>
+                        </tbody>
+                        <tfoot>
+                            <tr><td><div className="lh-footer-spacer" /></td></tr>
+                        </tfoot>
+                    </table>
                 ) : (
                     <div
                         className="print-content-scaled-wrapper"
@@ -607,7 +597,7 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
                         {documentContent}
                     </div>
                 )}
-            </div>
+             </div>
         </div>
     );
 

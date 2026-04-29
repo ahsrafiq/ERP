@@ -68,8 +68,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       create: (invoice: any) => ipcRenderer.invoke('db:salesInvoices:create', invoice),
       update: (id: number, invoice: any) => ipcRenderer.invoke('db:salesInvoices:update', id, invoice),
       delete: (id: number) => ipcRenderer.invoke('db:salesInvoices:delete', id),
-      createFromQuotation: (quotationId: number, createdBy?: number) => ipcRenderer.invoke('db:salesInvoices:createFromQuotation', quotationId, createdBy),
-      createFromChallan: (challanId: number, createdBy?: number) => ipcRenderer.invoke('db:salesInvoices:createFromChallan', challanId, createdBy),
+      createFromQuotation: (quotationId: number, createdBy?: number, fiscalYear?: number | string, force: boolean = false) => ipcRenderer.invoke('db:salesInvoices:createFromQuotation', quotationId, createdBy, fiscalYear, force),
+      createFromChallan: (challanId: number, createdBy?: number, fiscalYear?: number | string, force: boolean = false) => ipcRenderer.invoke('db:salesInvoices:createFromChallan', challanId, createdBy, fiscalYear, force),
       getSalesByItem: (companyId: number, filters?: any) => ipcRenderer.invoke('db:salesInvoices:getSalesByItem', companyId, filters),
       getPendingWithItems: (companyId: number, filters?: any) => ipcRenderer.invoke('db:salesInvoices:getPendingWithItems', companyId, filters),
     },
@@ -89,9 +89,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
       create: (challan: any) => ipcRenderer.invoke('db:deliveryChallans:create', challan),
       update: (id: number, challan: any) => ipcRenderer.invoke('db:deliveryChallans:update', id, challan),
       delete: (id: number) => ipcRenderer.invoke('db:deliveryChallans:delete', id),
-      createFromInvoice: (invoiceId: number, createdBy?: number) => ipcRenderer.invoke('db:deliveryChallans:createFromInvoice', invoiceId, createdBy),
-      createFromQuotation: (quotationId: number, createdBy?: number, selectedItems?: any[], poNumber?: string) =>
-        ipcRenderer.invoke('db:deliveryChallans:createFromQuotation', quotationId, createdBy, selectedItems, poNumber),
+      createFromInvoice: (invoiceId: number, createdBy?: number, fiscalYear?: number | string, force: boolean = false) => ipcRenderer.invoke('db:deliveryChallans:createFromInvoice', invoiceId, createdBy, fiscalYear, force),
+      createFromQuotation: (quotationId: number, createdBy?: number, selectedItems?: any[], poNumber?: string, fiscalYear?: number | string, force: boolean = false) =>
+        ipcRenderer.invoke('db:deliveryChallans:createFromQuotation', quotationId, createdBy, selectedItems, poNumber, fiscalYear, force),
+      getChallansByItem: (companyId: number, filters?: any) => ipcRenderer.invoke('db:deliveryChallans:getChallansByItem', companyId, filters),
     },
     purchaseInvoices: {
       getAll: (companyId: number, filters?: any) => ipcRenderer.invoke('db:purchaseInvoices:getAll', companyId, filters),
@@ -162,11 +163,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
       printHtmlToPDF: (html: string, filePath: string, heightMM: number) => ipcRenderer.invoke('file:printHtmlToPDF', html, filePath, heightMM),
       print: () => ipcRenderer.invoke('file:print'),
     },
+    settings: {
+      getAll: () => ipcRenderer.invoke('db:settings:getAll'),
+      get: (key: string) => ipcRenderer.invoke('db:settings:get', key),
+      set: (key: string, value: string) => ipcRenderer.invoke('db:settings:set', key, value),
+    },
   },
   // Menu actions
   onMenuAction: (callback: (action: string) => void) => {
     ipcRenderer.on('menu-action', (event, action) => callback(action));
   },
+  // App Restart
+  appRestart: () => ipcRenderer.invoke('app:restart'),
   // Platform info
   platform: process.platform,
 });

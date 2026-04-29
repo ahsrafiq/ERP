@@ -161,9 +161,8 @@ const Receivables: React.FC = () => {
       
       const mappedDues = dues.map((d: any) => ({ ...d, key: `invoice_${d.id}` }));
       
-      // Always show Opening Balance row if it exists, to allow the required selection workflow
-      if (Math.abs(openingBal) > 0.01) {
-          mappedDues.unshift({
+      // Always show Opening Balance row to allow the required selection workflow and show it is settled
+      mappedDues.unshift({
               id: 'opening_balance',
               key: 'opening_balance',
               invoice_number: 'Customer Opening Balance',
@@ -171,7 +170,6 @@ const Receivables: React.FC = () => {
               total_amount: openingBal,
               balance: openingBal,
           });
-      }
       setUnpaidInvoices(mappedDues);
     } catch (err) {
       setUnpaidInvoices([]);
@@ -330,7 +328,16 @@ const Receivables: React.FC = () => {
       message.success(`Receipt recorded for ${selectedCustomer.name}`);
       receiptForm.resetFields();
       setSelectedReceiptKeys([]);
-      openReceiptForm(selectedCustomer); // Reload fresh dues/history
+
+      // Fetch fresh balance to see if we should close the modal
+      const fresh = await (window as any).electronAPI.db.customers.getById(selectedCustomer.id);
+      const newBalance = Number(fresh?.data?.balance || 0);
+
+      if (Math.abs(newBalance) < 0.01) {
+        setReceiptModalVisible(false);
+      } else {
+        openReceiptForm(selectedCustomer); // Refresh current view (dues/history)
+      }
       loadCustomers();
     } catch (e: any) {
       notification.error({ message: 'Error', description: e?.message || 'Failed to record receipt', duration: 0 });

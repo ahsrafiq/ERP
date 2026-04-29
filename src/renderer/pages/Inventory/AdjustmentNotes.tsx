@@ -275,24 +275,20 @@ const AdjustmentNotes: React.FC = () => {
                 title={editingNote ? 'Edit Adjustment Note' : 'New Adjustment Note'} 
                 open={modalVisible} 
                 onCancel={() => {
-                  const noteNum = form.getFieldValue('adjustment_number') || 'New Note';
                   setModalVisible(false);
-                  minimizeModal({
-                    id: editingNote ? `adj-edit-${editingNote.id}` : 'adj-new',
-                    title: editingNote ? `Edit Note ${noteNum}` : `New Note ${noteNum}`,
-                    onRestore: () => {
-                      setEditingNote(editingNote);
-                      setModalVisible(true);
-                      setNoteStep(noteStep);
-                    }
-                  });
+                  setEditingNote(null);
+                  form.resetFields();
                 }}
                 maskClosable={true}
                 onOk={() => noteStep === 1 ? null : form.submit()} 
                 width={noteStep === 1 ? 600 : 800} 
                 footer={noteStep === 1 ? null : [
                     <Button key="back" onClick={() => setNoteStep(1)}>Change Type</Button>,
-                    <Button key="cancel" onClick={() => setModalVisible(false)}>Cancel</Button>,
+                    <Button key="cancel" onClick={() => {
+                      setModalVisible(false);
+                      setEditingNote(null);
+                      form.resetFields();
+                    }}>Cancel</Button>,
                     <Button key="submit" type="primary" onClick={() => form.submit()}>Save</Button>
                 ]}
                 closeIcon={

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Table, Card, Row, Col, Select, Button, Space,
+  Table, Card, Row, Col, Select, Button, Space, DatePicker,
   Statistic, Divider, Typography, notification, message, Empty, Tag, Avatar,
 } from 'antd';
 import {
@@ -45,6 +45,8 @@ const CustomerLedgerReport: React.FC = () => {
   const [overdueOnly, setOverdueOnly] = useState(false);
   const [ledger, setLedger] = useState<LedgerEntry[]>([]);
   const [customerInfo, setCustomerInfo] = useState<any>(null);
+  const [dateFrom, setDateFrom] = useState<string | null>(null);
+  const [dateTo, setDateTo] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -72,30 +74,35 @@ const CustomerLedgerReport: React.FC = () => {
 
       // Load invoices, payments, and users (for Personnel column on PDFs)
       const [invRes, payRes, usersRes] = await Promise.all([
-        (window as any).electronAPI.db.salesInvoices.getAll(currentCompany!.id, {}),
-        (window as any).electronAPI.db.payments.getAll(currentCompany!.id, { type: 'in' }),
+        (window as any).electronAPI.db.salesInvoices.getAll(currentCompany!.id, {
+          customerId: selectedCustomerId,
+          fromDate: dateFrom,
+          toDate: dateTo,
+        }),
+        (window as any).electronAPI.db.payments.getAll(currentCompany!.id, {
+          type: 'in',
+          customerId: selectedCustomerId,
+          fromDate: dateFrom,
+          toDate: dateTo,
+        }),
         (window as any).electronAPI.db.users.getAll(currentCompany!.id),
       ]);
 
-      let invoices = (invRes.success ? invRes.data : []) || [];
-      if (selectedCustomerId) {
-        invoices = invoices.filter((inv: any) => inv.customer_id === selectedCustomerId);
-      }
+      const invoices = (invRes.success ? invRes.data : []) || [];
+      let filteredInvoices = [...invoices];
 
       // Apply Overdue filter if requested
       if (overdueOnly) {
         const today = dayjs().format('YYYY-MM-DD');
-        invoices = invoices.filter((inv: any) => 
+        filteredInvoices = filteredInvoices.filter((inv: any) => 
           inv.status !== 'paid' && 
           inv.due_date && 
           inv.due_date < today
         );
       }
 
-      let payments = (payRes.success ? payRes.data : []) || [];
-      if (selectedCustomerId) {
-        payments = payments.filter((p: any) => p.customer_id === selectedCustomerId);
-      }
+      const payments = (payRes.success ? payRes.data : []) || [];
+      const filteredPayments = [...payments];
 
       const userMap: Record<number, string> = {};
       if (usersRes?.success && Array.isArray(usersRes.data)) {
@@ -106,8 +113,28 @@ const CustomerLedgerReport: React.FC = () => {
       }
 
       // Combine into unified ledger entries
-      const entries: Omit<LedgerEntry, 'balance'>[] = [
-        ...invoices.map((inv: any) => ({
+      const entries: Omit<LedgerEntry, 'balance'>[] = [];
+      
+      // Add Opening Balance as the first entry if customer is selected and we are not in Overdue Only mode
+      if (selectedCustomerId && customer && !overdueOnly) {
+          const openingBal = Number(customer.opening_balance) || 0;
+          if (openingBal !== 0) {
+              entries.push({
+                  id: 'opening-balance-row',
+                  date: '', // No specific date, or use a very old date
+                  type: 'invoice' as const, // Treat as debit for balance calculation
+                  reference: 'OB',
+                  customer_name: customer.name,
+                  description: 'Opening Balance (Initial)',
+                  debit: openingBal,
+                  credit: 0,
+                  personnel: 'System',
+              });
+          }
+      }
+
+      entries.push(
+        ...filteredInvoices.map((inv: any) => ({
           id: `inv-${inv.id}`,
           date: inv.invoice_date,
           type: 'invoice' as const,
@@ -119,7 +146,7 @@ const CustomerLedgerReport: React.FC = () => {
           credit: 0,
           personnel: userMap[Number(inv.created_by)] || '—',
         })),
-        ...(!overdueOnly ? payments.map((p: any) => ({
+        ...(!overdueOnly ? filteredPayments.map((p: any) => ({
           id: `pay-${p.id}`,
           date: p.payment_date,
           type: 'payment' as const,
@@ -134,10 +161,13 @@ const CustomerLedgerReport: React.FC = () => {
           personnel: userMap[Number(p.created_by)] || '—',
           payment_method: p.payment_method,
         })) : []),
-      ];
+      );
 
       // Sort by date ascending, then by type (invoice before payment on same day)
       entries.sort((a, b) => {
+        if (a.id === 'opening-balance-row') return -1;
+        if (b.id === 'opening-balance-row') return 1;
+        
         const dateDiff = dayjs(a.date).valueOf() - dayjs(b.date).valueOf();
         if (dateDiff !== 0) return dateDiff;
         if (a.type === 'invoice' && b.type === 'payment') return -1;
@@ -375,8 +405,8 @@ const CustomerLedgerReport: React.FC = () => {
     credit: r.credit > 0 ? Number(r.credit).toLocaleString() : '-',
     balance: Number(r.balance || 0).toLocaleString(),
   }));
-  const dateFromLabel = ledger.length > 0 ? dayjs(ledger[0].date).format('DD-MMM-YYYY') : '-';
-  const dateToLabel = ledger.length > 0 ? dayjs(ledger[ledger.length - 1].date).format('DD-MMM-YYYY') : '-';
+  const dateFromLabel = dateFrom ? dayjs(dateFrom).format('DD-MMM-YYYY') : (ledger.length > 0 ? dayjs(ledger[0].date).format('DD-MMM-YYYY') : '-');
+  const dateToLabel = dateTo ? dayjs(dateTo).format('DD-MMM-YYYY') : (ledger.length > 0 ? dayjs(ledger[ledger.length - 1].date).format('DD-MMM-YYYY') : '-');
 
   return (
     <div>
@@ -419,15 +449,33 @@ const CustomerLedgerReport: React.FC = () => {
               options={customers.map((c: any) => ({ label: `${c.name}${c.code ? ' (' + c.code + ')' : ''}`, value: c.id }))}
               allowClear
             />
-            <Button
-              type={overdueOnly ? 'primary' : 'default'}
-              danger={overdueOnly}
-              onClick={() => setOverdueOnly(!overdueOnly)}
-            >
-              Overdue Only
-            </Button>
+            <Divider type="vertical" />
+            <Text strong>From:</Text>
+            <DatePicker 
+              style={{ width: 140 }} 
+              format="DD-MM-YYYY"
+              value={dateFrom ? dayjs(dateFrom) : null}
+              onChange={(d) => setDateFrom(d ? d.format('YYYY-MM-DD') : null)}
+            />
+            <Text strong>To:</Text>
+            <DatePicker 
+              style={{ width: 140 }} 
+              format="DD-MM-YYYY"
+              value={dateTo ? dayjs(dateTo) : null}
+              onChange={(d) => setDateTo(d ? d.format('YYYY-MM-DD') : null)}
+            />
             <Button type="primary" onClick={loadLedger}>Search</Button>
-            <Button icon={<span className="anticon"><ReloadOutlined /></span>} onClick={loadLedger}>Refresh</Button>
+            <Button 
+              icon={<span className="anticon"><ReloadOutlined /></span>} 
+              onClick={() => {
+                setDateFrom(null);
+                setDateTo(null);
+                setOverdueOnly(false);
+                setSelectedCustomerId(null);
+              }}
+            >
+              Reset
+            </Button>
             {customerInfo && (
               <Space size="large" style={{ marginLeft: 16 }}>
                 <Avatar 

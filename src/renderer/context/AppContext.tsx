@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
-import { Alert, Modal, Form, Input, Radio, message, Button } from 'antd';
+import { Alert, Modal, Form, Input, Radio, message, Button, Typography, Switch, Divider } from 'antd';
 import { SettingOutlined } from '@ant-design/icons';
 
 interface Company {
@@ -30,6 +30,7 @@ interface User {
   role_id?: number;
   company_ids?: number[];
   role_name?: string;
+  section_permissions?: Record<string, string>;
 }
 
 interface AppContextType {
@@ -38,6 +39,8 @@ interface AppContextType {
   companies: Company[];
   setCompanies: (companies: Company[]) => void;
   user: User | null;
+  isPurchaseEnabled: boolean;
+  setPurchaseEnabled: (enabled: boolean) => Promise<void>;
   fiscalYear: number;
   setFiscalYear: (year: number) => void;
   login: (username: string, password?: string) => Promise<boolean>;
@@ -81,6 +84,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [globalRefreshKey, setGlobalRefreshKey] = useState<number>(0);
   const [isSettingsModalVisible, setIsSettingsModalVisible] = useState(false);
   const [appConfig, setAppConfig] = useState<any>(null);
+  const [isPurchaseEnabled, setIsPurchaseEnabled] = useState<boolean>(true);
   const consecutiveFailures = useRef(0);
 
   useEffect(() => {
@@ -106,6 +110,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (appConfig?.mode === 'CLIENT' && user) {
       const refreshInterval = setInterval(() => {
         triggerGlobalRefresh();
+        loadConfig(); // Ensure clients also pull the latest purchase module setting
       }, 30000);
       return () => clearInterval(refreshInterval);
     }
@@ -129,8 +134,29 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     try {
       const config = await (window as any).electronAPI.db.config.get();
       setAppConfig(config);
+      
+      // Load global settings
+      try {
+        const result = await (window as any).electronAPI.db.settings.get('is_purchase_module_enabled');
+        const data = result?.data !== undefined ? result.data : result;
+        const val = data?.value !== undefined ? data.value : data;
+        setIsPurchaseEnabled(val !== '0' && val !== null);
+      } catch (settingsError) {
+        console.warn('Could not load global settings, defaulting to enabled:', settingsError);
+        setIsPurchaseEnabled(true);
+      }
     } catch (error) {
       console.error('Error loading config:', error);
+    }
+  };
+
+  const updatePurchaseSetting = async (enabled: boolean) => {
+    try {
+      await (window as any).electronAPI.db.settings.set('is_purchase_module_enabled', enabled ? '1' : '0');
+      setIsPurchaseEnabled(enabled);
+      triggerGlobalRefresh();
+    } catch (error) {
+      message.error('Failed to update feature settings');
     }
   };
 
@@ -193,10 +219,32 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const saveSettings = async (values: any) => {
     try {
-      await (window as any).electronAPI.db.config.save(values);
-      message.success('Settings saved. Please restart the application for changes to take full effect.');
+      const { isPurchaseEnabled: formPurchaseEnabled, ...configValues } = values;
+      
+      await (window as any).electronAPI.db.config.save(configValues);
+      
+      let purchaseSettingChanged = false;
+      if (user?.role === 'admin' || user?.role_id === 1) {
+        if (isPurchaseEnabled !== !!formPurchaseEnabled) {
+          purchaseSettingChanged = true;
+          await updatePurchaseSetting(!!formPurchaseEnabled);
+        }
+      }
+
       setIsSettingsModalVisible(false);
-      setAppConfig(values);
+      setAppConfig(configValues);
+
+      if (purchaseSettingChanged) {
+        if (window.confirm("You have changed the Purchase Module setting. The application must restart to apply these changes. Restart now?")) {
+          await (window as any).electronAPI.appRestart();
+          return;
+        } else {
+          message.success('Settings saved. Please manually restart the application for changes to take full effect.');
+        }
+      } else {
+        message.success('Settings saved. Please restart the application for changes to take full effect.');
+      }
+
       checkHeartbeat();
     } catch (error) {
       message.error('Failed to save settings');
@@ -300,7 +348,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   return (
     <AppContext.Provider value={{
-      currentCompany, setCurrentCompany, companies, setCompanies, user, fiscalYear, setFiscalYear, login, logout,
+      currentCompany, setCurrentCompany, companies, setCompanies, user, 
+      isPurchaseEnabled, setPurchaseEnabled: updatePurchaseSetting,
+      fiscalYear, setFiscalYear, login, logout,
       minimizedModals, minimizeModal, restoreModal, removeMinimizedModal, globalRefreshKey, triggerGlobalRefresh
     }}>
       {serverStatus === 'offline' && (
@@ -328,17 +378,36 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       )}
 
       <Modal
-        title="Connection Settings"
+        title="System Settings"
         open={isSettingsModalVisible}
         onCancel={() => setIsSettingsModalVisible(false)}
         footer={null}
         destroyOnClose
       >
         <Form
-          initialValues={appConfig}
+          initialValues={{ ...appConfig, isPurchaseEnabled }}
           onFinish={saveSettings}
           layout="vertical"
         >
+          {(user?.role === 'admin' || user?.role_id === 1 || user?.username === 'admin') && (
+            <>
+              <Typography.Title level={5} style={{ marginTop: 0 }}>Feature Settings</Typography.Title>
+              <Form.Item 
+                name="isPurchaseEnabled" 
+                label="Enable Purchase & Inventory Module"
+                tooltip="If disabled, all purchase-related features (Vendors, Purchase Invoices, etc.) and quantity tracking will be hidden software-wide."
+                valuePropName="checked"
+              >
+                <Switch
+                  checkedChildren="Enabled"
+                  unCheckedChildren="Disabled"
+                />
+              </Form.Item>
+              <Divider />
+            </>
+          )}
+
+          <Typography.Title level={5} style={{ marginTop: 0 }}>Connection Settings</Typography.Title>
           <Form.Item
             name="mode"
             label="Application Mode"

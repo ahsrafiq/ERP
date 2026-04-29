@@ -21,7 +21,9 @@ import {
     searchHandlers,
     adjustmentNoteHandlers,
     customReportHandlers,
-    warehouseHandlers
+    warehouseHandlers,
+    fileHandlers,
+    settingsHandlers
 } from './database/handlers';
 import { getConfig } from './config';
 import { getDatabase } from './database/schema';
@@ -84,7 +86,7 @@ app.delete('/api/customers/:id', async (req, res) => sendResponse(res, await cus
 app.post('/api/customers/delete-multiple', async (req, res) => sendResponse(res, await customerHandlers.deleteMultiple(req.body.ids)));
 
 // Vendors
-app.get('/api/vendors', async (req, res) => res.json(await vendorHandlers.getAll(Number(req.query.companyId))));
+app.get('/api/vendors', async (req, res) => res.json(await vendorHandlers.getAll()));
 app.get('/api/vendors/:id', async (req, res) => res.json(await vendorHandlers.getById(Number(req.params.id))));
 app.post('/api/vendors', async (req, res) => res.json(await vendorHandlers.create(req.body)));
 app.put('/api/vendors/:id', async (req, res) => res.json(await vendorHandlers.update(Number(req.params.id), req.body)));
@@ -125,8 +127,8 @@ app.get('/api/sales-invoices/:id', async (req, res) => res.json(await salesInvoi
 app.post('/api/sales-invoices', async (req, res) => sendResponse(res, await salesInvoiceHandlers.create(req.body)));
 app.put('/api/sales-invoices/:id', async (req, res) => sendResponse(res, await salesInvoiceHandlers.update(Number(req.params.id), req.body)));
 app.delete('/api/sales-invoices/:id', async (req, res) => sendResponse(res, await salesInvoiceHandlers.delete(Number(req.params.id))));
-app.post('/api/sales-invoices/create-from-quotation', async (req, res) => sendResponse(res, await salesInvoiceHandlers.createFromQuotation(req.body.quotationId, req.body.createdBy)));
-app.post('/api/sales-invoices/create-from-challan', async (req, res) => sendResponse(res, await salesInvoiceHandlers.createFromChallan(req.body.challanId, req.body.createdBy)));
+app.post('/api/sales-invoices/create-from-quotation', async (req, res) => sendResponse(res, await salesInvoiceHandlers.createFromQuotation(req.body.quotationId, req.body.createdBy, req.body.fiscalYear, req.body.force)));
+app.post('/api/sales-invoices/create-from-challan', async (req, res) => sendResponse(res, await salesInvoiceHandlers.createFromChallan(req.body.challanId, req.body.createdBy, req.body.fiscalYear, req.body.force)));
 
 // Sales Quotations
 app.get('/api/sales-quotations', async (req, res) => res.json(await salesQuotationHandlers.getAll(Number(req.query.companyId), req.query)));
@@ -140,12 +142,13 @@ app.delete('/api/sales-quotations/:id', async (req, res) => sendResponse(res, aw
 app.get('/api/delivery-challans', async (req, res) => res.json(await deliveryChallanHandlers.getAll(Number(req.query.companyId))));
 app.get('/api/delivery-challans/next-number', async (req, res) => res.json(await deliveryChallanHandlers.getNextNumber(Number(req.query.companyId), req.query.fiscalYear as string)));
 app.get('/api/delivery-challans/next-po-number', async (req, res) => res.json(await deliveryChallanHandlers.getNextPoNumber(Number(req.query.companyId), req.query.fiscalYear as string)));
+app.get('/api/delivery-challans/reports/by-item', async (req, res) => res.json(await deliveryChallanHandlers.getChallansByItem(Number(req.query.companyId), req.query)));
 app.get('/api/delivery-challans/:id', async (req, res) => res.json(await deliveryChallanHandlers.getById(Number(req.params.id))));
 app.post('/api/delivery-challans', async (req, res) => sendResponse(res, await deliveryChallanHandlers.create(req.body)));
 app.put('/api/delivery-challans/:id', async (req, res) => sendResponse(res, await deliveryChallanHandlers.update(Number(req.params.id), req.body)));
 app.delete('/api/delivery-challans/:id', async (req, res) => sendResponse(res, await deliveryChallanHandlers.delete(Number(req.params.id))));
-app.post('/api/delivery-challans/create-from-invoice', async (req, res) => sendResponse(res, await deliveryChallanHandlers.createFromInvoice(req.body.invoiceId, req.body.createdBy)));
-app.post('/api/delivery-challans/create-from-quotation', async (req, res) => sendResponse(res, await deliveryChallanHandlers.createFromQuotation(req.body.quotationId, req.body.createdBy, req.body.selectedItems, req.body.poNumber)));
+app.post('/api/delivery-challans/create-from-invoice', async (req, res) => sendResponse(res, await deliveryChallanHandlers.createFromInvoice(req.body.invoiceId, req.body.createdBy, req.body.fiscalYear, req.body.force)));
+app.post('/api/delivery-challans/create-from-quotation', async (req, res) => sendResponse(res, await deliveryChallanHandlers.createFromQuotation(req.body.quotationId, req.body.createdBy, req.body.selectedItems, req.body.poNumber, req.body.fiscalYear, req.body.force)));
 
 // Purchase Invoices
 app.get('/api/purchase-invoices', async (req, res) => res.json(await purchaseInvoiceHandlers.getAll(Number(req.query.companyId), req.query)));
@@ -208,6 +211,15 @@ app.get('/api/dashboard/top-customers', async (req, res) => res.json(await dashb
 
 // Global Search
 app.get('/api/search/global', async (req, res) => res.json(await searchHandlers.search(Number(req.query.companyId), String(req.query.query))));
+
+// Files
+app.post('/api/files/read', async (req, res) => res.json(await fileHandlers.readAsDataURL(req.body.atomPath)));
+app.post('/api/files/save', async (req, res) => res.json(await fileHandlers.saveFile(req.body.base64Data, req.body.fileName, req.body.subDir)));
+
+// Global Settings
+app.get('/api/settings', async (req, res) => res.json(await settingsHandlers.getAll()));
+app.get('/api/settings/:key', async (req, res) => res.json(await settingsHandlers.get(req.params.key)));
+app.post('/api/settings/:key', async (req, res) => res.json(await settingsHandlers.set(req.params.key, req.body.value)));
 
 let serverInstance: any = null;
 

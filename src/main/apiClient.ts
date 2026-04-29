@@ -119,8 +119,8 @@ export const apiClient = {
         create: (invoice: any) => apiRequest('post', '/sales-invoices', invoice),
         update: (id: number, invoice: any) => apiRequest('put', `/sales-invoices/${id}`, invoice),
         delete: (id: number) => apiRequest('delete', `/sales-invoices/${id}`),
-        createFromQuotation: (quotationId: number, createdBy?: number) => apiRequest('post', '/sales-invoices/create-from-quotation', { quotationId, createdBy }),
-        createFromChallan: (challanId: number, createdBy?: number) => apiRequest('post', '/sales-invoices/create-from-challan', { challanId, createdBy }),
+        createFromQuotation: (quotationId: number, createdBy?: number, fiscalYear?: number | string, force: boolean = false) => apiRequest('post', '/sales-invoices/create-from-quotation', { quotationId, createdBy, fiscalYear, force }),
+        createFromChallan: (challanId: number, createdBy?: number, fiscalYear?: number | string, force: boolean = false) => apiRequest('post', '/sales-invoices/create-from-challan', { challanId, createdBy, fiscalYear, force }),
         getSalesByItem: (companyId: number, filters?: any) => apiRequest('get', '/sales-invoices/reports/by-item', { companyId, ...filters }),
         getPendingWithItems: (companyId: number, filters?: any) => apiRequest('get', '/sales-invoices/pending-with-items', { companyId, ...filters }),
     },
@@ -140,8 +140,9 @@ export const apiClient = {
         create: (challan: any) => apiRequest('post', '/delivery-challans', challan),
         update: (id: number, challan: any) => apiRequest('put', `/delivery-challans/${id}`, challan),
         delete: (id: number) => apiRequest('delete', `/delivery-challans/${id}`),
-        createFromInvoice: (invoiceId: number, createdBy?: number) => apiRequest('post', '/delivery-challans/create-from-invoice', { invoiceId, createdBy }),
-        createFromQuotation: (quotationId: number, createdBy?: number, selectedItems?: any[], poNumber?: string) => apiRequest('post', '/delivery-challans/create-from-quotation', { quotationId, createdBy, selectedItems, poNumber }),
+        createFromInvoice: (invoiceId: number, createdBy?: number, fiscalYear?: number | string, force: boolean = false) => apiRequest('post', '/delivery-challans/create-from-invoice', { invoiceId, createdBy, fiscalYear, force }),
+        createFromQuotation: (quotationId: number, createdBy?: number, selectedItems?: any[], poNumber?: string, fiscalYear?: number | string, force: boolean = false) => apiRequest('post', '/delivery-challans/create-from-quotation', { quotationId, createdBy, selectedItems, poNumber, fiscalYear, force }),
+        getChallansByItem: (companyId: number, filters?: any) => apiRequest('get', '/delivery-challans/reports/by-item', { companyId, ...filters }),
     },
     purchaseInvoiceHandlers: {
         getAll: (companyId: number, filters?: any) => apiRequest('get', '/purchase-invoices', { companyId, ...filters }),
@@ -204,6 +205,15 @@ export const apiClient = {
         getAll: (companyId: number) => apiRequest('get', '/custom-reports', { companyId }),
         create: (report: any) => apiRequest('post', '/custom-reports', report),
         delete: (id: number) => apiRequest('delete', `/custom-reports/${id}`),
+    },
+    fileHandlers: {
+        readAsDataURL: (atomPath: string) => apiRequest('post', '/files/read', { atomPath }),
+        saveFile: (base64Data: string, fileName: string, subDir: string) => apiRequest('post', '/files/save', { base64Data, fileName, subDir }),
+    },
+    settingsHandlers: {
+        getAll: () => apiRequest('get', '/settings'),
+        get: (key: string) => apiRequest('get', `/settings/${key}`),
+        set: (key: string, value: string) => apiRequest('post', `/settings/${key}`, { value }),
     },
     heartbeat: async () => {
         // Retry heartbeat 3 times with a 1-second delay for the initial warm-up phase

@@ -42,6 +42,7 @@ const SalesReport: React.FC = () => {
   const [brand, setBrand] = useState('');
   const [quantity, setQuantity] = useState('');
   const [unitPrice, setUnitPrice] = useState('');
+  const [selectedSalesperson, setSelectedSalesperson] = useState<string | null>(null);
 
   useEffect(() => {
     if (currentCompany) {
@@ -77,6 +78,7 @@ const SalesReport: React.FC = () => {
       if (brand) filters.brand = brand;
       if (quantity) filters.quantity = quantity;
       if (unitPrice) filters.unitPrice = unitPrice;
+      if (selectedSalesperson) filters.salespersonName = selectedSalesperson;
 
       const res = await (window as any).electronAPI.db.salesInvoices.getAll(currentCompany.id, filters);
       if (res.success) {
@@ -129,6 +131,12 @@ const SalesReport: React.FC = () => {
       title: 'Customer',
       dataIndex: 'customer_name',
       key: 'customer_name',
+      render: (v: string) => v || '—',
+    },
+    {
+      title: 'Sales Person',
+      dataIndex: 'customer_salesperson_name',
+      key: 'customer_salesperson_name',
       render: (v: string) => v || '—',
     },
     {
@@ -477,6 +485,16 @@ const SalesReport: React.FC = () => {
               value={selectedCustomer}
               onChange={setSelectedCustomer}
               options={customers.map((c: any) => ({ label: c.name, value: c.id }))}
+              showSearch
+              optionFilterProp="label"
+            />
+            <Select
+              allowClear
+              placeholder="All Sales Persons"
+              style={{ width: 180 }}
+              value={selectedSalesperson}
+              onChange={setSelectedSalesperson}
+              options={Array.from(new Set(customers.map(c => c.salesperson_name).filter(Boolean))).map(name => ({ label: name, value: name }))}
               showSearch
               optionFilterProp="label"
             />

@@ -6,7 +6,7 @@ import { useLocation } from 'react-router-dom';
 import { parseExcelToRows, getCol, getColNum } from '../../utils/excelImport';
 
 const Items: React.FC = () => {
-  const { currentCompany, user, globalRefreshKey } = useApp();
+  const { currentCompany, user, globalRefreshKey, isPurchaseEnabled, minimizeModal } = useApp();
   const location = useLocation();
   const [items, setItems] = useState<any[]>([]);
   const [brands, setBrands] = useState<any[]>([]);
@@ -316,6 +316,16 @@ const Items: React.FC = () => {
       render: (loc: unknown) => (loc != null && loc !== '' ? String(loc) : '—'),
     },
     {
+      title: 'Quantity',
+      dataIndex: 'quantity',
+      key: 'quantity',
+      width: 100,
+      render: (q: number) => {
+        const val = q ?? 0;
+        return <span style={{ fontWeight: 600, color: val <= 0 ? '#ff4d4f' : 'inherit' }}>{val}</span>;
+      },
+    },
+    {
       title: 'Purchase Price',
       dataIndex: 'purchase_price',
       key: 'purchase_price',
@@ -326,12 +336,6 @@ const Items: React.FC = () => {
       dataIndex: 'selling_price',
       key: 'selling_price',
       render: (price: number) => (price != null && !Number.isNaN(Number(price)) ? Number(price).toFixed(2) : '0.00'),
-    },
-    {
-      title: 'Quantity',
-      dataIndex: 'quantity',
-      key: 'quantity',
-      render: (q: number) => (q != null && !Number.isNaN(Number(q)) ? Number(q) : 0),
     },
     {
       title: 'Actions',
@@ -358,7 +362,10 @@ const Items: React.FC = () => {
         );
       },
     },
-  ];
+  ].filter(col => {
+    if (!isPurchaseEnabled && col.key === 'quantity') return false;
+    return true;
+  });
 
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -527,15 +534,19 @@ const Items: React.FC = () => {
             </Select>
           </Form.Item>
 
-          <Form.Item name="track_inventory" label="Track Inventory" initialValue={1}>
-            <Select>
-              <Select.Option value={1}>Yes</Select.Option>
-              <Select.Option value={0}>No</Select.Option>
-            </Select>
-          </Form.Item>
-          <Form.Item name="reorder_level" label="Reorder Level" initialValue={0}>
-            <InputNumber min={0} style={{ width: '100%' }} />
-          </Form.Item>
+          {isPurchaseEnabled && (
+            <>
+              <Form.Item name="track_inventory" label="Track Inventory" initialValue={1}>
+                <Select>
+                  <Select.Option value={1}>Yes</Select.Option>
+                  <Select.Option value={0}>No</Select.Option>
+                </Select>
+              </Form.Item>
+              <Form.Item name="reorder_level" label="Reorder Level" initialValue={0}>
+                <InputNumber min={0} style={{ width: '100%' }} />
+              </Form.Item>
+            </>
+          )}
         </Form>
       </Modal>
 

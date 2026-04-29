@@ -24,8 +24,49 @@
 .print-template.has-letterhead {
     padding: 0;
     min-height: 297mm;
-    height: 297mm;
 }
+
+@media print {
+    .print-template.has-letterhead {
+        height: auto !important;
+        min-height: 0 !important;
+    }
+
+    /* Page numbering for physical print */
+    .page-number-footer {
+        display: block !important;
+        position: fixed !important;
+        bottom: 15mm !important;
+        right: 15mm !important;
+        font-size: 12px !important;
+        font-weight: bold !important;
+        color: #000 !important;
+        background: #ff0 !important;
+        border: 2px solid #f00 !important;
+        padding: 6px 12px !important;
+        border-radius: 4px !important;
+        z-index: 9999999 !important;
+        pointer-events: none;
+    }
+
+    .page-count::after {
+        content: "Page " counter(page);
+    }
+
+
+    /* Move up when letterhead footer (40mm) is present to avoid overlap */
+    .has-letterhead .page-number-footer {
+        bottom: 42mm !important;
+    }
+
+    /* Ensure table footers (totals) only show on the last page */
+    .items-table tfoot,
+    .items-table-invoice tfoot,
+    .items-table-bill tfoot {
+        display: table-row-group !important;
+    }
+}
+
 
 /* ══════════════════════════════════════════════════════════════════
    Letterhead strips
@@ -42,18 +83,25 @@
     object-fit: cover !important;
 }
 
-/* Header strip: shows top 65 mm of the letterhead image */
+/* Header strip: shows top 45 mm of the letterhead image */
 .letterhead-bg.lh-header {
     top: 0 !important;
-    height: 65mm !important;
+    height: 45mm !important;
     object-position: top center !important;
 }
 
-/* Footer strip: shows bottom 55 mm of the letterhead image */
+/* Footer strip: shows bottom 40 mm of the letterhead image */
 .letterhead-bg.lh-footer {
     bottom: 0 !important;
-    height: 55mm !important;
+    height: 40mm !important;
     object-position: bottom center !important;
+}
+
+@media print {
+    .print-template.has-letterhead .letterhead-bg.lh-header,
+    .print-template.has-letterhead .letterhead-bg.lh-footer {
+        position: fixed !important;
+    }
 }
 
 .letterhead-error,
@@ -158,6 +206,10 @@
     font-size: 14px;
 }
 
+.print-template.has-letterhead .print-content .inv-header-container {
+    margin-bottom: 12px;
+}
+
 .inv-header-left, .inv-header-right {
     width: 48%;
 }
@@ -189,7 +241,11 @@
 .info-section {
     display: flex;
     justify-content: space-between;
-    margin-bottom: 30px;
+    margin-bottom: 20px;
+}
+
+.print-template.has-letterhead .print-content .info-section {
+    margin-bottom: 12px;
 }
 
 .customer-name {
@@ -276,6 +332,7 @@
     max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
+    word-break: break-word;
 }
 
 /* Doc Info Box for Invoice */
@@ -314,6 +371,10 @@
     display: flex;
     justify-content: flex-end;
     margin-top: 10px;
+    page-break-inside: avoid;
+    break-inside: avoid;
+    page-break-before: avoid;
+    break-before: avoid;
 }
 
 .extreme-right-totals .totals {
@@ -359,9 +420,19 @@
 .items-table {
     margin-bottom: 30px;
 }
+
+.print-template.has-letterhead .print-content .items-table {
+    margin-bottom: 12px;
+}
 .items-table .ant-table-tbody>tr>td,
 .items-table .ant-table-thead>tr>th {
     font-size: 14px;
+}
+
+.items-table tr {
+    page-break-inside: avoid;
+    orphans: 3;
+    widows: 3;
 }
 
 .items-table-invoice {
@@ -450,6 +521,10 @@
     display: flex;
     justify-content: space-between;
     margin-bottom: 40px;
+    page-break-inside: avoid;
+    break-inside: avoid;
+    page-break-before: avoid;
+    break-before: avoid;
 }
 
 .notes {
@@ -550,8 +625,14 @@
     word-break: break-word;
 }
 
-.bill-totals-section {
+.bill-totals-section,
+.dc-confirmation-block,
+.quotation-personalized-footer {
     margin-top: 0;
+    page-break-inside: avoid;
+    break-inside: avoid;
+    page-break-before: avoid;
+    break-before: avoid;
 }
 
 .bill-totals-table {
@@ -580,6 +661,8 @@
 .bill-terms {
     margin: 20px 0;
     font-size: 11pt;
+    page-break-inside: avoid;
+    break-inside: avoid;
 }
 
 .bill-terms-heading {
@@ -656,8 +739,54 @@
 
 /* Letterhead mode: content starts right after header (minimal gap); footer strip reserved at bottom */
 .print-template.has-letterhead .print-content {
-    padding: 30mm 15mm 58mm 15mm;
-    /* ~52mm top so content starts immediately below letterhead; 58mm bottom for footer strip */
+    padding: 0 15mm;
+    /* Spacing is now handled by spacers in .print-layout-table */
+}
+
+/* Structural table for printing repeating headers/footers */
+.print-layout-table {
+    width: 100%;
+    border-collapse: collapse;
+    border: none;
+    table-layout: fixed;
+}
+
+.print-layout-table td {
+    padding: 0;
+    border: none;
+}
+
+/* Spacer divs inside the table to reserve space for fixed headers/footers */
+.lh-header-spacer {
+    height: 45mm; /* Must match .lh-header height */
+}
+
+.lh-footer-spacer {
+    height: 40mm; /* Must match .lh-footer height */
+}
+
+@media screen {
+    /* Paged preview look - simulate A4 pages as separate sheets */
+    .print-template {
+        box-shadow: 0 0 20px rgba(0,0,0,0.2);
+        margin: 40px auto;
+        border: 1px solid #ddd;
+        /* Force the background to look like a stack of A4 papers */
+        background-color: #fff !important;
+        background-image: 
+            linear-gradient(to bottom, 
+                #fff 0, #fff 296mm, 
+                #f0f0f0 296mm, #f0f0f0 297mm
+            ) !important;
+        background-size: 100% 297mm !important;
+        position: relative;
+    }
+
+    /* Remove the sticky behavior as requested, keep it static within the flow */
+    .print-template.has-letterhead .letterhead-bg.lh-header,
+    .print-template.has-letterhead .letterhead-bg.lh-footer {
+        position: absolute !important;
+    }
 }
 
 /* No-letterhead mode: content slightly down, centered, keep A4 min-height */
@@ -731,6 +860,12 @@
         print-color-adjust: exact !important;
     }
 
+    html, body {
+        height: auto !important;
+        min-height: auto !important;
+        overflow: visible !important;
+    }
+
     /* Hide everything … */
     body * {
         visibility: hidden;
@@ -748,21 +883,24 @@
         left: 0 !important;
         top: 0 !important;
         width: 210mm !important;
-        min-height: 297mm !important;
+        height: auto !important;
         margin: 0 !important;
         padding: 0 !important;
         background: white !important;
+        overflow: visible !important;
+        z-index: 99999 !important;
     }
 
     .print-template {
         padding: 0;
         margin: 0;
         width: 210mm;
-        min-height: 297mm;
-        position: relative;
-        overflow: visible;
+        height: auto !important;
+        min-height: 0 !important;
+        position: static !important;
+        overflow: visible !important;
         background: transparent !important;
-        page-break-inside: avoid;
+        page-break-inside: auto !important;
     }
 
     .ant-table-thead th {
@@ -781,13 +919,47 @@
 
     .items-table tr {
         page-break-inside: avoid;
+        widows: 3;
+        orphans: 3;
+    }
+
+    .totals-section,
+    .bill-totals-section,
+    .bill-totals-table,
+    .extreme-right-totals,
+    .bill-terms,
+    .quotation-personalized-footer,
+    .bill-footer-thanks,
+    .dc-footer {
+        page-break-inside: avoid;
     }
 }
 
 /* Hidden in normal view; shown only during print/PDF capture */
 #print-container {
     display: none;
-    overflow: hidden;
+}
+
+/* Show page numbers in the in-app preview with professional look */
+.preview-page-wrapper .page-number-footer {
+    display: block !important;
+    position: absolute !important;
+    bottom: 30px;
+    right: 30px;
+    background: #fff !important;
+    color: #000 !important;
+    border: 1px solid #ddd !important;
+    padding: 4px 10px !important;
+    border-radius: 4px !important;
+    font-size: 11px !important;
+    font-weight: bold !important;
+    z-index: 999999 !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+/* IMPORTANT: Hide HTML page numbers during PDF capture because PDF uses native Electron footerTemplate (1 / 2) */
+body.capturing-pdf .page-number-footer {
+    display: none !important;
 }
 
 /* When saving as PDF: show only print container (like @media print) */
@@ -802,11 +974,11 @@ body.capturing-pdf #print-container * {
 
 body.capturing-pdf #print-container {
     display: block !important;
-    position: fixed !important;
+    position: absolute !important;
     left: 0 !important;
     top: 0 !important;
     width: 210mm !important;
-    height: 297mm !important;
+    height: auto !important;
     min-height: 297mm !important;
     margin: 0 !important;
     padding: 0 !important;
@@ -818,5 +990,15 @@ body.capturing-pdf #print-container {
 /* Ensure full A4 so letterhead footer stays at extreme bottom in PDF capture */
 body.capturing-pdf #print-container .print-template {
     min-height: 297mm !important;
-    height: 297mm !important;
+    height: auto !important;
+}
+body.capturing-pdf .items-table tr {
+    page-break-inside: avoid !important;
+    widows: 3 !important;
+    orphans: 3 !important;
+}
+
+/* Prevent repeating totals on every page for Quotation and DC */
+.items-table:not(.items-table-invoice):not(.items-table-bill) tfoot {
+    display: table-row-group !important;
 }

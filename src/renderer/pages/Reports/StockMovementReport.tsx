@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Table, Card, Row, Col, DatePicker, Select, Button, Space,
-  Statistic, Divider, Typography, notification, Tag,
+  Statistic, Divider, Typography, notification, Tag, Alert
 } from 'antd';
 import {
   PrinterOutlined, ArrowLeftOutlined, HistoryOutlined,
@@ -17,7 +17,7 @@ const { RangePicker } = DatePicker;
 const { Title, Text } = Typography;
 
 const StockMovementReport: React.FC = () => {
-  const { currentCompany } = useApp();
+  const { currentCompany, isPurchaseEnabled } = useApp();
   const navigate = useNavigate();
 
   const [movements, setMovements] = useState<any[]>([]);
@@ -166,6 +166,19 @@ const StockMovementReport: React.FC = () => {
 
   const totalIn = movements.filter(m => m.type === 'Inbound').reduce((s, m) => s + (m.quantity || 0), 0);
   const totalOut = movements.filter(m => m.type === 'Outbound').reduce((s, m) => s + (m.quantity || 0), 0);
+
+  if (!loading && !isPurchaseEnabled) {
+    return (
+      <div style={{ padding: 24 }}>
+        <Alert
+          type="warning"
+          showIcon
+          message="Purchase Module is Disabled"
+          description="The Purchase & Inventory module is currently disabled. You can enable it in System Settings."
+        />
+      </div>
+    );
+  }
 
   const columns = [
     {

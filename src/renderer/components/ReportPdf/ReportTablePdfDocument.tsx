@@ -33,6 +33,9 @@ export const ReportTablePdfDocument: React.FC<ReportTablePdfDocumentProps> = ({
   footerNote,
 }) => (
   <div className="erp-report-pdf-root">
+    <div className="report-page-number">
+        <span className="report-page-count" />
+    </div>
     <div className="erp-report-pdf-header-block">
       {companyLogo && (
         <img 

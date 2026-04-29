@@ -196,18 +196,25 @@ const SalesInvoices: React.FC = () => {
     }
   };
 
-  const actualPrint = () => {
-    setTimeout(async () => {
-      try {
-        console.log('[Print] Calling electronAPI.db.files.print()...');
-        const result = await (window as any).electronAPI.db.files.print();
-        console.log('[Print] Result:', result);
-      } catch (err) {
-        console.error('[Print] IPC print failed, falling back to window.print():', err);
-        window.print();
-      }
-    }, 300);
-  };
+const actualPrint = () => {
+  // Apply printing-specific CSS similar to PDF capture to ensure only the print container is rendered
+  const body = document.body;
+  body.classList.add('capturing-pdf');
+  // Force a reflow to ensure styles are applied before invoking print
+  void body.offsetHeight;
+  setTimeout(async () => {
+    try {
+      // Use IPC print which returns a promise that resolves when dialog closes
+      await (window as any).electronAPI.db.files.print();
+    } catch (err) {
+      console.error('IPC print failed, falling back to window.print():', err);
+      window.print();
+    } finally {
+      // Clean up the class after printing completes
+      body.classList.remove('capturing-pdf');
+    }
+  }, 300);
+};
 
   const handleSavePDF = async () => {
     try {

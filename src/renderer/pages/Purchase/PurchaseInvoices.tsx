@@ -417,18 +417,9 @@ const PurchaseInvoices: React.FC = () => {
         title={editingInvoice ? 'Edit Invoice' : 'New Purchase Invoice'}
         open={modalVisible}
         onCancel={() => {
-          const invNum = form.getFieldValue('invoice_number') || 'New PI';
           setModalVisible(false);
-          minimizeModal({
-            id: editingInvoice ? `pi-edit-${editingInvoice.id}` : 'pi-new',
-            title: editingInvoice ? `Edit PI ${invNum}` : `New PI ${invNum}`,
-            onRestore: () => {
-              loadItems();
-              loadBrands();
-              setEditingInvoice(editingInvoice);
-              setModalVisible(true);
-            }
-          });
+          setEditingInvoice(null);
+          form.resetFields();
         }}
         maskClosable={true}
         onOk={() => form.submit()}

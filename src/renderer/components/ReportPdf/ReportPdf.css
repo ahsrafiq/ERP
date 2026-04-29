@@ -39,6 +39,7 @@
   margin-bottom: 10px;
 }
 
+
 .erp-report-pdf-company {
   font-weight: 700;
   text-decoration: underline;
@@ -114,10 +115,36 @@
   margin-top: 6px;
 }
 
-.erp-report-pdf-generic-company {
-  font-weight: 700;
-  text-decoration: underline;
-  text-transform: uppercase;
-  font-size: 14px;
-  margin-top: 10px;
+.report-page-number {
+  display: block;
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background: transparent;
+  color: #888;
+  padding: 0;
+  font-size: 11px;
+  z-index: 999999;
 }
+
+@media print {
+  .report-page-number {
+    display: block !important;
+    position: fixed !important;
+    bottom: 12mm !important;
+    right: 10mm !important;
+    font-size: 11px !important;
+    font-weight: bold !important;
+    color: #000 !important;
+    background: #fff !important;
+    border: 1px solid #000 !important;
+    padding: 4px 8px !important;
+    border-radius: 4px !important;
+    font-family: Arial, sans-serif !important;
+    z-index: 999999 !important;
+  }
+  .report-page-count::after {
+    content: "Page " counter(page);
+  }
+}
+

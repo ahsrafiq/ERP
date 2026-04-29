@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   Table, Card, Row, Col, Select, Button, Space,
-  Statistic, Divider, Typography, notification, message, Input, Tag,
+  Statistic, Divider, Typography, notification, message, Input, Tag, Alert
 } from 'antd';
 import {
   PrinterOutlined, ArrowLeftOutlined, FileExcelOutlined,
@@ -15,7 +15,7 @@ const { Title, Text } = Typography;
 const { Search } = Input;
 
 const InventoryReport: React.FC = () => {
-  const { currentCompany } = useApp();
+  const { currentCompany, isPurchaseEnabled } = useApp();
   const navigate = useNavigate();
 
   const [items, setItems] = useState<any[]>([]);
@@ -142,6 +142,19 @@ const InventoryReport: React.FC = () => {
       </Table.Summary.Row>
     </Table.Summary>
   );
+
+  if (!loading && !isPurchaseEnabled) {
+    return (
+      <div style={{ padding: 24 }}>
+        <Alert
+          type="warning"
+          showIcon
+          message="Purchase Module is Disabled"
+          description="The Purchase & Inventory module is currently disabled. You can enable it in System Settings (Gear icon in the menu)."
+        />
+      </div>
+    );
+  }
 
   // ── Excel Export ──────────────────────────────────────────────────────────
   const handleExportExcel = () => {
