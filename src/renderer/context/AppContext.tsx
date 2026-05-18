@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
-import { Alert, Modal, Form, Input, Radio, message, Button, Typography, Switch, Divider } from 'antd';
+import { Alert, Modal, Form, Input, Radio, message, Button, Typography, Switch, Divider, notification } from 'antd';
 import { SettingOutlined } from '@ant-design/icons';
 
 interface Company {
@@ -129,6 +129,31 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       if (removeListener) removeListener();
     };
   }, [user]);
+
+  useEffect(() => {
+    if ((window as any).electronAPI.onAutoBackupStatus) {
+      const removeBackupListener = (window as any).electronAPI.onAutoBackupStatus((data: { success: boolean; path?: string; error?: string }) => {
+        if (data.success) {
+          notification.success({
+            message: 'Auto Backup Successful',
+            description: `A scheduled database and uploads backup has been created at:\n${data.path}`,
+            duration: 10,
+            placement: 'bottomRight',
+          });
+        } else {
+          notification.error({
+            message: 'Auto Backup Failed',
+            description: `The scheduled database backup failed:\n${data.error}`,
+            duration: 0,
+            placement: 'bottomRight',
+          });
+        }
+      });
+      return () => {
+        if (removeBackupListener) removeBackupListener();
+      };
+    }
+  }, []);
 
   const loadConfig = async () => {
     try {

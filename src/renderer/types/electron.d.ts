@@ -69,7 +69,8 @@ export interface ElectronAPI {
       global: (companyId: number, query: string) => Promise<{ success: boolean; data?: any; error?: string }>;
     };
   };
-  onMenuAction: (callback: (action: string) => void) => void;
+  onMenuAction: (callback: (action: string) => void) => () => void;
+  onAutoBackupStatus: (callback: (data: { success: boolean; path?: string; error?: string }) => void) => () => void;
   platform: string;
 }
 

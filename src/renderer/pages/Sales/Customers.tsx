@@ -223,6 +223,7 @@ const Customers: React.FC = () => {
           salesperson_name: salesPerson,
           gst_number: getCol(row, 'GST Number', 'gst_number'),
           opening_balance: getColNum(row, 'Opening Balance', 'opening_balance') || 0,
+          payment_terms_days: getColNum(row, 'Payment Terms Days', 'Payment Terms', 'payment_terms_days') || 30,
         };
         try {
           const result = await (window as any).electronAPI.db.customers.create(payload);
@@ -286,6 +287,12 @@ const Customers: React.FC = () => {
     { title: 'Name',      dataIndex: 'name',      key: 'name' },
     { title: 'Email',     dataIndex: 'email',     key: 'email' },
     { title: 'Phone',     dataIndex: 'phone',     key: 'phone' },
+    {
+      title: 'Payment Terms',
+      dataIndex: 'payment_terms_days',
+      key: 'payment_terms_days',
+      render: (days: any) => <Tag color="geekblue">{days !== undefined ? Number(days) : 30} Days</Tag>,
+    },
     {
       title: 'Balance / Credit',
       key: 'balance_credit',
@@ -451,6 +458,9 @@ const Customers: React.FC = () => {
           </Form.Item>
           <Form.Item name="credit_limit" label="Credit Limit (assigned at account opening)" rules={[{ required: true, message: 'Please set credit limit at customer opening' }]}>
             <InputNumber min={0} style={{ width: '100%' }} precision={2} placeholder="e.g. 50000" />
+          </Form.Item>
+          <Form.Item name="payment_terms_days" label="Payment Terms / Credit Period (Days)" initialValue={30} rules={[{ required: true, message: 'Please specify payment terms' }]}>
+            <InputNumber min={0} style={{ width: '100%' }} precision={0} placeholder="e.g., 30" />
           </Form.Item>
           <Form.Item 
             name="opening_balance" 

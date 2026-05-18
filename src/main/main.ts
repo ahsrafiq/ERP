@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage, protocol, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage, protocol, dialog, Notification } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import { initializeDatabase, closeDatabase } from './database/schema';
@@ -48,12 +48,12 @@ if (process.env.NODE_ENV === 'development') {
 
 // Allow forcing Master mode via command line if it gets stuck in Client mode
 if (process.argv.includes('--is-master')) {
-    const { getConfig, saveConfig } = require('./config');
-    const config = getConfig();
-    if (config.mode !== 'MASTER') {
-        config.mode = 'MASTER';
-        saveConfig(config);
-    }
+  const { getConfig, saveConfig } = require('./config');
+  const config = getConfig();
+  if (config.mode !== 'MASTER') {
+    config.mode = 'MASTER';
+    saveConfig(config);
+  }
 }
 
 let mainWindow: BrowserWindow | null = null;
@@ -94,8 +94,30 @@ function performAutomaticDatabaseBackup(now: Date) {
     }
 
     console.log('[AutoBackup] Full data backup created at:', targetDir);
-  } catch (err) {
+
+    // Native OS Notification
+    if (Notification.isSupported()) {
+      new Notification({
+        title: 'ERP Auto-Backup Successful',
+        body: `Database backup has been completed successfully at ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.\nSaved to: ${targetDir}`,
+      }).show();
+    }
+
+    // In-app Notification to active window
+    mainWindow?.webContents.send('auto-backup-status', { success: true, path: targetDir });
+  } catch (err: any) {
     console.error('[AutoBackup] Failed to back up data:', err);
+
+    // Native OS Notification on Failure
+    if (Notification.isSupported()) {
+      new Notification({
+        title: 'ERP Auto-Backup Failed',
+        body: `Failed to create automatic backup: ${err?.message || err}`,
+      }).show();
+    }
+
+    // In-app Notification to active window on Failure
+    mainWindow?.webContents.send('auto-backup-status', { success: false, error: err?.message || String(err) });
   }
 }
 
@@ -278,7 +300,7 @@ function createMenu() {
                   const selectedPath = filePaths[0];
                   const dbToRestore = path.join(selectedPath, 'erp.db');
                   const uploadsToRestore = path.join(selectedPath, 'uploads');
-                  
+
                   if (!fs.existsSync(dbToRestore)) {
                     throw new Error('Selected folder does not contain erp.db');
                   }
@@ -442,6 +464,9 @@ function createTray() {
 
 // Initialize database
 app.whenReady().then(() => {
+  if (process.platform === 'win32') {
+    app.setAppUserModelId('com.electron.erpdesktop');
+  }
   // Register atom protocol handler for local file access
   protocol.handle('atom', (request) => {
     try {
@@ -531,11 +556,11 @@ ipcMain.handle('file:printToPDF', async (event) => {
     try {
       const data = await event.sender.printToPDF({
         printBackground: true,
-        margins: { marginType: 'custom', top: 0.5, bottom: 0.8, left: 0.5, right: 0.5 },
+        margins: { marginType: 'custom', top: 0.5, bottom: 2.0, left: 0.5, right: 0.5 },
         pageSize: 'A4',
         displayHeaderFooter: true,
         headerTemplate: '<span></span>',
-        footerTemplate: '<div style="font-size:10px; width:100%; text-align:right; padding-right:20px;"><span class="pageNumber"></span> / <span class="totalPages"></span></div>',
+        footerTemplate: '<div style="font-size:11px; font-weight:700; color:#111; width:100%; text-align:right; padding-right:15mm; padding-bottom: 6mm; -webkit-print-color-adjust: exact; print-color-adjust: exact;"><span class="pageNumber"></span>/<span class="totalPages"></span></div>',
       });
       fs.writeFileSync(filePath, data);
       return { success: true, filePath };
@@ -546,14 +571,54 @@ ipcMain.handle('file:printToPDF', async (event) => {
   return { success: false, error: 'Save cancelled' };
 });
 
+// Remember the globally used last save folder to make consecutive saving fast and delightful
+const lastSavePathFile = path.join(app.getPath('userData'), 'last_save_directory.txt');
+
+function getLastSavedDirectory(): string {
+  try {
+    if (fs.existsSync(lastSavePathFile)) {
+      const savedDir = fs.readFileSync(lastSavePathFile, 'utf8').trim();
+      if (savedDir && fs.existsSync(savedDir)) {
+        return savedDir;
+      }
+    }
+  } catch (err) {
+    console.error('Failed to read last saved directory:', err);
+  }
+  return app.getPath('documents');
+}
+
+function setLastSavedDirectory(dir: string) {
+  try {
+    fs.writeFileSync(lastSavePathFile, dir, 'utf8');
+  } catch (err) {
+    console.error('Failed to save last saved directory:', err);
+  }
+}
+
 // Step 1: Show save dialog and return chosen path (no capturing yet)
 ipcMain.handle('file:getSavePath', async (_event, defaultName: string) => {
+  const currentLastSavedDir = getLastSavedDirectory();
+  const defaultPath = path.isAbsolute(defaultName)
+    ? defaultName
+    : path.join(currentLastSavedDir, defaultName || 'ERP_Document.pdf');
+
   const { filePath, canceled } = await dialog.showSaveDialog({
-    title: 'Save as PDF',
-    defaultPath: path.join(app.getPath('documents'), defaultName || 'ERP_Document.pdf'),
-    filters: [{ name: 'PDF Files', extensions: ['pdf'] }],
+    title: 'Save File',
+    defaultPath,
+    filters: [
+      { name: 'PDF Files', extensions: ['pdf'] },
+      { name: 'Excel Files', extensions: ['xlsx'] },
+      { name: 'All Files', extensions: ['*'] }
+    ],
   });
+  
   if (canceled || !filePath) return { success: false, error: 'Save cancelled' };
+  
+  // Remember the folder path of the saved file
+  const folderPath = path.dirname(filePath);
+  setLastSavedDirectory(folderPath);
+  
   return { success: true, filePath };
 });
 
@@ -567,11 +632,11 @@ ipcMain.handle('file:captureAndSave', async (event, filePath: string, heightMM?:
       : 'A4' as const;
     const data = await event.sender.printToPDF({
       printBackground: true,
-      margins: { marginType: 'custom', top: 0.5, bottom: 0.8, left: 0.5, right: 0.5 },
+      margins: { marginType: 'custom', top: 0.5, bottom: 2.0, left: 0.5, right: 0.5 },
       pageSize,
       displayHeaderFooter: true,
       headerTemplate: '<span></span>',
-      footerTemplate: '<div style="font-size:10px; width:100%; text-align:right; padding-right:20px;"><span class="pageNumber"></span> / <span class="totalPages"></span></div>',
+      footerTemplate: '<div style="font-size:11px; font-weight:700; color:#111; width:100%; text-align:right; padding-right:15mm; padding-bottom: 6mm; -webkit-print-color-adjust: exact; print-color-adjust: exact;"><span class="pageNumber"></span>/<span class="totalPages"></span></div>',
     });
     fs.writeFileSync(filePath, data);
     return { success: true, filePath };
@@ -604,11 +669,11 @@ ipcMain.handle('file:printHtmlToPDF', async (_event, html: string, filePath: str
       : 'A4';
     const pdfData = await win.webContents.printToPDF({
       printBackground: true,
-      margins: { marginType: 'custom', top: 0.5, bottom: 0.8, left: 0.5, right: 0.5 },
+      margins: { marginType: 'custom', top: 0.5, bottom: 2.0, left: 0.5, right: 0.5 },
       pageSize,
       displayHeaderFooter: true,
       headerTemplate: '<span></span>',
-      footerTemplate: '<div style="font-size:10px; width:100%; text-align:right; padding-right:20px;"><span class="pageNumber"></span> / <span class="totalPages"></span></div>',
+      footerTemplate: '<div style="font-size:11px; font-weight:700; color:#111; width:100%; text-align:right; padding-right:15mm; padding-bottom: 6mm; -webkit-print-color-adjust: exact; print-color-adjust: exact;"><span class="pageNumber"></span>/<span class="totalPages"></span></div>',
     });
     fs.writeFileSync(filePath, pdfData);
     return { success: true, filePath };
@@ -1081,7 +1146,7 @@ ipcMain.handle('db:config:get', async () => {
 ipcMain.handle('db:config:save', async (event, newConfig: any) => {
   const oldConfig = getConfig();
   saveConfig(newConfig);
-  
+
   // If mode changed (MASTER -> CLIENT or vice-versa), prompt for restart
   if (oldConfig.mode !== newConfig.mode) {
     dialog.showMessageBox({
@@ -1095,6 +1160,6 @@ ipcMain.handle('db:config:save', async (event, newConfig: any) => {
       app.exit();
     });
   }
-  
+
   return { success: true };
 });

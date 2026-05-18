@@ -26,6 +26,10 @@
     min-height: 297mm;
 }
 
+.page-number-footer {
+    display: none;
+}
+
 @media print {
     .print-template.has-letterhead {
         height: auto !important;
@@ -36,29 +40,31 @@
     .page-number-footer {
         display: block !important;
         position: fixed !important;
-        bottom: 15mm !important;
+        bottom: 14mm !important;
         right: 15mm !important;
-        font-size: 12px !important;
-        font-weight: bold !important;
-        color: #000 !important;
-        background: #ff0 !important;
-        border: 2px solid #f00 !important;
-        padding: 6px 12px !important;
-        border-radius: 4px !important;
+        font-size: 11px !important;
+        font-weight: 700 !important;
+        color: #111 !important;
+        background: transparent !important;
+        border: none !important;
+        padding: 0 !important;
         z-index: 9999999 !important;
         pointer-events: none;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
     }
 
-    .page-count::after {
-        content: "Page " counter(page);
+    .page-count-current::after {
+        content: counter(page);
+    }
+
+    .has-letterhead .page-number-footer {
+        bottom: 42mm !important;
+        color: #000 !important;
     }
 
 
     /* Move up when letterhead footer (40mm) is present to avoid overlap */
-    .has-letterhead .page-number-footer {
-        bottom: 42mm !important;
-    }
-
     /* Ensure table footers (totals) only show on the last page */
     .items-table tfoot,
     .items-table-invoice tfoot,
@@ -762,7 +768,7 @@
 }
 
 .lh-footer-spacer {
-    height: 40mm; /* Must match .lh-footer height */
+    height: 48mm; /* 40mm letterhead footer + reserved page-number lane */
 }
 
 @media screen {
@@ -940,28 +946,6 @@
     display: none;
 }
 
-/* Show page numbers in the in-app preview with professional look */
-.preview-page-wrapper .page-number-footer {
-    display: block !important;
-    position: absolute !important;
-    bottom: 30px;
-    right: 30px;
-    background: #fff !important;
-    color: #000 !important;
-    border: 1px solid #ddd !important;
-    padding: 4px 10px !important;
-    border-radius: 4px !important;
-    font-size: 11px !important;
-    font-weight: bold !important;
-    z-index: 999999 !important;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-}
-
-/* IMPORTANT: Hide HTML page numbers during PDF capture because PDF uses native Electron footerTemplate (1 / 2) */
-body.capturing-pdf .page-number-footer {
-    display: none !important;
-}
-
 /* When saving as PDF: show only print container (like @media print) */
 body.capturing-pdf * {
     visibility: hidden !important;
@@ -970,6 +954,11 @@ body.capturing-pdf * {
 body.capturing-pdf #print-container,
 body.capturing-pdf #print-container * {
     visibility: visible !important;
+}
+
+/* PDF uses Electron native footer numbering; avoid duplicate HTML numbers */
+body.capturing-pdf .page-number-footer {
+    display: none !important;
 }
 
 body.capturing-pdf #print-container {

@@ -171,7 +171,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   // Menu actions
   onMenuAction: (callback: (action: string) => void) => {
-    ipcRenderer.on('menu-action', (event, action) => callback(action));
+    const subscription = (event: any, action: string) => callback(action);
+    ipcRenderer.on('menu-action', subscription);
+    return () => {
+      ipcRenderer.removeListener('menu-action', subscription);
+    };
+  },
+  onAutoBackupStatus: (callback: (data: { success: boolean; path?: string; error?: string }) => void) => {
+    const subscription = (event: any, data: any) => callback(data);
+    ipcRenderer.on('auto-backup-status', subscription);
+    return () => {
+      ipcRenderer.removeListener('auto-backup-status', subscription);
+    };
   },
   // App Restart
   appRestart: () => ipcRenderer.invoke('app:restart'),

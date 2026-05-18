@@ -217,8 +217,13 @@ const DeliveryChallans: React.FC = () => {
 
     const handleSavePDF = async () => {
         try {
+            const customerName = printData?.customer_name ? printData.customer_name.trim() : 'Customer';
+            const billNumber = printData?.challan_number ? printData.challan_number.trim() : 'Challan';
+            const cleanCustomer = customerName.replace(/[\\/:*?"<>|]/g, '_');
+            const cleanBill = billNumber.replace(/[\\/:*?"<>|]/g, '_');
+            const defaultName = `BILL_${cleanCustomer}_${cleanBill}.pdf`;
             // Step 1: show the save dialog BEFORE any visual change
-            const pathResult = await (window as any).electronAPI.db.files.getSavePath('DeliveryChallan.pdf');
+            const pathResult = await (window as any).electronAPI.db.files.getSavePath(defaultName);
             if (!pathResult.success) return;
 
             // Step 2: apply capturing class (brief flash, dialog already gone)

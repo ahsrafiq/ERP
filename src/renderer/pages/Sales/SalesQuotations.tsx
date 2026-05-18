@@ -19,9 +19,11 @@ function loadSuggestions(key: string, defaults: string[] = []): string[] {
         if (raw) {
             const arr = JSON.parse(raw);
             if (Array.isArray(arr)) {
-                const merged = [...new Set([...defaults, ...arr])];
-                return merged;
+                return arr;
             }
+        } else if (defaults.length > 0) {
+            localStorage.setItem(key, JSON.stringify(defaults));
+            return defaults;
         }
     } catch { /* ignore */ }
     return defaults;
@@ -31,8 +33,8 @@ function saveSuggestion(key: string, value: string, defaults: string[] = []) {
     if (!value?.trim()) return;
     const existing = loadSuggestions(key, defaults);
     if (!existing.includes(value.trim())) {
-        existing.push(value.trim());
-        localStorage.setItem(key, JSON.stringify(existing));
+        const updated = [...existing, value.trim()];
+        localStorage.setItem(key, JSON.stringify(updated));
     }
 }
 
@@ -85,6 +87,24 @@ const SalesQuotations: React.FC = () => {
     const [validitySuggestions, setValiditySuggestions] = useState<string[]>([]);
     const [remarksSuggestions, setRemarksSuggestions] = useState<string[]>([]);
     const passwordInputRef = React.useRef<any>(null);
+
+    const handleDeleteRemark = (e: React.MouseEvent, s: string) => {
+        e.stopPropagation();
+        e.preventDefault();
+        const updated = remarksSuggestions.filter(item => item !== s);
+        setRemarksSuggestions(updated);
+        localStorage.setItem(REMARKS_STORAGE_KEY, JSON.stringify(updated));
+        message.success('Remark suggestion deleted successfully');
+    };
+
+    const handleDeleteValidity = (e: React.MouseEvent, s: string) => {
+        e.stopPropagation();
+        e.preventDefault();
+        const updated = validitySuggestions.filter(item => item !== s);
+        setValiditySuggestions(updated);
+        localStorage.setItem(VALIDITY_STORAGE_KEY, JSON.stringify(updated));
+        message.success('Validity suggestion deleted successfully');
+    };
 
     useEffect(() => {
         if (deletePasswordModal) {
@@ -259,7 +279,13 @@ const SalesQuotations: React.FC = () => {
 
     const handleSavePDF = async () => {
         try {
-            const pathResult = await (window as any).electronAPI.db.files.getSavePath('Quotation.pdf');
+            const customerName = printData?.customer_name ? printData.customer_name.trim() : 'Customer';
+            const billNumber = printData?.quotation_number ? printData.quotation_number.trim() : 'Quotation';
+            const cleanCustomer = customerName.replace(/[\\/:*?"<>|]/g, '_');
+            const cleanBill = billNumber.replace(/[\\/:*?"<>|]/g, '_');
+            const defaultName = `BILL_${cleanCustomer}_${cleanBill}.pdf`;
+
+            const pathResult = await (window as any).electronAPI.db.files.getSavePath(defaultName);
             if (!pathResult.success) return;
             document.body.classList.add('capturing-pdf');
             await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
@@ -829,7 +855,22 @@ const SalesQuotations: React.FC = () => {
                         <Col span={6}>
                             <Form.Item name="quotation_validity" label="Quotation Validity" rules={[{ required: true, message: 'Enter validity' }]}>
                                 <AutoComplete
-                                    options={validitySuggestions.filter(s => s).map(s => ({ value: s }))}
+                                    options={validitySuggestions.filter(s => s).map(s => ({
+                                        value: s,
+                                        label: (
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                                                <span>{s}</span>
+                                                <Button 
+                                                    type="text" 
+                                                    danger 
+                                                    size="small" 
+                                                    icon={<DeleteOutlined style={{ fontSize: 12 }} />} 
+                                                    onClick={(e) => handleDeleteValidity(e, s)}
+                                                    style={{ height: 'auto', padding: '2px 4px' }}
+                                                />
+                                            </div>
+                                        )
+                                    }))}
                                     filterOption={(input, option) =>
                                         (option?.value as string)?.toLowerCase().includes(input.toLowerCase())
                                     }
@@ -927,7 +968,22 @@ const SalesQuotations: React.FC = () => {
                                                         <td style={{ padding: '4px 8px' }}>
                                                             <Form.Item {...restField} name={[name, 'availability']} style={{ marginBottom: 0 }}>
                                                                 <AutoComplete
-                                                                    options={remarksSuggestions.map(s => ({ value: s }))}
+                                                                    options={remarksSuggestions.map(s => ({
+                                                                        value: s,
+                                                                        label: (
+                                                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                                                                                <span>{s}</span>
+                                                                                <Button 
+                                                                                    type="text" 
+                                                                                    danger 
+                                                                                    size="small" 
+                                                                                    icon={<DeleteOutlined style={{ fontSize: 12 }} />} 
+                                                                                    onClick={(e) => handleDeleteRemark(e, s)}
+                                                                                    style={{ height: 'auto', padding: '2px 4px' }}
+                                                                                />
+                                                                            </div>
+                                                                        )
+                                                                    }))}
                                                                     filterOption={(input, option) =>
                                                                         (option?.value as string)?.toLowerCase().includes(input.toLowerCase())
                                                                     }

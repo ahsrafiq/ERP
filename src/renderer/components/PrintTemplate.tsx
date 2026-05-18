@@ -62,6 +62,8 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
 
     const [letterheadBase64, setLetterheadBase64] = React.useState<string | null>(null);
     const [letterheadError, setLetterheadError] = React.useState<string | null>(null);
+    const [totalPages, setTotalPages] = React.useState<number>(1);
+    const templateRef = React.useRef<HTMLDivElement | null>(null);
     const onReadyRef = React.useRef(onLetterheadReady);
     onReadyRef.current = onLetterheadReady;
 
@@ -133,6 +135,32 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
         loadLetterhead();
         return () => { cancelled = true; };
     }, [company?.letterhead_path]);
+
+    React.useEffect(() => {
+        const MM_TO_PX = 96 / 25.4;
+        const A4_HEIGHT_MM = 297;
+        const pageHeightPx = A4_HEIGHT_MM * MM_TO_PX;
+
+        const recomputeTotalPages = () => {
+            const el = templateRef.current;
+            if (!el) return;
+            const measuredHeight = Math.max(el.scrollHeight, el.getBoundingClientRect().height, 1);
+            const pages = Math.max(1, Math.ceil(measuredHeight / pageHeightPx));
+            setTotalPages(pages);
+        };
+
+        const rafId = window.requestAnimationFrame(recomputeTotalPages);
+        const timeoutId = window.setTimeout(recomputeTotalPages, 120);
+        window.addEventListener('resize', recomputeTotalPages);
+        window.addEventListener('beforeprint', recomputeTotalPages);
+
+        return () => {
+            window.cancelAnimationFrame(rafId);
+            window.clearTimeout(timeoutId);
+            window.removeEventListener('resize', recomputeTotalPages);
+            window.removeEventListener('beforeprint', recomputeTotalPages);
+        };
+    }, [type, data, withLetterhead, company?.letterhead_path, letterheadBase64, contentScale]);
 
     const isInvoice = type === 'invoice';
     const isBill    = type === 'bill';
@@ -533,7 +561,7 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
     );
 
     const template = (
-        <div className={`print-template ${showLetterhead ? 'has-letterhead' : ''}`}>
+        <div ref={templateRef} className={`print-template ${showLetterhead ? 'has-letterhead' : ''}`}>
             {/* Letterhead: header strip (top) + footer strip (bottom) â€” never scaled; footer stays at extreme bottom */}
             {showLetterhead && (
                 <>
@@ -570,7 +598,9 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
             {/* For quotations without letterhead: skip company details, only show doc content */}
             {/* Document content: details above/below table stay fixed; only the table is scaled when scale < 100% */}
             <div className="page-number-footer">
-                <span className="page-count" />
+                <span className="page-count-current" />
+                <span>/</span>
+                <span className="page-count-total">{totalPages}</span>
             </div>
             <div className="print-content">
                 {showLetterhead ? (

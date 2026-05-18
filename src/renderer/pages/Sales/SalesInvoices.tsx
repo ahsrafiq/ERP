@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Table, Button, Space, Modal, Form, Input, InputNumber, Select, DatePicker, message, notification, Alert, Progress, Tag, Switch, Popconfirm } from 'antd';
-import { EditOutlined, DeleteOutlined, PrinterOutlined, LockOutlined, StopOutlined, EyeOutlined, SearchOutlined, MinusSquareOutlined, CloseOutlined } from '@ant-design/icons';
+import { EditOutlined, DeleteOutlined, PrinterOutlined, LockOutlined, StopOutlined, EyeOutlined, SearchOutlined, MinusSquareOutlined, CloseOutlined, WarningOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useApp } from '../../context/AppContext';
 import { filterRowsByOperationalFiscalYear } from '../../utils/fiscalYearFilter';
@@ -218,7 +218,11 @@ const actualPrint = () => {
 
   const handleSavePDF = async () => {
     try {
-      const defaultName = isGst ? 'Invoice.pdf' : 'Bill.pdf';
+      const customerName = printData?.customer_name ? printData.customer_name.trim() : 'Customer';
+      const billNumber = printData?.invoice_number ? printData.invoice_number.trim() : 'Invoice';
+      const cleanCustomer = customerName.replace(/[\\/:*?"<>|]/g, '_');
+      const cleanBill = billNumber.replace(/[\\/:*?"<>|]/g, '_');
+      const defaultName = `BILL_${cleanCustomer}_${cleanBill}.pdf`;
       // Step 1: show the save dialog BEFORE any visual change
       const pathResult = await (window as any).electronAPI.db.files.getSavePath(defaultName);
       if (!pathResult.success) return;
@@ -428,6 +432,47 @@ const actualPrint = () => {
     }
   };
 
+  const getOverdueStatusTag = (record: any) => {
+    if (record.status === 'cancelled') return null;
+    const balance = Number(record.balance) || 0;
+    if (balance <= 0) return <Tag color="green">Paid</Tag>;
+
+    const invoiceDateStr = record.invoice_date;
+    if (!invoiceDateStr) return null;
+
+    const termsDays = record.customer_payment_terms_days !== undefined ? Number(record.customer_payment_terms_days) : 30;
+    const invoiceDate = dayjs(invoiceDateStr);
+    const today = dayjs().startOf('day');
+    
+    // Difference in calendar days
+    const daysDiff = today.diff(invoiceDate.startOf('day'), 'day');
+    
+    if (daysDiff >= termsDays) {
+      const overdueDays = daysDiff - termsDays;
+      return (
+        <Tag color="red" icon={<WarningOutlined />}>
+          {overdueDays === 0 ? 'Overdue Today' : `Overdue by ${overdueDays} day${overdueDays > 1 ? 's' : ''}`}
+        </Tag>
+      );
+    } else if (daysDiff === termsDays - 1) {
+      return (
+        <Tag color="yellow" style={{ color: '#ad8b00', borderColor: '#ffe58f', backgroundColor: '#fffbe6' }} icon={<WarningOutlined />}>
+          Overdue Tomorrow
+        </Tag>
+      );
+    } else if (daysDiff >= termsDays - 3) {
+      const daysLeft = termsDays - daysDiff;
+      return (
+        <Tag color="orange" icon={<WarningOutlined />}>
+          Overdue in {daysLeft} day{daysLeft > 1 ? 's' : ''}
+        </Tag>
+      );
+    }
+
+    const daysRemaining = termsDays - daysDiff;
+    return <Tag color="blue">{daysRemaining} days left</Tag>;
+  };
+
   const columns = [
     {
       title: `${docLabel} #`,
@@ -443,6 +488,11 @@ const actualPrint = () => {
       title: 'Date',
       dataIndex: 'invoice_date',
       key: 'invoice_date',
+    },
+    {
+      title: 'Due Status',
+      key: 'due_status',
+      render: (_: any, record: any) => getOverdueStatusTag(record),
     },
     {
       title: 'Balance',
@@ -695,6 +745,14 @@ const actualPrint = () => {
               onChange={(val) => {
                 const c = customers.find((x: any) => x.id === val);
                 setSelectedCustomerInfo(c || null);
+                
+                // Automatically calculate and set Due Date based on customer's payment_terms_days
+                const invoiceDate = form.getFieldValue('invoice_date');
+                if (invoiceDate && c) {
+                  const termsDays = c.payment_terms_days !== undefined ? Number(c.payment_terms_days) : 30;
+                  const calculatedDueDate = dayjs(invoiceDate).add(termsDays, 'day');
+                  form.setFieldsValue({ due_date: calculatedDueDate });
+                }
               }}
               options={customers.map((c: any) => ({ label: c.name, value: c.id }))}
             />
@@ -739,7 +797,13 @@ const actualPrint = () => {
           })()}
           <Space>
             <Form.Item name="invoice_date" label="Invoice Date" rules={[{ required: true }]}>
-              <DatePicker />
+              <DatePicker onChange={(date) => {
+                if (date && selectedCustomerInfo) {
+                  const termsDays = selectedCustomerInfo.payment_terms_days !== undefined ? Number(selectedCustomerInfo.payment_terms_days) : 30;
+                  const calculatedDueDate = dayjs(date).add(termsDays, 'day');
+                  form.setFieldsValue({ due_date: calculatedDueDate });
+                }
+              }} />
             </Form.Item>
             <Form.Item name="due_date" label="Due Date">
               <DatePicker />
