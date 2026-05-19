@@ -137,7 +137,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           notification.success({
             message: 'Auto Backup Successful',
             description: `A scheduled database and uploads backup has been created at:\n${data.path}`,
-            duration: 10,
+            duration: 0,
             placement: 'bottomRight',
           });
         } else {

@@ -524,13 +524,13 @@ const CustomReportBuilder: React.FC = () => {
   };
 
   const handleExportExcel = () => {
-    if (filteredRows.length === 0) {
+    if (finalDisplayRows.length === 0) {
       return message.warning('No data to export');
     }
 
     try {
       // Prepare data for Excel based on selected columns
-      const exportData = filteredRows.map(row => {
+      const exportData = finalDisplayRows.map(row => {
         const rowData: any = {};
         selectedColumns.forEach(colKey => {
           const field = fields.find(f => f.key === colKey);
@@ -622,7 +622,7 @@ const CustomReportBuilder: React.FC = () => {
         </div>
         <Space>
           <Button icon={<FolderOpenOutlined />} onClick={loadTemplates}>Saved Reports</Button>
-          <Button icon={<FileExcelOutlined />} onClick={handleExportExcel} disabled={filteredRows.length === 0}>Export Excel</Button>
+          <Button icon={<FileExcelOutlined />} onClick={handleExportExcel} disabled={finalDisplayRows.length === 0}>Export Excel</Button>
           <Button type="primary" icon={<SaveOutlined />} onClick={() => setSaveModalOpen(true)}>Save Template</Button>
         </Space>
       </div>

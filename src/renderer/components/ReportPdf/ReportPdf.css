@@ -150,3 +150,21 @@
   }
 }
 
+/* Ensure the report PDF container is visible and styled properly during capture */
+body.capturing-pdf #report-pdf-container,
+body.capturing-pdf #report-pdf-container * {
+  visibility: visible !important;
+}
+
+body.capturing-pdf #report-pdf-container {
+  display: block !important;
+  position: absolute !important;
+  left: 0 !important;
+  top: 0 !important;
+  width: 210mm !important;
+  height: auto !important;
+  background: white !important;
+  overflow: visible !important;
+  z-index: 99999 !important;
+}
+

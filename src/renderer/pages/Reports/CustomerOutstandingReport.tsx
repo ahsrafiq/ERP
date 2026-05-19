@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Table, Button, Space, Typography, Input, notification, Tag, Select } from 'antd';
+import { createPortal } from 'react-dom';
+import { Table, Button, Space, Typography, Input, notification, Tag, Select, Divider, message } from 'antd';
 import { ArrowLeftOutlined, PrinterOutlined, SearchOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import dayjs from 'dayjs';
+import { ReportTablePdfDocument } from '../../components/ReportPdf/ReportTablePdfDocument';
 
 const { Title, Text } = Typography;
 
@@ -18,6 +20,13 @@ const CustomerOutstandingReport: React.FC = () => {
   const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null);
 
   const [searchTrigger, setSearchTrigger] = useState(0);
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, selectedCustomerId]);
 
   useEffect(() => {
     if (!currentCompany) return;
@@ -62,9 +71,74 @@ const CustomerOutstandingReport: React.FC = () => {
     // We include searchTrigger to allow manual re-calc if needed, though useMemo is reactive to others
   }, [invoices, searchQuery, selectedCustomerId, searchTrigger]);
 
+  const totalOutstanding = useMemo(() => {
+    return filteredInvoices.reduce((s, inv) => s + (Number(inv.balance) || 0), 0);
+  }, [filteredInvoices]);
+
+  const visibleInvoices = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    const end = start + pageSize;
+    return filteredInvoices.slice(start, end);
+  }, [filteredInvoices, currentPage, pageSize]);
+
+  const visibleTotalOutstanding = useMemo(() => {
+    return visibleInvoices.reduce((s, inv) => s + (Number(inv.balance) || 0), 0);
+  }, [visibleInvoices]);
+
   const handleSearch = () => {
     setSearchTrigger(prev => prev + 1);
   };
+
+  const handleSavePDF = async () => {
+    try {
+      const fileName = `Customer_Outstanding_Report_${dayjs().format('YYYY-MM-DD')}.pdf`;
+      const pathResult = await (window as any).electronAPI.db.files.getSavePath(fileName);
+      if (!pathResult.success) return;
+
+      document.body.classList.add('capturing-pdf');
+      const pc = document.getElementById('report-pdf-container');
+      if (pc) pc.style.display = 'block';
+
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const res = await (window as any).electronAPI.db.files.captureAndSave(pathResult.filePath);
+      
+      if (res.success) {
+        message.success(`Saved to: ${res.filePath}`);
+      } else {
+        notification.error({ message: 'Error', description: res.error || 'Failed to save PDF', duration: 0 });
+      }
+    } catch {
+      notification.error({ message: 'Error', description: 'Failed to save PDF', duration: 0 });
+    } finally {
+      document.body.classList.remove('capturing-pdf');
+      const pc = document.getElementById('report-pdf-container');
+      if (pc) pc.style.display = 'none';
+    }
+  };
+
+  const pdfColumns = useMemo(() => [
+    { title: 'Date', dataIndex: 'invoice_date', align: 'left' as const, render: (v: string) => dayjs(v).format('DD-MMM-YYYY') },
+    { title: 'Invoice #', dataIndex: 'invoice_number', align: 'left' as const },
+    { title: 'Customer', dataIndex: 'customer_name', align: 'left' as const },
+    { title: 'PO #', dataIndex: 'po_number', align: 'left' as const, render: (v: string) => v || '—' },
+    { title: currentCompany?.is_gst_enabled ? 'Amount (incl GST)' : 'Amount', dataIndex: 'total_amount', align: 'right' as const, render: (v: number) => Number(v || 0).toLocaleString() },
+    { title: 'Balance Due', dataIndex: 'balance', align: 'right' as const, render: (v: number) => Number(v || 0).toLocaleString() },
+    { title: 'Overdue', dataIndex: 'due_date', align: 'center' as const, render: (v: string) => {
+        if (!v) return '—';
+        const due = dayjs(v);
+        const diff = dayjs().diff(due, 'days');
+        return diff > 0 ? `${diff} Days` : 'Not Due';
+      }
+    }
+  ], [currentCompany]);
+
+  const pdfSummaryRow = useMemo(() => (
+    <tr className="erp-report-pdf-total-row">
+      <td colSpan={5} style={{ textAlign: 'right', fontWeight: 'bold' }}>Total Outstanding</td>
+      <td style={{ textAlign: 'right', fontWeight: 'bold', color: '#cf1322' }}>{totalOutstanding.toLocaleString()}</td>
+      <td></td>
+    </tr>
+  ), [totalOutstanding]);
 
   const itemColumns = [
     { title: 'Item', dataIndex: 'item_name', render: (v: string, r: any) => v || r.description || '-' },
@@ -128,9 +202,7 @@ const CustomerOutstandingReport: React.FC = () => {
     }
   ];
 
-  const totalOutstanding = useMemo(() => {
-    return filteredInvoices.reduce((s, inv) => s + (Number(inv.balance) || 0), 0);
-  }, [filteredInvoices]);
+
 
   const expandedRowRender = (record: any) => {
     return (
@@ -192,6 +264,14 @@ const CustomerOutstandingReport: React.FC = () => {
             >
               Print
             </Button>
+            <Button
+              type="primary"
+              icon={<PrinterOutlined />}
+              onClick={handleSavePDF}
+              disabled={filteredInvoices.length === 0}
+            >
+              Save as PDF
+            </Button>
           </Space>
         </div>
 
@@ -211,13 +291,35 @@ const CustomerOutstandingReport: React.FC = () => {
         </div>
       </div>
 
+      {/* Print-only Header */}
+      <div className="print-only" style={{ marginBottom: 16 }}>
+        <Title level={3} style={{ textAlign: 'center', margin: 0 }}>{currentCompany?.name}</Title>
+        <Title level={5} style={{ textAlign: 'center', margin: 0, color: '#666' }}>Customer Outstanding Report</Title>
+        <Text style={{ display: 'block', textAlign: 'center', color: '#888' }}>
+          As on: {dayjs().format('DD-MMM-YYYY')}
+        </Text>
+        <Divider style={{ margin: '8px 0' }} />
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+          <Text>Total Outstanding: <strong style={{ color: '#cf1322' }}>{totalOutstanding.toLocaleString()}</strong></Text>
+          <Text>Invoices: <strong>{filteredInvoices.length}</strong></Text>
+        </div>
+      </div>
+
       <Table
         columns={columns}
         dataSource={filteredInvoices}
         rowKey="id"
         loading={loading}
         size="small"
-        pagination={{ pageSize: 20, showSizeChanger: true }}
+        pagination={{
+          current: currentPage,
+          pageSize: pageSize,
+          showSizeChanger: true,
+          onChange: (page, size) => {
+            setCurrentPage(page);
+            setPageSize(size);
+          }
+        }}
         expandable={{
           expandedRowRender,
           defaultExpandAllRows: true
@@ -226,10 +328,49 @@ const CustomerOutstandingReport: React.FC = () => {
         bordered
       />
 
+      {/* PDF Capture container */}
+      {createPortal(
+        <div id="report-pdf-container" style={{ display: 'none' }}>
+          <ReportTablePdfDocument
+            reportTitle="Customer Outstanding Report"
+            companyName={currentCompany?.name || '-'}
+            periodLabel={`As on: ${dayjs().format('DD-MMM-YYYY')}`}
+            columns={pdfColumns}
+            data={filteredInvoices}
+            summaryRow={pdfSummaryRow}
+            footerNote={`Generated on ${dayjs().format('DD-MMM-YYYY HH:mm')}`}
+            hidePageNumbers={true}
+          />
+        </div>,
+        document.body
+      )}
+
       <style>{`
+        body.capturing-pdf #root {
+          display: none !important;
+        }
         @media print {
-          .no-print { display: none !important; }
-          .ant-table-expanded-row { background-color: #f9f9f9 !important; }
+          #root {
+            display: none !important;
+          }
+          #report-pdf-container,
+          #report-pdf-container * {
+            visibility: visible !important;
+          }
+          #report-pdf-container {
+            display: block !important;
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 210mm !important;
+            height: auto !important;
+            background: white !important;
+            overflow: visible !important;
+            z-index: 99999 !important;
+          }
+        }
+        @media screen {
+          .print-only { display: none; }
         }
       `}</style>
     </div>

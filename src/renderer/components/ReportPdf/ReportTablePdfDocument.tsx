@@ -17,6 +17,7 @@ export interface ReportTablePdfDocumentProps {
   data: any[];
   summaryRow?: React.ReactNode;
   footerNote?: string;
+  hidePageNumbers?: boolean;
 }
 
 /**
@@ -31,11 +32,14 @@ export const ReportTablePdfDocument: React.FC<ReportTablePdfDocumentProps> = ({
   data,
   summaryRow,
   footerNote,
+  hidePageNumbers,
 }) => (
   <div className="erp-report-pdf-root">
-    <div className="report-page-number">
-        <span className="report-page-count" />
-    </div>
+    {!hidePageNumbers && (
+      <div className="report-page-number">
+          <span className="report-page-count" />
+      </div>
+    )}
     <div className="erp-report-pdf-header-block">
       {companyLogo && (
         <img 
