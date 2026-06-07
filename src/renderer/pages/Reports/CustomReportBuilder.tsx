@@ -182,7 +182,8 @@ const CustomReportBuilder: React.FC = () => {
         if (dataFocus === 'challans') {
           const res = await db.deliveryChallans.getChallansByItem(currentCompany.id);
           const challanItems = (res?.success ? res.data : (Array.isArray(res) ? res : [])) || [];
-          rows = challanItems.map((r: any) => ({ 
+          const pendingChallanItems = challanItems.filter((r: any) => r.sales_invoice_id == null || r.sales_invoice_id === '');
+          rows = pendingChallanItems.map((r: any) => ({ 
             ...r, 
             __module: 'sales', 
             __type: 'Challan', 
@@ -234,7 +235,8 @@ const CustomReportBuilder: React.FC = () => {
           }));
         } else {
           if (dataFocus === 'all' || dataFocus === 'invoices') {
-            const res = await db.salesInvoices.getAll(currentCompany.id);
+            // Use the detailed sales‑by‑item query so that each invoice row contains `item_name` and other item‑level fields.
+            const res = await db.salesInvoices.getSalesByItem(currentCompany.id);
             invoices = (res?.success ? res.data : (Array.isArray(res) ? res : [])) || [];
           }
           if (dataFocus === 'all' || dataFocus === 'quotations') {
@@ -246,39 +248,36 @@ const CustomReportBuilder: React.FC = () => {
             challans = (res?.success ? res.data : (Array.isArray(res) ? res : [])) || [];
           }
           
-          rows = [
-            ...invoices.map((r: any) => ({ 
-              id: r.id,
-              __module: 'sales', 
-              __type: 'Invoice', 
-              number: r.invoice_number, 
-              date: r.invoice_date, 
-              customer: r.customer_name, 
-              total: r.total_amount,
-              status: r.status,
-              balance: r.balance
-            })),
-            ...quotations.map((r: any) => ({ 
-              id: r.id,
-              __module: 'sales', 
-              __type: 'Quotation', 
-              number: r.quotation_number, 
-              date: r.quotation_date, 
-              customer: r.customer_name, 
-              total: r.total_amount,
-              status: r.status
-            })),
-            ...challans.map((r: any) => ({ 
-              id: r.id,
-              __module: 'sales', 
-              __type: 'Challan', 
-              number: r.challan_number, 
-              date: r.challan_date, 
-              customer: r.customer_name, 
-              total: 0,
-              status: r.status
-            })),
+          // Merge the three result sets, keeping **all** fields that exist on the raw rows.
+          // This includes `item_name`, `hs_code`, `brand`, etc., because the DB methods
+          // already return those columns.
+          const merged = [
+            ...invoices,
+            ...quotations,
+            ...challans,
           ];
+
+          rows = merged.map((r: any) => ({
+            // Preserve generic identifiers
+            id: r.id,
+            __module: 'sales',
+            __type: r.__type || (r.invoice_number ? 'Invoice' : r.quotation_number ? 'Quotation' : 'Challan'),
+
+            // Core fields used by the UI
+            number: r.invoice_number ?? r.quotation_number ?? r.challan_number,
+            date: r.invoice_date ?? r.quotation_date ?? r.challan_date,
+            customer: r.customer_name,
+            total: r.total_amount ?? 0,
+            status: r.status,
+            balance: r.balance,
+
+            // **Additional fields** – these will now be available to the table
+            item_name: r.item_name,
+            hs_code: r.hs_code,
+            brand: r.brand,
+            // keep any other columns that were fetched (e.g., GST, quantity, price …)
+            ...r,
+          }));
         }
       } else if (moduleKey === 'purchases') {
         const res = await db.purchaseInvoices.getAll(currentCompany.id);
@@ -366,7 +365,11 @@ const CustomReportBuilder: React.FC = () => {
             if (!dVal.isValid()) return false;
             if (f.operator === 'before' && !dVal.isBefore(dayjs(f.value), 'day')) return false;
             if (f.operator === 'after' && !dVal.isAfter(dayjs(f.value), 'day')) return false;
-            if (f.operator === 'between' && (!dVal.isAfter(dayjs(f.from).subtract(1, 'day')) || !dVal.isBefore(dayjs(f.to).add(1, 'day')))) return false;
+            if (f.operator === 'between') {
+              if (!dVal.isAfter(dayjs(f.from).subtract(1, 'day')) || !dVal.isBefore(dayjs(f.to).add(1, 'day'))) {
+                return false;
+              }
+            }
           }
         }
         return true;
@@ -412,8 +415,12 @@ const CustomReportBuilder: React.FC = () => {
     return fields
       .filter(f => selectedColumns.includes(f.key))
       .map(field => {
+        let title = field.label;
+        if (moduleKey === 'sales' && field.key === 'number' && dataFocus === 'challans') {
+          title = 'DC Number';
+        }
         return {
-          title: field.label,
+          title: title,
           dataIndex: field.key,
           key: `${moduleKey}-${field.key}`,
           width: 120,
@@ -427,7 +434,7 @@ const CustomReportBuilder: React.FC = () => {
           }
         };
       });
-  }, [selectedColumns, fields, moduleKey]);
+  }, [selectedColumns, fields, moduleKey, dataFocus]);
 
   const handleAddFilter = () => {
     if (!pendingFilterField) return;

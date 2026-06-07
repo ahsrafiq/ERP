@@ -26,6 +26,7 @@ const DeliveryChallans: React.FC = () => {
     const [printData, setPrintData] = useState<any>(null);
     const [isPreviewVisible, setIsPreviewVisible] = useState(false);
     const [printWithLetterhead, setPrintWithLetterhead] = useState(true);
+    const [pendingOnly, setPendingOnly] = useState(false);
     const [contentScale, setContentScale] = useState<number>(() => {
         const saved = localStorage.getItem('challan_scale');
         return saved ? parseFloat(saved) : 1;
@@ -81,6 +82,23 @@ const DeliveryChallans: React.FC = () => {
     const isReadOnlySection = !isAdminUser && salesPerm === 'read';
 
     const watchedCustomerId = Form.useWatch('customer_id', form);
+    const watchedItems = Form.useWatch('items', form);
+
+    const totals = React.useMemo(() => {
+        let qty = 0;
+        let price = 0;
+        if (watchedItems && Array.isArray(watchedItems)) {
+            watchedItems.forEach((item: any) => {
+                if (item) {
+                    const q = Number(item.quantity) || 0;
+                    const p = Number(item.unit_price) || 0;
+                    qty += q;
+                    price += q * p;
+                }
+            });
+        }
+        return { qty, price };
+    }, [watchedItems]);
 
     // When customer is selected, load their terms and conditions
     useEffect(() => {
@@ -221,7 +239,7 @@ const DeliveryChallans: React.FC = () => {
             const billNumber = printData?.challan_number ? printData.challan_number.trim() : 'Challan';
             const cleanCustomer = customerName.replace(/[\\/:*?"<>|]/g, '_');
             const cleanBill = billNumber.replace(/[\\/:*?"<>|]/g, '_');
-            const defaultName = `BILL_${cleanCustomer}_${cleanBill}.pdf`;
+            const defaultName = `${cleanCustomer}_${cleanBill}.pdf`;
             // Step 1: show the save dialog BEFORE any visual change
             const pathResult = await (window as any).electronAPI.db.files.getSavePath(defaultName);
             if (!pathResult.success) return;
@@ -513,10 +531,13 @@ const DeliveryChallans: React.FC = () => {
 
     const [searchQuery, setSearchQuery] = useState('');
 
-    const filteredChallans = challans.filter(c =>
-        (c.challan_number || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (c.customer_name || '').toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    const filteredChallans = challans.filter(c => {
+        const matchesSearch = (c.challan_number || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+            (c.customer_name || '').toLowerCase().includes(searchQuery.toLowerCase());
+        const hasInvoice = c.sales_invoice_id != null && c.sales_invoice_id !== '';
+        const matchesPending = !pendingOnly || !hasInvoice;
+        return matchesSearch && matchesPending;
+    });
 
     const handleExportExcelSingle = () => {
         if (!printData) return;
@@ -618,6 +639,16 @@ const DeliveryChallans: React.FC = () => {
                         onChange={e => setSearchQuery(e.target.value)}
                         allowClear
                     />
+                    <Space style={{ background: '#f5f5f5', padding: '4px 12px', borderRadius: 6, border: '1px solid #d9d9d9' }}>
+                        <span style={{ fontSize: 13, color: '#595959', fontWeight: 500 }}>
+                            Pending {docLabel}s Only
+                        </span>
+                        <Switch
+                            checked={pendingOnly}
+                            onChange={(checked) => setPendingOnly(checked)}
+                            size="small"
+                        />
+                    </Space>
                 </div>
                 <Space>
                     {!isReadOnlySection && (
@@ -769,6 +800,28 @@ const DeliveryChallans: React.FC = () => {
                                     </div>
                                     );
                                 })}
+                                {fields.length > 0 && (
+                                    <div style={{
+                                        display: 'flex',
+                                        justifyContent: 'flex-end',
+                                        gap: '24px',
+                                        marginTop: '12px',
+                                        marginBottom: '16px',
+                                        padding: '12px 16px',
+                                        background: '#fafafa',
+                                        borderRadius: '8px',
+                                        border: '1px solid #f0f0f0'
+                                    }}>
+                                        <div>
+                                            <span style={{ color: '#8c8c8c', marginRight: '8px' }}>Total Qty:</span>
+                                            <strong style={{ fontSize: '15px', color: '#1f1f1f' }}>{totals.qty}</strong>
+                                        </div>
+                                        <div>
+                                            <span style={{ color: '#8c8c8c', marginRight: '8px' }}>Total Price:</span>
+                                            <strong style={{ fontSize: '15px', color: '#1f1f1f' }}>{totals.price.toFixed(2)}</strong>
+                                        </div>
+                                    </div>
+                                )}
                                 <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />}>Add Item</Button>
                                 <div style={{ color: '#ff4d4f', marginTop: 8 }}>
                                     <Form.ErrorList errors={errors} />

@@ -76,7 +76,7 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
         let cancelled = false;
         const loadLetterhead = async () => {
             const lhPath = company?.letterhead_path;
-            if (!lhPath) {
+            if (!lhPath || !withLetterhead) {
                 // No letterhead â€” nothing to load, signal ready immediately
                 setLetterheadBase64(null);
                 setLetterheadError(null);
@@ -225,7 +225,8 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
 
     const tableColumns = isInvoice ? invoiceColumns : isBill ? billColumns : columns;
 
-    const showLetterhead = withLetterhead && !!company.letterhead_path;
+    const useLetterheadLayout = !!company.letterhead_path;
+    const showLetterhead = withLetterhead && useLetterheadLayout;
     const scale = contentScale >= 0.5 && contentScale <= 1 ? contentScale : 1;
     const tableScale = scale < 1;
 
@@ -561,7 +562,7 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
     );
 
     const template = (
-        <div ref={templateRef} className={`print-template ${showLetterhead ? 'has-letterhead' : ''}`}>
+        <div ref={templateRef} className={`print-template ${useLetterheadLayout ? 'has-letterhead' : ''}`}>
             {/* Letterhead: header strip (top) + footer strip (bottom) â€” never scaled; footer stays at extreme bottom */}
             {showLetterhead && (
                 <>
@@ -603,7 +604,7 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
                 <span className="page-count-total">{totalPages}</span>
             </div>
             <div className="print-content">
-                {showLetterhead ? (
+                {useLetterheadLayout ? (
                     <table className="print-layout-table">
                         <thead>
                             <tr><td><div className="lh-header-spacer" /></td></tr>

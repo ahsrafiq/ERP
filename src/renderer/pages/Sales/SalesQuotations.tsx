@@ -82,6 +82,7 @@ const SalesQuotations: React.FC = () => {
     const [dcItemQuantities, setDcItemQuantities] = useState<{ [key: number]: number }>({});
     const [dcPoNumber, setDcPoNumber] = useState('');
     const [dcForceCreate, setDcForceCreate] = useState(false);
+    const [pendingOnly, setPendingOnly] = useState(false); // Toggle to show only quotations without DC
 
     // Autocomplete suggestions
     const [validitySuggestions, setValiditySuggestions] = useState<string[]>([]);
@@ -283,7 +284,7 @@ const SalesQuotations: React.FC = () => {
             const billNumber = printData?.quotation_number ? printData.quotation_number.trim() : 'Quotation';
             const cleanCustomer = customerName.replace(/[\\/:*?"<>|]/g, '_');
             const cleanBill = billNumber.replace(/[\\/:*?"<>|]/g, '_');
-            const defaultName = `BILL_${cleanCustomer}_${cleanBill}.pdf`;
+            const defaultName = `${cleanCustomer}_${cleanBill}.pdf`;
 
             const pathResult = await (window as any).electronAPI.db.files.getSavePath(defaultName);
             if (!pathResult.success) return;
@@ -654,10 +655,12 @@ const SalesQuotations: React.FC = () => {
 
     const [searchQuery, setSearchQuery] = useState('');
 
-    const filteredQuotations = quotations.filter(q =>
-        (q.quotation_number || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (q.customer_name || '').toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    const filteredQuotations = quotations.filter(q => {
+        const matchesSearch = (q.quotation_number || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+            (q.customer_name || '').toLowerCase().includes(searchQuery.toLowerCase());
+        const matchesPending = pendingOnly ? ((q.delivery_challan_count ?? 0) === 0) : true;
+        return matchesSearch && matchesPending;
+    });
 
     const handleExportExcelSingle = () => {
         if (!printData) return;
@@ -761,6 +764,12 @@ const SalesQuotations: React.FC = () => {
                         value={searchQuery}
                         onChange={e => setSearchQuery(e.target.value)}
                         allowClear
+                    />
+                    <Switch
+                        checked={pendingOnly}
+                        onChange={setPendingOnly}
+                        checkedChildren="Pending DC"
+                        unCheckedChildren="All"
                     />
                 </div>
                 <Space>

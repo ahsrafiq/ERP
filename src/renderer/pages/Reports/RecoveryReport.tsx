@@ -338,10 +338,9 @@ const RecoveryReport: React.FC = () => {
           </Space>
           <Space>
             <DatePicker.RangePicker
-              picker="month"
               value={dateRange}
               onChange={(dates: any) => setDateRange(dates)}
-              format="MMM-YYYY"
+              format="DD-MM-YYYY"
             />
             <Button type="primary" onClick={loadData}>Search</Button>
             <Button icon={<FileExcelOutlined />} style={{ color: '#217346', borderColor: '#217346' }} onClick={handleExportExcel}>Export Excel</Button>

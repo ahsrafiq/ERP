@@ -31,6 +31,23 @@ const SalesInvoices: React.FC = () => {
   const passwordInputRef = React.useRef<any>(null);
   const lastPrintRecordRef = React.useRef<any>(null);
 
+  const watchedItems = Form.useWatch('items', form);
+  const totals = React.useMemo(() => {
+    let qty = 0;
+    let price = 0;
+    if (watchedItems && Array.isArray(watchedItems)) {
+      watchedItems.forEach((item: any) => {
+        if (item) {
+          const q = Number(item.quantity) || 0;
+          const p = Number(item.unit_price) || 0;
+          qty += q;
+          price += q * p;
+        }
+      });
+    }
+    return { qty, price };
+  }, [watchedItems]);
+
   useEffect(() => {
     if (deletePasswordModal) {
       setTimeout(() => {
@@ -222,7 +239,7 @@ const actualPrint = () => {
       const billNumber = printData?.invoice_number ? printData.invoice_number.trim() : 'Invoice';
       const cleanCustomer = customerName.replace(/[\\/:*?"<>|]/g, '_');
       const cleanBill = billNumber.replace(/[\\/:*?"<>|]/g, '_');
-      const defaultName = `BILL_${cleanCustomer}_${cleanBill}.pdf`;
+      const defaultName = `${cleanCustomer}_${cleanBill}.pdf`;
       // Step 1: show the save dialog BEFORE any visual change
       const pathResult = await (window as any).electronAPI.db.files.getSavePath(defaultName);
       if (!pathResult.success) return;
@@ -887,6 +904,28 @@ const actualPrint = () => {
                     <Button onClick={() => remove(name)}>Remove</Button>
                   </Space>
                 ))}
+                {fields.length > 0 && (
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'flex-end',
+                    gap: '24px',
+                    marginTop: '12px',
+                    marginBottom: '16px',
+                    padding: '12px 16px',
+                    background: '#fafafa',
+                    borderRadius: '8px',
+                    border: '1px solid #f0f0f0'
+                  }}>
+                    <div>
+                      <span style={{ color: '#8c8c8c', marginRight: '8px' }}>Total Qty:</span>
+                      <strong style={{ fontSize: '15px', color: '#1f1f1f' }}>{totals.qty}</strong>
+                    </div>
+                    <div>
+                      <span style={{ color: '#8c8c8c', marginRight: '8px' }}>Total Price:</span>
+                      <strong style={{ fontSize: '15px', color: '#1f1f1f' }}>{totals.price.toFixed(2)}</strong>
+                    </div>
+                  </div>
+                )}
                 <Form.Item>
                   <Button type="dashed" onClick={() => add()} block>
                     Add Item

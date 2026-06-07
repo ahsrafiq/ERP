@@ -507,6 +507,15 @@ app.whenReady().then(() => {
     });
   });
 
+  // After initializing DB and server, emit readiness event
+  const emitLetterheadReady = () => {
+    // Send to all existing windows (if any)
+    BrowserWindow.getAllWindows().forEach(win => {
+      win.webContents.send('letterhead-ready');
+    });
+  };
+
+  // Wrap initialization to ensure event is emitted after DB is ready
   try {
     if (isMasterMode()) {
       initializeDatabase();
@@ -516,6 +525,8 @@ app.whenReady().then(() => {
     } else {
       console.log('Running in CLIENT mode. Connecting to Master server.');
     }
+    // Signal readiness immediately after init
+    emitLetterheadReady();
   } catch (error) {
     console.error('Database/Server initialization error:', error);
   }
@@ -523,9 +534,24 @@ app.whenReady().then(() => {
   createWindow();
   createTray();
 
+  // Also emit when a new window is created (e.g., after reload)
+  const originalCreateWindow = createWindow;
+  const wrappedCreateWindow = () => {
+    originalCreateWindow();
+    const win = BrowserWindow.getAllWindows().slice(-1)[0];
+    if (win) {
+      win.webContents.once('did-finish-load', () => {
+        win.webContents.send('letterhead-ready');
+      });
+    }
+  };
+
+  // Replace the earlier call with wrapped version
+  // (Note: we already called createWindow above, so this ensures future creations use wrapped)
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
+      wrappedCreateWindow();
     }
   });
 });

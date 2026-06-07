@@ -184,6 +184,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.removeListener('auto-backup-status', subscription);
     };
   },
+  // Add listener registration for letterhead ready event
+  onLetterheadReady: (callback: () => void) => {
+    const subscription = () => callback();
+    ipcRenderer.on('letterhead-ready', subscription);
+    return () => {
+      ipcRenderer.removeListener('letterhead-ready', subscription);
+    };
+  },
   // App Restart
   appRestart: () => ipcRenderer.invoke('app:restart'),
   // Platform info
