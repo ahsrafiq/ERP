@@ -1,8 +1,22 @@
 # ERP Desktop Application
 
+![Login](file:///C:/Users/HP/Desktop/ERP/SS/Login.png)
+
 A modern, professional desktop ERP application built with Electron, React, TypeScript, and SQLite.
 
+The application provides comprehensive modules for sales, purchasing, inventory, accounting, and reporting, suitable for small to medium businesses.
+
+![Dashboard](file:///C:/Users/HP/Desktop/ERP/SS/Dashboard.png)
+
 ## Features
+
+## Screenshots
+
+![Document Printing](file:///C:/Users/HP/Desktop/ERP/SS/Document%20Printing.png)
+
+![DC](file:///C:/Users/HP/Desktop/ERP/SS/DC.png) UI of the ERP application.
+
+
 
 ### Core Modules ✅
 - **Dashboard**: KPIs, charts, and analytics with date filtering
