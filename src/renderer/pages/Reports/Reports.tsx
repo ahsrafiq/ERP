@@ -18,14 +18,6 @@ const Reports: React.FC = () => {
 
   const reports = [
     {
-      title: 'Custom Report Builder',
-      description: 'Select columns, apply filters, preview and save templates',
-      icon: <FileTextOutlined />,
-      type: 'custom_builder',
-      route: '/reports/custom-builder',
-      available: true,
-    },
-    {
       title: 'Sales Report',
       description: 'View invoices, revenue, tax, and customer balances',
       icon: <FileTextOutlined />, // Changed from FilePdfOutlined

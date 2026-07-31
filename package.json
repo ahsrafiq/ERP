@@ -6,9 +6,9 @@
   "author": "",
   "license": "MIT",
   "scripts": {
-    "dev": "npm run build:main && concurrently \"npm run dev:renderer\" \"wait-on tcp:127.0.0.1:5173 && cross-env NODE_ENV=development electron dist/main.js\"",
-    "dev:master": "npm run build:main && concurrently \"npm run dev:renderer\" \"wait-on tcp:127.0.0.1:5173 && cross-env NODE_ENV=development electron dist/main.js --is-master\"",
-    "dev:client": "wait-on tcp:127.0.0.1:5173 && cross-env NODE_ENV=development electron dist/main.js --is-client",
+    "dev": "npm run build:main && concurrently \"npm run dev:renderer\" \"wait-on tcp:127.0.0.1:5174 && cross-env NODE_ENV=development electron dist/main.js --is-master\"",
+    "dev:master": "npm run build:main && concurrently \"npm run dev:renderer\" \"wait-on tcp:127.0.0.1:5174 && cross-env NODE_ENV=development electron dist/main.js --is-master\"",
+    "dev:client": "wait-on tcp:127.0.0.1:5174 && cross-env NODE_ENV=development electron dist/main.js --is-client",
     "dev:main": "tsc -p tsconfig.main.json && cross-env NODE_ENV=development electron dist/main.js",
     "dev:renderer": "vite --host 127.0.0.1",
     "build": "npm run build:main && npm run build:renderer",
@@ -20,6 +20,7 @@
     "postinstall": "electron-builder install-app-deps"
   },
   "dependencies": {
+    "@types/winston": "^2.4.4",
     "axios": "^1.13.5",
     "better-sqlite3": "^11.7.0",
     "cors": "^2.8.6",
@@ -27,6 +28,8 @@
     "electron-updater": "^6.1.7",
     "express": "^5.2.1",
     "pdfjs-dist": "^5.4.624",
+    "winston": "^3.19.0",
+    "winston-daily-rotate-file": "^5.0.0",
     "xlsx-js-style": "^1.2.0"
   },
   "devDependencies": {

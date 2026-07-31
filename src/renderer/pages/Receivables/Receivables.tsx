@@ -119,7 +119,12 @@ const Receivables: React.FC = () => {
           (p: any) =>
             p.customer_id === customerId &&
             paymentMatchesOperationalFiscalYear(p as Record<string, unknown>, fiscalYear, salesInvoiceById)
-        );
+        ).map((p: any) => {
+          if (p.reference_type === 'sales_invoice' && p.reference_id) {
+             return { ...p, invoice_number: salesInvoiceById[Number(p.reference_id)]?.invoice_number };
+          }
+          return p;
+        });
         setPayments(filtered);
       } else {
         setPayments([]);
@@ -469,8 +474,7 @@ const Receivables: React.FC = () => {
     const matchesQuery =
       (c.name || '').toLowerCase().includes(q) ||
       (c.code || '').toLowerCase().includes(q);
-    const ownsMoney = Number(c.balance) > 0;
-    return matchesQuery && ownsMoney;
+    return matchesQuery;
   });
 
   if (!currentCompany && loading) {
@@ -666,7 +670,7 @@ const Receivables: React.FC = () => {
               { title: 'Method', dataIndex: 'payment_method', key: 'method', render: (m) => <Tag>{m}</Tag> },
               { title: 'Amount', dataIndex: 'amount', key: 'amount', align: 'right' as const, render: (v) => Number(v).toLocaleString() },
               { title: 'Ded %', dataIndex: 'tax_deduction_rate', key: 'tax_deduction_rate', align: 'right' as const, render: (v) => v ? `${v}%` : '—' },
-              { title: 'Ref', dataIndex: 'reference_type', key: 'ref', render: (v, r: any) => v && v !== 'null' ? `${v} (#${r.reference_id})` : 'General' },
+              { title: 'Ref', dataIndex: 'reference_type', key: 'ref', render: (v, r: any) => v && v !== 'null' ? (v === 'sales_invoice' ? `Sales Invoice (${r.invoice_number || '#' + r.reference_id})` : `${v} (#${r.reference_id})`) : 'General' },
               {
                 title: 'Action',
                 key: 'action',

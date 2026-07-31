@@ -2,6 +2,8 @@ import React from 'react';
 import { Table } from 'antd';
 import { pdfFileToImage } from '../utils/pdfToImage';
 import './PrintTemplate.css';
+import { wrapAddress } from '../utils/textUtils';
+import logger from '../utils/logger';
 
 interface PrintTemplateProps {
     type: 'invoice' | 'bill' | 'quotation' | 'challan';
@@ -66,6 +68,12 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
     const templateRef = React.useRef<HTMLDivElement | null>(null);
     const onReadyRef = React.useRef(onLetterheadReady);
     onReadyRef.current = onLetterheadReady;
+    // Initialize a ref to capture load start time
+    const loadStartRef = React.useRef<number>(0);
+    // Track whether onReady has already been signalled so it's never called twice
+    const onReadyCalledRef = React.useRef<boolean>(false);
+    // Track in-flight load to prevent double-conversion on double-mount
+    const loadingRef = React.useRef<boolean>(false);
 
     // Detect if a path is an image (not PDF)
     const IMAGE_EXTS = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp'];
@@ -73,29 +81,54 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
     const isPdfPath = (p: string) => p.toLowerCase().endsWith('.pdf');
 
     React.useEffect(() => {
+        logger.info(`Loading letterhead for company ${company?.id}`);
+        logger.debug('Letterhead loading effect triggered');
         let cancelled = false;
+        onReadyCalledRef.current = false;
+
+        const signalReady = () => {
+            if (!onReadyCalledRef.current) {
+                onReadyCalledRef.current = true;
+                onReadyRef.current?.();
+            }
+        };
+
         const loadLetterhead = async () => {
             const lhPath = company?.letterhead_path;
             if (!lhPath || !withLetterhead) {
-                // No letterhead â€” nothing to load, signal ready immediately
+                // No letterhead — nothing to load, signal ready immediately
+                logger.info('No letterhead path provided or withLetterhead disabled');
                 setLetterheadBase64(null);
                 setLetterheadError(null);
-                onReadyRef.current?.();
+                signalReady();
                 return;
             }
 
+            // Prevent a double-mount from launching two concurrent PDF conversions
+            if (loadingRef.current) {
+                logger.debug('Letterhead load already in progress, skipping duplicate effect run');
+                return;
+            }
+            loadingRef.current = true;
+
             setLetterheadError(null);
+            loadStartRef.current = Date.now();
+            logger.info(`Starting letterhead load for path: ${lhPath}`);
+            logger.debug('Initiating letterhead load with timeout setup');
 
             try {
-                const timeoutMs = 20000;
+                const timeoutMs = 60000;
+                logger.debug(`Letterhead load timeout set to ${timeoutMs}ms`);
 
                 let dataUrlPromise: Promise<string>;
 
                 if (isPdfPath(lhPath)) {
                     // PDF: convert first page to PNG via pdf.js
+                    logger.info('Letterhead is a PDF, converting first page to image');
                     dataUrlPromise = pdfFileToImage(lhPath);
                 } else if (isImagePath(lhPath)) {
                     // Image: read file directly as data URL via IPC
+                    logger.info('Letterhead is an image, reading as Data URL');
                     dataUrlPromise = (async () => {
                         const api = (window as any).electronAPI?.db?.files;
                         if (!api?.readAsDataURL) throw new Error('File API not available');
@@ -106,8 +139,10 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
                         return result.data;
                     })();
                 } else {
-                    // Unknown type â€” skip, signal ready
-                    onReadyRef.current?.();
+                    // Unknown type — skip, signal ready
+                    logger.warn(`Unknown letterhead file type for path: ${lhPath}`);
+                    loadingRef.current = false;
+                    signalReady();
                     return;
                 }
 
@@ -118,23 +153,39 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
                 const dataUrl = await Promise.race([dataUrlPromise, timeoutPromise]);
 
                 if (!cancelled) {
+                    const duration = Date.now() - loadStartRef.current;
+                    logger.info(`Letterhead loaded successfully in ${duration}ms`);
                     setLetterheadBase64(dataUrl);
-                    // onLetterheadReady() will be called by the <img onLoad> handler
-                    // once the browser has rendered the letterhead image.
+                    // Signal ready after a frame so the <img> has time to render.
+                    // The img's onLoad is kept as a no-op redundancy; we don't rely on
+                    // it alone because the browser may skip onLoad if src doesn't change
+                    // (e.g., after a double-mount resolving to the same data URL).
+                    requestAnimationFrame(() => {
+                        if (!cancelled) signalReady();
+                    });
                 }
             } catch (err: any) {
                 if (!cancelled) {
-                    console.error('Error loading letterhead:', err);
-                setLetterheadBase64(null);
+                    logger.error(`Error loading letterhead: ${err instanceof Error ? err.message : String(err)}`);
+                    if (err?.message?.includes('timed out')) {
+                        logger.warn('Letterhead load timed out after waiting for timeoutMs');
+                    }
+                    setLetterheadBase64(null);
                     setLetterheadError(err?.message || 'Failed to load letterhead');
-                    onReadyRef.current?.();
+                    signalReady();
                 }
+            } finally {
+                loadingRef.current = false;
             }
         };
 
         loadLetterhead();
-        return () => { cancelled = true; };
-    }, [company?.letterhead_path]);
+        return () => {
+            logger.info('Cleaning up letterhead load: cancelling');
+            cancelled = true;
+            loadingRef.current = false;
+        };
+    }, [company?.letterhead_path, withLetterhead]);
 
     React.useEffect(() => {
         const MM_TO_PX = 96 / 25.4;
@@ -163,20 +214,20 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
     }, [type, data, withLetterhead, company?.letterhead_path, letterheadBase64, contentScale]);
 
     const isInvoice = type === 'invoice';
-    const isBill    = type === 'bill';
+    const isBill = type === 'bill';
 
-    // GST Invoice columns â€” with tax columns + HS Code
+    // GST Invoice columns — with tax columns + HS Code
     const invoiceColumns: any[] = isInvoice ? [
         { title: 'Sr. No.', key: 'index', align: 'center' as const, width: 60, render: (_: any, __: any, index: number) => index + 1 },
-        { 
-            title: 'Item & Description', 
-            key: 'item_desc', 
+        {
+            title: 'Item & Description',
+            key: 'item_desc',
             render: (_: any, row: any) => (
                 <div>
                     <div style={{ fontWeight: 600 }}>{row.item_name || '-'}</div>
                     <div style={{ fontSize: '12px', color: '#666' }}>{row.description || ''}</div>
                 </div>
-            ) 
+            )
         },
         { title: 'H.S Code', dataIndex: 'hs_code', key: 'hs_code', align: 'center' as const, render: (v: string) => (v != null && String(v).trim() !== '' ? String(v) : '-') },
         { title: 'Qty', dataIndex: 'quantity', key: 'quantity', align: 'center' as const },
@@ -186,7 +237,7 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
         { title: 'Total Including Sales Tax', dataIndex: 'line_total', key: 'line_total', align: 'right' as const, render: (_: any, row: any) => (row.line_total != null && (row.line_total as any) !== '') ? Number(row.line_total).toLocaleString() : '-' },
     ] : [];
 
-    // Bill columns â€” simple, no tax, with brand and HS Code
+    // Bill columns — simple, no tax, with brand and HS Code
     const billColumns: any[] = isBill ? [
         { title: 'Sr. No.', key: 'index', align: 'center' as const, width: 60, render: (_: any, __: any, index: number) => index + 1 },
         {
@@ -245,7 +296,7 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
                     <div className="inv-header-left">
                         <strong>Invoice to:</strong>
                         <p className="customer-name" style={{ marginTop: 5, marginBottom: 2 }}>{data.customer_name}</p>
-                        <p className="customer-details" style={{ margin: 0 }}>{data.customer_address || 'Address not provided'}</p>
+                        <p className="customer-details" style={{ margin: 0 }}>{wrapAddress(data.customer_address || 'Address not provided')}</p>
                         {data.customer_phone && <p className="customer-contact" style={{ margin: 0 }}>Ph: {data.customer_phone}</p>}
                         {data.customer_gst_number && <p style={{ margin: 0 }}><strong>STRN #</strong> {data.customer_gst_number}</p>}
                         {data.customer_ntn_number && <p style={{ margin: 0 }}><strong>NTN #</strong> {data.customer_ntn_number}</p>}
@@ -269,7 +320,7 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
                         <p className="bill-to-label">To,</p>
                         <p className="bill-customer-name">{data.customer_name}</p>
                         {data.customer_address != null && String(data.customer_address).trim() !== '' && (
-                            <p className="bill-customer-address">{data.customer_address}</p>
+                            <p className="bill-customer-address">{wrapAddress(data.customer_address)}</p>
                         )}
                         {data.customer_gst_number && <p className="bill-customer-details" style={{ margin: 0 }}><strong>Customer STRN #</strong> {data.customer_gst_number}</p>}
                         {data.customer_ntn_number && <p className="bill-customer-details" style={{ margin: 0 }}><strong>Customer NTN #</strong> {data.customer_ntn_number}</p>}
@@ -280,7 +331,7 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
                         {company.gst_registration_number && (
                             <p><strong>Our STRN #</strong> <span style={{ fontSize: company.gst_registration_number.length > 20 ? '11px' : 'inherit', whiteSpace: 'nowrap' }}>{company.gst_registration_number}</span></p>
                         )}
-                        {company.tax_number && <p><strong>Our NTN #</strong> <span>{company.tax_number}</span></p>}
+                        {company.tax_number && <p><strong>Our NTN #</strong> {company.tax_number}</p>}
                         {data.customer_attention_person != null && String(data.customer_attention_person).trim() !== '' && (
                             <p><strong>Ref:</strong>  {data.customer_attention_person}</p>
                         )}
@@ -301,7 +352,7 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
                     <div className="bill-to">
                         <strong>To:</strong>
                         <p className="customer-name" style={{ marginTop: 5, marginBottom: 2 }}>{data.customer_name}</p>
-                        <p className="customer-details" style={{ margin: 0 }}>{data.customer_address || 'Address not provided'}</p>
+                        <p className="customer-details" style={{ margin: 0 }}>{wrapAddress(data.customer_address || 'Address not provided')}</p>
                         {data.customer_phone && <p className="customer-contact" style={{ margin: 0 }}>Ph: {data.customer_phone}</p>}
                         {type === 'quotation' && data.customer_attention_person && (
                             <div style={{ textAlign: 'left', marginTop: 4 }}>
@@ -317,7 +368,7 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
                         {type === 'quotation' && (
                             <>
                                 {data.expiry_date && <p><strong style={{ display: 'inline-block', width: '100px' }}>Due Date:</strong> <span style={{ display: 'inline-block', width: '120px', textAlign: 'left' }}>{formatDate(data.expiry_date)}</span></p>}
-                                <p><strong style={{ display: 'inline-block', width: '100px' }}>Validity:</strong> <span style={{ display: 'inline-block', width: '120px', textAlign: 'left' }}>{data.validity || '15 Days'}</span></p>
+                                <p><strong style={{ display: 'inline-block', width: '100px' }}>Validity:</strong> <span style={{ display: 'inline-block', width: '120px', textAlign: 'left' }}>{data.quotation_validity ? (/^\d+$/.test(String(data.quotation_validity).trim()) ? `${String(data.quotation_validity).trim()} Days` : data.quotation_validity) : '15 Days'}</span></p>
                                 <p><strong style={{ display: 'inline-block', width: '100px' }}>PR No:</strong> <span style={{ display: 'inline-block', width: '120px', textAlign: 'left' }}>{data.pr_number || '-'}</span></p>
                             </>
                         )}
@@ -345,72 +396,72 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
     );
 
     const tableBlock = (
-            <div className={`items-table ${isInvoice ? 'items-table-invoice' : ''} ${isBill ? 'items-table-bill' : ''}`}>
-                    <Table
-                        dataSource={data.items}
-                        columns={tableColumns}
-                        pagination={false}
-                        rowKey="id"
-                        size="small"
-                        bordered
-                        tableLayout="auto"
-                        summary={(pageData) => {
-                            if (isInvoice) {
-                                let totalQty = 0;
-                                let totalUnitPrice = 0;
-                                let totalExcl = 0;
-                                let totalTax = 0;
-                                let totalGrand = 0;
+        <div className={`items-table ${isInvoice ? 'items-table-invoice' : ''} ${isBill ? 'items-table-bill' : ''}`}>
+            <Table
+                dataSource={data.items}
+                columns={tableColumns}
+                pagination={false}
+                rowKey="id"
+                size="small"
+                bordered
+                tableLayout="auto"
+                summary={(pageData) => {
+                    if (isInvoice) {
+                        let totalQty = 0;
+                        let totalUnitPrice = 0;
+                        let totalExcl = 0;
+                        let totalTax = 0;
+                        let totalGrand = 0;
 
-                                (pageData as any[]).forEach(({ quantity, unit_price, gst_amount, line_total }) => {
-                                    const qty = Number(quantity) || 0;
-                                    const up = Number(unit_price) || 0;
-                                    totalQty += qty;
-                                    totalUnitPrice += up;
-                                    totalExcl += (qty * up);
-                                    totalTax += Number(gst_amount) || 0;
-                                    totalGrand += Number(line_total) || 0;
-                                });
+                        (pageData as any[]).forEach(({ quantity, unit_price, gst_amount, line_total }) => {
+                            const qty = Number(quantity) || 0;
+                            const up = Number(unit_price) || 0;
+                            totalQty += qty;
+                            totalUnitPrice += up;
+                            totalExcl += (qty * up);
+                            totalTax += Number(gst_amount) || 0;
+                            totalGrand += Number(line_total) || 0;
+                        });
 
-                                return (
-                                    <Table.Summary.Row className="invoice-total-row" style={{ background: '#fafafa', fontWeight: 'bold' }}>
-                                        <Table.Summary.Cell index={0} colSpan={3} align="right">TOTAL</Table.Summary.Cell>
-                                        <Table.Summary.Cell index={1} align="center">{totalQty}</Table.Summary.Cell>
-                                        <Table.Summary.Cell index={2} align="right">{totalUnitPrice.toLocaleString()}</Table.Summary.Cell>
-                                        <Table.Summary.Cell index={3} align="right">{totalExcl.toLocaleString()}</Table.Summary.Cell>
-                                        <Table.Summary.Cell index={4} align="right">{totalTax.toLocaleString()}</Table.Summary.Cell>
-                                        <Table.Summary.Cell index={5} align="right">{totalGrand.toLocaleString()}</Table.Summary.Cell>
-                                    </Table.Summary.Row>
-                                );
-                            }
+                        return (
+                            <Table.Summary.Row className="invoice-total-row" style={{ background: '#fafafa', fontWeight: 'bold' }}>
+                                <Table.Summary.Cell index={0} colSpan={3} align="right">TOTAL</Table.Summary.Cell>
+                                <Table.Summary.Cell index={1} align="center">{totalQty}</Table.Summary.Cell>
+                                <Table.Summary.Cell index={2} align="right">{totalUnitPrice.toLocaleString()}</Table.Summary.Cell>
+                                <Table.Summary.Cell index={3} align="right">{totalExcl.toLocaleString()}</Table.Summary.Cell>
+                                <Table.Summary.Cell index={4} align="right">{totalTax.toLocaleString()}</Table.Summary.Cell>
+                                <Table.Summary.Cell index={5} align="right">{totalGrand.toLocaleString()}</Table.Summary.Cell>
+                            </Table.Summary.Row>
+                        );
+                    }
 
-                            if (type === 'challan') {
-                                return (
-                                    <Table.Summary.Row style={{ fontWeight: 'bold', background: '#fafafa' }}>
-                                        <Table.Summary.Cell index={0} colSpan={4} align="right">Total Quantity:</Table.Summary.Cell>
-                                        <Table.Summary.Cell index={1} align="right">{data.total_quantity}</Table.Summary.Cell>
-                                    </Table.Summary.Row>
-                                );
-                            }
+                    if (type === 'challan') {
+                        return (
+                            <Table.Summary.Row style={{ fontWeight: 'bold', background: '#fafafa' }}>
+                                <Table.Summary.Cell index={0} colSpan={4} align="right">Total Quantity:</Table.Summary.Cell>
+                                <Table.Summary.Cell index={1} align="right">{data.total_quantity}</Table.Summary.Cell>
+                            </Table.Summary.Row>
+                        );
+                    }
 
-                            if (type === 'quotation') {
-                                return (
-                                    <>
-                                        <Table.Summary.Row style={{ background: '#fafafa' }}>
-                                            <Table.Summary.Cell index={0} colSpan={6} align="right">Subtotal:</Table.Summary.Cell>
-                                            <Table.Summary.Cell index={1} align="right">{data.subtotal?.toLocaleString()}</Table.Summary.Cell>
-                                        </Table.Summary.Row>
-                                        <Table.Summary.Row style={{ fontWeight: 'bold', background: '#fafafa' }}>
-                                            <Table.Summary.Cell index={0} colSpan={6} align="right">Grand Total ({company.currency}):</Table.Summary.Cell>
-                                            <Table.Summary.Cell index={1} align="right">{data.total_amount?.toLocaleString()}</Table.Summary.Cell>
-                                        </Table.Summary.Row>
-                                    </>
-                                );
-                            }
-                            return null;
-                        }}
-                    />
-                </div>
+                    if (type === 'quotation') {
+                        return (
+                            <>
+                                <Table.Summary.Row style={{ background: '#fafafa' }}>
+                                    <Table.Summary.Cell index={0} colSpan={6} align="right">Subtotal:</Table.Summary.Cell>
+                                    <Table.Summary.Cell index={1} align="right">{data.subtotal?.toLocaleString()}</Table.Summary.Cell>
+                                </Table.Summary.Row>
+                                <Table.Summary.Row style={{ fontWeight: 'bold', background: '#fafafa' }}>
+                                    <Table.Summary.Cell index={0} colSpan={6} align="right">Grand Total ({company.currency}):</Table.Summary.Cell>
+                                    <Table.Summary.Cell index={1} align="right">{data.total_amount?.toLocaleString()}</Table.Summary.Cell>
+                                </Table.Summary.Row>
+                            </>
+                        );
+                    }
+                    return null;
+                }}
+            />
+        </div>
     );
 
     /* Totals row(s) — only for Bill as it uses a custom table structure */
@@ -431,7 +482,7 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
 
     /* Content below table: terms, footer, disclaimer (not scaled) */
     const contentBelowTable = (
-            <>
+        <>
             {isBill && (
                 <div className="bill-totals-section">
                     {!showLetterhead && (
@@ -538,7 +589,7 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
                     This is a computer-generated {type} and is valid without a physical signature.
                 </p>
             )}
-            </>
+        </>
     );
 
     const tableSection = tableScale ? (
@@ -563,24 +614,29 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
 
     const template = (
         <div ref={templateRef} className={`print-template ${useLetterheadLayout ? 'has-letterhead' : ''}`}>
-            {/* Letterhead: header strip (top) + footer strip (bottom) â€” never scaled; footer stays at extreme bottom */}
+            {/* Letterhead: header strip (top) + footer strip (bottom) — never scaled; footer stays at extreme bottom */}
             {showLetterhead && (
                 <>
                     {letterheadBase64 ? (
                         <>
-                            {/* Top strip â€” shows only the header portion of the letterhead */}
+                            {/* Top strip — shows only the header portion of the letterhead */}
                             <img
                                 className="letterhead-bg lh-header"
                                 src={letterheadBase64}
                                 alt="Letterhead header"
-                                onLoad={() => onReadyRef.current?.()}
+                                onLoad={() => {
+                                    const duration = Date.now() - loadStartRef.current;
+                                    logger.info(`Letterhead header image onLoad after ${duration}ms`);
+                                    onReadyRef.current?.();
+                                }}
                                 onError={() => {
+                                    logger.error('Failed to display letterhead header image');
                                     setLetterheadError('Failed to display letterhead image');
                                     setLetterheadBase64(null);
                                     onReadyRef.current?.();
                                 }}
                             />
-                            {/* Bottom strip â€” shows only the footer portion of the letterhead */}
+                            {/* Bottom strip — shows only the footer portion of the letterhead */}
                             <img
                                 className="letterhead-bg lh-footer"
                                 src={letterheadBase64}
@@ -588,14 +644,14 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
                             />
                         </>
                     ) : letterheadError ? (
-                        <div className="letterhead-error">âš ï¸ {letterheadError}</div>
+                        <div className="letterhead-error">⚠️ {letterheadError}</div>
                     ) : (
-                        <div className="letterhead-loading">â³ Loading letterhead...</div>
+                        <div className="letterhead-loading">⏳ Loading letterhead...</div>
                     )}
                 </>
             )}
 
-            {/* No letterhead fallback â€” shown when no letterhead set OR user chose without */}
+            {/* No letterhead fallback — shown when no letterhead set OR user chose without */}
             {/* For quotations without letterhead: skip company details, only show doc content */}
             {/* Document content: details above/below table stay fixed; only the table is scaled when scale < 100% */}
             <div className="page-number-footer">
@@ -628,7 +684,7 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ type, data, company, onLe
                         {documentContent}
                     </div>
                 )}
-             </div>
+            </div>
         </div>
     );
 

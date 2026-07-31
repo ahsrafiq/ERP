@@ -49,14 +49,49 @@ const CustomerLedgerReport: React.FC = () => {
   const [dateTo, setDateTo] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  // Load customers when company changes and manage state to avoid flicker
   useEffect(() => {
-    if (currentCompany) loadCustomers();
-  }, [currentCompany]);
-
-  useEffect(() => {
-    setLedger([]);
+  const handleCompanyChange = async () => {
+    // Preserve previously selected customer if it exists in new company
+    const previousCustomerId = selectedCustomerId;
+    // Reset UI state for new company
+    setLoading(true);
+    setSelectedCustomerId(null);
     setCustomerInfo(null);
-  }, [selectedCustomerId]);
+    setLedger([]);
+    setCustomers([]);
+    setDateFrom(null);
+    setDateTo(null);
+    setOverdueOnly(false);
+    try {
+      const res = await (window as any).electronAPI.db.customers.getAll(currentCompany!.id);
+      if (res.success) {
+        const newCustomers = res.data || [];
+        setCustomers(newCustomers);
+        // If previous selection exists in new list, restore it
+        if (previousCustomerId) {
+          const exists = newCustomers.some(c => c.id === previousCustomerId);
+          if (exists) {
+            setSelectedCustomerId(previousCustomerId);
+            // Load ledger for the preserved customer
+            loadLedger();
+          } else {
+            setSelectedCustomerId(null);
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load customers', e);
+    }
+    setLoading(false);
+  };
+  if (currentCompany) {
+    handleCompanyChange();
+  }
+}, [currentCompany]);
+
+// Ledger will now be refreshed only when explicitly loading data (e.g., after company change).
+
 
   const loadCustomers = async () => {
     try {
@@ -67,7 +102,8 @@ const CustomerLedgerReport: React.FC = () => {
 
   const loadLedger = async () => {
     setLoading(true);
-    setLedger([]);
+    // Retain current ledger during loading to avoid flicker
+    // setLedger([]);
     try {
       const customer = selectedCustomerId ? customers.find((c) => c.id === selectedCustomerId) : null;
       setCustomerInfo(customer);
@@ -472,6 +508,8 @@ const CustomerLedgerReport: React.FC = () => {
                 setDateTo(null);
                 setOverdueOnly(false);
                 setSelectedCustomerId(null);
+                setLedger([]);
+                setCustomerInfo(null);
               }}
             >
               Reset

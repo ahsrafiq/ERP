@@ -38,7 +38,27 @@ const ExpenseReport: React.FC = () => {
 
   useEffect(() => {
     if (currentCompany) {
-      loadMeta();
+      const prevCategory = selectedCategory;
+      const prevStatus = selectedStatus;
+      setLoading(true);
+      setCategories([]);
+      setSelectedCategory(null);
+      setSelectedStatus(null);
+      setExpenses([]);
+      (async () => {
+        try {
+          const newCategories = await loadMeta();
+          if (prevCategory) {
+            const exists = newCategories.some((c: any) => c.id === prevCategory);
+            if (exists) setSelectedCategory(prevCategory);
+          }
+          if (prevStatus) {
+            setSelectedStatus(prevStatus);
+          }
+        } finally {
+          setLoading(false);
+        }
+      })();
     }
   }, [currentCompany]);
 
@@ -49,8 +69,14 @@ const ExpenseReport: React.FC = () => {
   const loadMeta = async () => {
     try {
       const catRes = await (window as any).electronAPI.db.expenses.getCategories(currentCompany!.id);
-      if (catRes.success) setCategories(catRes.data || []);
-    } catch {/* ignore */}
+      if (catRes.success) {
+        setCategories(catRes.data || []);
+        return catRes.data || [];
+      }
+      return [];
+    } catch {
+      return [];
+    }
   };
 
   const loadExpenses = async () => {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Table, Card, Row, Col, DatePicker, Select, Button, Space,
   Tag, Statistic, Divider, Typography, notification, message, Input,
@@ -43,10 +43,36 @@ const SalesReport: React.FC = () => {
   const [quantity, setQuantity] = useState('');
   const [unitPrice, setUnitPrice] = useState('');
   const [selectedSalesperson, setSelectedSalesperson] = useState<string | null>(null);
+  const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (currentCompany) {
-      loadCustomers();
+
+    const salesPersonOptions = useMemo(() => {
+      const filteredInvoices = selectedCustomer ? invoices.filter((inv: any) => Number(inv.customer_id) === Number(selectedCustomer)) : invoices;
+      const names = Array.from(new Set(filteredInvoices.map((inv: any) => inv.customer_salesperson_name).filter(Boolean)));
+      return names.map(name => ({ label: name, value: name }));
+    }, [invoices, selectedCustomer]);
+
+    useEffect(() => {
+      if (currentCompany) {
+        const prevCustomer = selectedCustomer;
+      setLoading(true);
+      setSelectedCustomer(null);
+      setSelectedStatus(null);
+      setCustomers([]);
+      setInvoices([]);
+      (async () => {
+        try {
+          const res = await (window as any).electronAPI.db.customers.getAll(currentCompany!.id);
+          if (res.success) {
+            const newCustomers = res.data || [];
+            setCustomers(newCustomers);
+            if (prevCustomer) {
+              const exists = newCustomers.some(c => c.id === prevCustomer);
+              if (exists) setSelectedCustomer(prevCustomer);
+            }
+          }
+        } catch {}
+      })().finally(() => setLoading(false));
     }
   }, [currentCompany]);
 
@@ -77,7 +103,8 @@ const SalesReport: React.FC = () => {
       if (poNumber) filters.poNumber = poNumber;
       if (brand) filters.brand = brand;
       if (quantity) filters.quantity = quantity;
-      if (unitPrice) filters.unitPrice = unitPrice;
+      if (selectedStatus) filters.status = selectedStatus;
+
       if (selectedSalesperson) filters.salespersonName = selectedSalesperson;
 
       const res = await (window as any).electronAPI.db.salesInvoices.getAll(currentCompany.id, filters);
@@ -93,10 +120,11 @@ const SalesReport: React.FC = () => {
     }
   };
 
-  const filtered = invoices.filter((inv) => {
+  const filtered = invoices.filter((inv: any) => {
     if (selectedCustomer && inv.customer_id !== selectedCustomer) return false;
+    if (selectedSalesperson && inv.customer_salesperson_name !== selectedSalesperson) return false;
     return true;
-  });
+});
 
   const totalInvoices = filtered.length;
   const totalSubtotal = filtered.reduce((s, inv) => s + (Number(inv.subtotal) || 0), 0);
@@ -488,16 +516,29 @@ const SalesReport: React.FC = () => {
               showSearch
               optionFilterProp="label"
             />
-            <Select
-              allowClear
-              placeholder="All Sales Persons"
-              style={{ width: 180 }}
-              value={selectedSalesperson}
-              onChange={setSelectedSalesperson}
-              options={Array.from(new Set(customers.map(c => c.salesperson_name).filter(Boolean))).map(name => ({ label: name, value: name }))}
-              showSearch
-              optionFilterProp="label"
-            />
+            
+
+... // later in JSX
+<Select
+  allowClear
+  placeholder="All Sales Persons"
+  style={{ width: 180 }}
+  value={selectedSalesperson}
+  onChange={setSelectedSalesperson}
+  options={salesPersonOptions}
+  showSearch
+  optionFilterProp="label"
+/>
+             <Select
+               allowClear
+               placeholder="All Status"
+               style={{ width: 180 }}
+               value={selectedStatus}
+               onChange={setSelectedStatus}
+               options={Object.keys(statusColor).map(s => ({ label: s.charAt(0).toUpperCase() + s.slice(1), value: s }))}
+               showSearch
+               optionFilterProp="label"
+             />
             <Input
               placeholder="Item Name"
               style={{ width: 130 }}

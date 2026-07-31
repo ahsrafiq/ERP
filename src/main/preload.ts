@@ -194,6 +194,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   // App Restart
   appRestart: () => ipcRenderer.invoke('app:restart'),
+  // Logging
+  log: (level: string, message: string) => ipcRenderer.send('app:log', level, message),
   // Platform info
   platform: process.platform,
 });

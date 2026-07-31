@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Table, Card, Row, Col, DatePicker, Select, Button, Space,
-  Tag, Statistic, Divider, Typography, notification, message, Input,
-} from 'antd';
+import { useCompanyDataLoader } from '../../hooks/useCompanyDataLoader';
+import { Table, Card, Row, Col, DatePicker, Select, Button, Space, Tag, Statistic, Divider, Typography, notification, message, Input } from 'antd';
 import {
   PrinterOutlined, ArrowLeftOutlined, FileTextOutlined,
   DollarOutlined, FileExcelOutlined, ShoppingOutlined,
@@ -25,7 +23,7 @@ const PurchaseReport: React.FC = () => {
   const navigate = useNavigate();
 
   const [invoices, setInvoices] = useState<any[]>([]);
-  const [vendors, setVendors] = useState<any[]>([]);
+  const { data: vendors, loading: vendorsLoading, setData: setVendors } = useCompanyDataLoader<any>((companyId) => (window as any).electronAPI.db.vendors.getAll(companyId), [{ selected: selectedVendor, setSelected: setSelectedVendor, idField: 'id' }]);
   const [loading, setLoading] = useState(false);
   const [dateRange, setDateRange] = useState<[any, any]>([
     dayjs().startOf('month'),
@@ -38,21 +36,18 @@ const PurchaseReport: React.FC = () => {
   const [quantity, setQuantity] = useState('');
   const [unitPrice, setUnitPrice] = useState('');
 
+
+  // Keep existing loading flag for invoices; combine with vendorsLoading if needed
   useEffect(() => {
-    if (currentCompany) { loadVendors(); }
-  }, [currentCompany]);
+    setLoading(vendorsLoading);
+  }, [vendorsLoading]);
 
   // REMOVED AUTO-LOAD ON dateRange CHANGE
   // useEffect(() => {
   //   if (currentCompany) { loadInvoices(); }
   // }, [currentCompany, dateRange]);
 
-  const loadVendors = async () => {
-    try {
-      const res = await (window as any).electronAPI.db.vendors.getAll(currentCompany!.id);
-      if (res.success) setVendors(res.data || []);
-    } catch { /* ignore */ }
-  };
+
 
   const loadInvoices = async () => {
     if (!currentCompany) return;
@@ -323,7 +318,7 @@ const PurchaseReport: React.FC = () => {
         </Row>
       </div>
 
-      <Table dataSource={filtered} columns={columns} rowKey="id" loading={loading} pagination={false} size="small" bordered summary={summaryRow} />
+      <Table dataSource={filtered} columns={columns} rowKey="id" loading={loading || vendorsLoading} pagination={false} size="small" bordered summary={summaryRow} />
 
       {/* PDF Capture container */}
       <div id="report-pdf-container" style={{ display: 'none' }}>

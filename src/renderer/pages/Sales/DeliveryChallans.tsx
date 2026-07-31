@@ -7,9 +7,10 @@ import { useApp } from '../../context/AppContext';
 import { filterRowsByOperationalFiscalYear } from '../../utils/fiscalYearFilter';
 import PrintTemplate from '../../components/PrintTemplate';
 import XLSX from 'xlsx-js-style';
+import logger from '../../utils/logger';
 
 const DeliveryChallans: React.FC = () => {
-    const { currentCompany, companies, user, fiscalYear, minimizeModal, globalRefreshKey } = useApp();
+    const { currentCompany, companies, user, fiscalYear, minimizeModal, globalRefreshKey, isPurchaseEnabled } = useApp();
     const navigate = useNavigate();
     const location = useLocation();
     const docLabel = currentCompany?.is_gst_enabled ? 'Invoice' : 'Bill';
@@ -201,19 +202,26 @@ const DeliveryChallans: React.FC = () => {
     };
 
     const handlePrint = async (record: any) => {
+        logger.info(`Print request started for challan ID ${record.id}`);
         try {
             lastPrintRecordRef.current = record;
             const result = await (window as any).electronAPI.db.deliveryChallans.getById(record.id);
             if (result.success && result.data) {
                 setPrintData(result.data);
                 setIsPreviewVisible(true);
+                logger.info(`Print preview opened for challan ID ${record.id}`);
+            } else {
+                logger.error(`Failed to load challan for print: ${result.error}`);
+                notification.error({ message: 'Error', description: 'Failed to load challan for print', duration: 0 });
             }
         } catch (error) {
+            logger.error(`Print preview error: ${error instanceof Error ? error.message : String(error)}`);
             notification.error({ message: 'Error', description: 'Failed to prepare print', duration: 0 });
         }
     };
 
     const actualPrint = () => {
+        logger.info('Actual print triggered (challan)');
         // Apply capturing class to hide UI and render only print container
         const body = document.body;
         body.classList.add('capturing-pdf');
@@ -221,9 +229,12 @@ const DeliveryChallans: React.FC = () => {
         void body.offsetHeight;
         setTimeout(async () => {
             try {
+                logger.info('Invoking IPC print...');
                 // Use IPC print which returns a promise that resolves when dialog closes
                 await (window as any).electronAPI.db.files.print();
+                logger.info('IPC print completed successfully.');
             } catch (err) {
+                logger.error(`IPC print failed, falling back to window.print(): ${err instanceof Error ? err.message : String(err)}`);
                 console.error('IPC print failed, falling back to window.print():', err);
                 window.print();
             } finally {
@@ -426,8 +437,10 @@ const DeliveryChallans: React.FC = () => {
 
     const handleSave = async (values: any) => {
         if (!currentCompany) return;
-        try {
-            const challanData = {
+
+        // Build the challan data first (without deduct_stock yet)
+        const buildChallanData = (values: any) => {
+            const challanData: any = {
                 ...values,
                 company_id: currentCompany.id,
                 challan_number: values.challan_number?.trim?.() || undefined,
@@ -438,7 +451,6 @@ const DeliveryChallans: React.FC = () => {
                 terms_and_conditions: JSON.stringify((values.terms_and_conditions || []).filter((t: string) => t?.trim())),
                 isDefaultNumber: !editingChallan && values.challan_number === defaultChallanNumber,
             };
-
             // Ensure each item has brand (text) for backend; total quantity
             let totalQty = 0;
             challanData.items = (challanData.items || []).map((item: any) => {
@@ -450,32 +462,40 @@ const DeliveryChallans: React.FC = () => {
                 return { ...item, brand: brandName ?? fallbackBrand ?? item.brand };
             });
             challanData.total_quantity = totalQty;
+            return challanData;
+        };
 
-            if (editingChallan) {
-                const result = await (window as any).electronAPI.db.deliveryChallans.update(editingChallan.id, challanData);
-                if (result.success) {
-                    message.success('Delivery Challan updated successfully');
-                    setModalVisible(false);
-                    setEditingChallan(null);
-                    loadChallans();
+        const doSave = async () => {
+            try {
+                const challanData = buildChallanData(values);
+                if (editingChallan) {
+                    const result = await (window as any).electronAPI.db.deliveryChallans.update(editingChallan.id, challanData);
+                    if (result.success) {
+                        message.success('Delivery Challan updated successfully');
+                        setModalVisible(false);
+                        setEditingChallan(null);
+                        loadChallans();
+                    } else {
+                        notification.error({ message: 'Error', description: result.error || 'Failed to update delivery challan', duration: 0 });
+                    }
                 } else {
-                    notification.error({ message: 'Error', description: result.error || 'Failed to update delivery challan', duration: 0 });
+                    const result = await (window as any).electronAPI.db.deliveryChallans.create(challanData);
+                    if (result.success) {
+                        message.success(`Delivery Challan ${result.data?.challan_number || ''} created successfully`);
+                        setModalVisible(false);
+                        setEditingChallan(null);
+                        loadChallans();
+                    } else {
+                        notification.error({ message: 'Error', description: result.error || 'Failed to create challan', duration: 0 });
+                    }
                 }
-            } else {
-                const result = await (window as any).electronAPI.db.deliveryChallans.create(challanData);
-                if (result.success) {
-                    message.success(`Delivery Challan ${result.data?.challan_number || ''} created successfully`);
-                    setModalVisible(false);
-                    setEditingChallan(null);
-                    loadChallans();
-                } else {
-                    notification.error({ message: 'Error', description: result.error || 'Failed to create challan', duration: 0 });
-                }
+            } catch (error: any) {
+                console.error('Save error:', error);
+                notification.error({ message: 'Error', description: error.message || 'Operation failed', duration: 0 });
             }
-        } catch (error: any) {
-            console.error('Save error:', error);
-            notification.error({ message: 'Error', description: error.message || 'Operation failed', duration: 0 });
-        }
+        };
+
+        await doSave();
     };
 
     const columns = [
@@ -732,6 +752,12 @@ const DeliveryChallans: React.FC = () => {
                                     if (!names || names.length < 1) {
                                         return Promise.reject(new Error('At least one item is required'));
                                     }
+                                    const itemsData = form.getFieldValue('items') || [];
+                                    const itemIds = itemsData.map((item: any) => item?.item_id).filter(Boolean);
+                                    const uniqueIds = new Set(itemIds);
+                                    if (uniqueIds.size !== itemIds.length) {
+                                        return Promise.reject(new Error('Duplicate items found. Each item can only be added once.'));
+                                    }
                                 },
                             },
                         ]}
@@ -792,6 +818,14 @@ const DeliveryChallans: React.FC = () => {
                                              <Form.Item {...restField} name={[name, 'unit_price']} label="Price" initialValue={0} style={{ marginBottom: 0, width: 100, flexShrink: 0 }}>
                                                 <InputNumber placeholder="Price" min={0} style={{ width: 100 }} />
                                             </Form.Item>
+                                            {isPurchaseEnabled && (
+                                                <Form.Item {...restField} name={[name, 'deduct_stock']} label="Remove Stock" initialValue={1} style={{ marginBottom: 0, width: 120, flexShrink: 0 }}>
+                                                    <Select>
+                                                        <Select.Option value={1}>Yes</Select.Option>
+                                                        <Select.Option value={0}>No</Select.Option>
+                                                    </Select>
+                                                </Form.Item>
+                                            )}
                                             <Button danger onClick={() => remove(name)} icon={<DeleteOutlined />} style={{ flexShrink: 0 }} />
                                         </div>
                                         <Form.Item {...restField} name={[name, 'description']} style={{ marginBottom: 0 }}>

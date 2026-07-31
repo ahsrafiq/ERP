@@ -516,6 +516,7 @@ const SalesQuotations: React.FC = () => {
                 ...values,
                 company_id: currentCompany.id,
                 quotation_number: values.quotation_number?.trim?.() || undefined,
+                quotation_validity: values.quotation_validity?.trim?.() || undefined,
                 fiscal_year: fiscalYear,
                 quotation_date: values.quotation_date.format('YYYY-MM-DD'),
                 expiry_date: values.quotation_date && values.quotation_validity

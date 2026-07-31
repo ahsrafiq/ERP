@@ -208,6 +208,7 @@
 .inv-header-container {
     display: flex;
     justify-content: space-between;
+    flex-wrap: wrap;
     margin-bottom: 20px;
     font-size: 14px;
 }
@@ -247,6 +248,7 @@
 .info-section {
     display: flex;
     justify-content: space-between;
+    flex-wrap: wrap;
     margin-bottom: 20px;
 }
 
@@ -261,14 +263,20 @@
 }
 
 .customer-details,
-.customer-contact {
+    .customer-contact {
     margin: 2px 0;
     font-size: 14px;
+    word-break: break-word;
+    overflow-wrap: anywhere;
 }
 
 .doc-info p {
     margin: 5px 0;
     font-size: 14px;
+}
+
+.doc-info {
+    flex: 0 0 240px;
 }
 
 /* ══════════════════════════════════════════════════════════════════

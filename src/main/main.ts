@@ -1,6 +1,8 @@
 import { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage, protocol, dialog, Notification } from 'electron';
 import path from 'path';
 import fs from 'fs';
+import winston from 'winston';
+import 'winston-daily-rotate-file';
 import { initializeDatabase, closeDatabase } from './database/schema';
 import {
   authHandlers,
@@ -60,6 +62,31 @@ let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
+
+const logsDir = isDev
+  ? path.join(process.cwd(), 'logs')
+  : path.join(path.dirname(app.getPath('exe')), 'logs');
+
+if (!fs.existsSync(logsDir)) {
+  fs.mkdirSync(logsDir, { recursive: true });
+}
+
+const mainLogger = winston.createLogger({
+  level: 'info',
+  format: winston.format.combine(
+    winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss.SSS' }),
+    winston.format.printf((info: any) => `${info.timestamp} [${info.level.toUpperCase()}] ${info.message}`)
+  ),
+  transports: [
+    new winston.transports.DailyRotateFile({
+      filename: path.join(logsDir, 'application-%DATE%.log'),
+      datePattern: 'YYYY-MM-DD',
+      zippedArchive: true,
+      maxFiles: '30d',
+    }),
+    new winston.transports.Console()
+  ],
+});
 
 // --- Automatic database backup (Master mode only) ---
 let backupInterval: NodeJS.Timeout | null = null;
@@ -167,7 +194,7 @@ function createWindow() {
   });
 
   if (isDev) {
-    mainWindow.loadURL('http://127.0.0.1:5173');
+    mainWindow.loadURL('http://127.0.0.1:5174');
     // mainWindow.webContents.openDevTools();
   } else {
     // In production, Vite builds to dist/renderer/index.html
@@ -638,13 +665,13 @@ ipcMain.handle('file:getSavePath', async (_event, defaultName: string) => {
       { name: 'All Files', extensions: ['*'] }
     ],
   });
-  
+
   if (canceled || !filePath) return { success: false, error: 'Save cancelled' };
-  
+
   // Remember the folder path of the saved file
   const folderPath = path.dirname(filePath);
   setLastSavedDirectory(folderPath);
-  
+
   return { success: true, filePath };
 });
 
@@ -712,6 +739,10 @@ ipcMain.handle('file:printHtmlToPDF', async (_event, html: string, filePath: str
 });
 
 // IPC Handlers
+ipcMain.on('app:log', (event, level: string, message: string) => {
+  mainLogger.log(level, message);
+});
+
 ipcMain.handle('file:save', async (event, base64Data: string, fileName: string, subDir: string) => {
   return dbBridge.files.saveFile(base64Data, fileName, subDir);
 });

@@ -235,11 +235,11 @@ const CustomerOutstandingReport: React.FC = () => {
               onChange={(value) => setSelectedCustomerId(value ?? null)}
               optionFilterProp="label"
               options={customers
-                .filter((c: any) => Number(c.balance) > 0)
-                .map((c: any) => ({
-                  value: c.id,
-                  label: `${c.name || 'Customer'}${c.code ? ` (${c.code})` : ''}`,
-                }))}
+  .filter((c: any) => Number(c.balance) > 0 || invoices.some((inv: any) => Number(inv.customer_id) === Number(c.id)))
+  .map((c: any) => ({
+    value: c.id,
+    label: `${c.name || 'Customer'}${c.code ? ` (${c.code})` : ''}`,
+  }))}
             />
             <Input
               allowClear

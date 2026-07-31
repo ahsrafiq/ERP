@@ -13,6 +13,7 @@ if (typeof (Promise as any).try !== 'function') {
 }
 
 let pdfjsLib: typeof import('pdfjs-dist/legacy/build/pdf.mjs') | null = null;
+import logger from './logger';
 
 async function getPdfJs() {
   if (pdfjsLib) return pdfjsLib;
@@ -38,13 +39,13 @@ function base64ToArrayBuffer(base64: string): ArrayBuffer {
 }
 
 export async function pdfToImage(pdfDataUrl: string): Promise<string> {
-  console.log('[pdfToImage] Starting conversion...');
+  logger.info('[pdfToImage] Starting conversion...');
   const pdf = await getPdfJs();
   const [, base64] = pdfDataUrl.split(',');
   if (!base64) throw new Error('Invalid PDF data URL');
   const data = base64ToArrayBuffer(base64);
 
-  console.log('[pdfToImage] Loading document...', { dataSize: data.byteLength });
+  logger.debug('[pdfToImage] Loading document...', { dataSize: data.byteLength });
   // Load document
   const loadingTask = pdf.getDocument({
     data,
@@ -53,10 +54,10 @@ export async function pdfToImage(pdfDataUrl: string): Promise<string> {
 
   try {
     const doc = await loadingTask.promise;
-    console.log('[pdfToImage] Document loaded. Pages:', doc.numPages);
+    logger.debug('[pdfToImage] Document loaded. Pages:', doc.numPages);
 
     const page = await doc.getPage(1);
-    console.log('[pdfToImage] Page 1 retrieved.');
+    logger.debug('[pdfToImage] Page 1 retrieved.');
 
     // Scale 2 is plenty for A4 letterheads
     const scale = 2;
@@ -69,7 +70,7 @@ export async function pdfToImage(pdfDataUrl: string): Promise<string> {
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('Canvas 2d context not available');
 
-    console.log('[pdfToImage] Rendering page to canvas...');
+    logger.debug('[pdfToImage] Rendering page to canvas...');
     // pdfjs-dist v5 requires 'canvas' property in render parameters
     await page.render({
       canvasContext: ctx,
@@ -77,43 +78,73 @@ export async function pdfToImage(pdfDataUrl: string): Promise<string> {
       viewport
     }).promise;
 
-    console.log('[pdfToImage] Render complete. Converting to data URL...');
+    logger.debug('[pdfToImage] Render complete. Converting to data URL...');
     // JPEG is smaller and faster for previewing high-res letterheads
     const result = canvas.toDataURL('image/jpeg', 0.9);
 
     // Cleanup
     doc.destroy();
-    console.log('[pdfToImage] Conversion finished.');
+    logger.info('[pdfToImage] Conversion finished.');
 
     return result;
   } catch (err) {
-    console.error('[pdfToImage] Error during conversion:', err);
+    logger.error('[pdfToImage] Error during conversion:', err instanceof Error ? err.message : String(err));
     throw err;
   }
 }
 
+const letterheadCache = new Map<string, string>();
+const letterheadPromises = new Map<string, Promise<string>>();
+
 /**
  * Reads a letterhead file (PDF or image) via Electron IPC and returns a data URL.
  * PDFs are rasterized (first page → JPEG). Images are returned as-is.
+ * Results are cached in memory to avoid duplicate disk reads and concurrent rasterizations.
  */
 export async function pdfFileToImage(filePath: string): Promise<string> {
-  const api = (window as any).electronAPI?.db?.files;
-  if (!api?.readAsDataURL) {
-    throw new Error('File API not available');
+  if (letterheadCache.has(filePath)) {
+    logger.info(`[pdfFileToImage] Returning cached result for ${filePath}`);
+    return letterheadCache.get(filePath)!;
+  }
+  if (letterheadPromises.has(filePath)) {
+    logger.info(`[pdfFileToImage] Awaiting existing conversion for ${filePath}`);
+    return letterheadPromises.get(filePath)!;
   }
 
-  const result = await api.readAsDataURL(filePath);
-  if (!result?.success || !result?.data) {
-    throw new Error(result?.error || 'Failed to read file');
+  const promise = (async () => {
+    const api = (window as any).electronAPI?.db?.files;
+    if (!api?.readAsDataURL) {
+      throw new Error('File API not available');
+    }
+
+    const result = await api.readAsDataURL(filePath);
+    if (!result?.success || !result?.data) {
+      throw new Error(result?.error || 'Failed to read file');
+    }
+
+    const dataUrl: string = result.data;
+
+    // Already an image — return directly
+    if (!dataUrl.startsWith('data:application/pdf')) {
+      logger.info('[pdfFileToImage] Letter-head is an image – using as-is');
+      letterheadCache.set(filePath, dataUrl);
+      return dataUrl;
+    }
+
+    // PDF — rasterize first page to JPEG
+    logger.info('[pdfFileToImage] Letter-head is a PDF – starting rasterisation');
+    const imgDataUrl = await pdfToImage(dataUrl);
+    letterheadCache.set(filePath, imgDataUrl);
+    return imgDataUrl;
+  })();
+
+  letterheadPromises.set(filePath, promise);
+
+  try {
+    const finalResult = await promise;
+    return finalResult;
+  } finally {
+    letterheadPromises.delete(filePath);
   }
-
-  const dataUrl: string = result.data;
-
-  // Already an image — return directly
-  if (!dataUrl.startsWith('data:application/pdf')) {
-    return dataUrl;
-  }
-
-  // PDF — rasterize first page to JPEG
-  return pdfToImage(dataUrl);
 }
+

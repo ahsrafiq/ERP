@@ -3,6 +3,7 @@ import {
   Table, Card, Row, Col, Select, Button, Space,
   Statistic, Divider, Typography, notification, message, Empty, Tag,
 } from 'antd';
+import { useCompanyDataLoader } from '../../hooks/useCompanyDataLoader';
 import {
   PrinterOutlined, ArrowLeftOutlined, FileExcelOutlined,
   ShopOutlined, DollarOutlined, FileTextOutlined, ReloadOutlined,
@@ -33,27 +34,21 @@ const VendorLedgerReport: React.FC = () => {
   const { currentCompany } = useApp();
   const navigate = useNavigate();
 
-  const [vendors, setVendors] = useState<any[]>([]);
   const [selectedVendorId, setSelectedVendorId] = useState<number | null>(null);
   const [ledger, setLedger] = useState<LedgerEntry[]>([]);
   const [vendorInfo, setVendorInfo] = useState<any>(null);
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    if (currentCompany) loadVendors();
-  }, [currentCompany]);
+  // Load vendors using shared hook
+  const { data: vendors, loading: vendorsLoading, setData: setVendors } = useCompanyDataLoader<any>(
+    (companyId) => (window as any).electronAPI.db.vendors.getAll(companyId),
+    [{ selected: selectedVendorId, setSelected: setSelectedVendorId, idField: 'id' }]
+  );
 
   useEffect(() => {
     setLedger([]);
     setVendorInfo(null);
   }, [selectedVendorId]);
-
-  const loadVendors = async () => {
-    try {
-      const res = await (window as any).electronAPI.db.vendors.getAll(currentCompany!.id);
-      if (res.success) setVendors(res.data || []);
-    } catch {/* ignore */}
-  };
 
   const loadLedger = async (vendorId: number) => {
     setLoading(true);

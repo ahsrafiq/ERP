@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
+import { useCompanyDataLoader } from '../../hooks/useCompanyDataLoader';
 import {
   Table, Card, Row, Col, Select, Button, Space,
   Statistic, Divider, Typography, notification, message, Input, Tag, Alert
@@ -18,37 +19,28 @@ const InventoryReport: React.FC = () => {
   const { currentCompany, isPurchaseEnabled } = useApp();
   const navigate = useNavigate();
 
-  const [items, setItems] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
   const [searchText, setSearchText] = useState('');
   const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
   const [selectedBrand, setSelectedBrand] = useState<string | null>(null);
   const [stockFilter, setStockFilter] = useState<string>('all');
 
-  // REMOVED AUTO-LOAD ON MOUNT AS PER REQUEST
-  // useEffect(() => {
-  //   loadItems();
-  // }, [currentCompany]);
+  // Use shared hook for items loading and selection preservation
+  const { data: items, loading: itemsLoading, setData: setItems } = useCompanyDataLoader<any>(
+    (companyId) => (window as any).electronAPI.db.items.getAll(companyId),
+    [
+      { selected: selectedLocation, setSelected: setSelectedLocation, idField: 'location' },
+      { selected: selectedBrand, setSelected: setSelectedBrand, idField: 'brand_name' },
+    ]
+  );
 
-  const loadItems = async () => {
-    setLoading(true);
-    try {
-      const res = await (window as any).electronAPI.db.items.getAll(currentCompany?.id);
-      if (res.success) {
-        setItems(res.data || []);
-      } else {
-        notification.error({ message: 'Error', description: 'Failed to load items' });
-      }
-    } catch {
-      notification.error({ message: 'Error', description: 'Failed to load items' });
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Compute unique filter options
+  const locationOptions = useMemo(() => {
+    return Array.from(new Set(items.map((i) => i.location).filter(Boolean))).sort();
+  }, [items]);
 
-  // Unique locations and brands for filters
-  const locationOptions = Array.from(new Set(items.map((i) => i.location).filter(Boolean))).sort();
-  const brandOptions = Array.from(new Set(items.map((i) => i.brand_name).filter(Boolean))).sort();
+  const brandOptions = useMemo(() => {
+    return Array.from(new Set(items.map((i) => i.brand_name).filter(Boolean))).sort();
+  }, [items]);
 
   const filtered = items.filter((item) => {
     if (searchText) {
@@ -143,7 +135,7 @@ const InventoryReport: React.FC = () => {
     </Table.Summary>
   );
 
-  if (!loading && !isPurchaseEnabled) {
+  if (!itemsLoading && !isPurchaseEnabled) {
     return (
       <div style={{ padding: 24 }}>
         <Alert
@@ -340,8 +332,7 @@ const InventoryReport: React.FC = () => {
                 { label: 'Items without 0 Qty', value: 'nonzero' },
               ]}
             />
-            <Button onClick={loadItems}>Refresh</Button>
-          </Space>
+            </Space>
         </Card>
 
         {/* KPI Cards */}
@@ -391,7 +382,7 @@ const InventoryReport: React.FC = () => {
         dataSource={filtered}
         columns={columns}
         rowKey="id"
-        loading={loading}
+        loading={itemsLoading}
         pagination={false}
         size="small"
         bordered

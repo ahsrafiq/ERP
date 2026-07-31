@@ -7,6 +7,7 @@ import { useApp } from '../../context/AppContext';
 import { filterRowsByOperationalFiscalYear } from '../../utils/fiscalYearFilter';
 import PrintTemplate from '../../components/PrintTemplate';
 import XLSX from 'xlsx-js-style';
+import logger from '../../utils/logger';
 
 const SalesInvoices: React.FC = () => {
   const { currentCompany, companies, user, fiscalYear, minimizeModal, globalRefreshKey } = useApp();
@@ -192,6 +193,7 @@ const SalesInvoices: React.FC = () => {
 
 
   const handlePrint = async (record: any) => {
+    logger.info(`Print request started for invoice ID ${record.id}`);
     try {
       lastPrintRecordRef.current = record;
       const result = await (window as any).electronAPI.db.salesInvoices.getById(record.id);
@@ -205,15 +207,19 @@ const SalesInvoices: React.FC = () => {
           person_name: personName,
         });
         setIsPreviewVisible(true);
+        logger.info(`Print preview opened for invoice ID ${record.id}`);
       } else {
+        logger.error(`Failed to load invoice for print: ${result.error}`);
         notification.error({ message: 'Error', description: 'Failed to load invoice for print', duration: 0 });
       }
     } catch (error) {
+      logger.error(`Print preview error: ${error instanceof Error ? error.message : String(error)}`);
       notification.error({ message: 'Error', description: 'Failed to prepare print', duration: 0 });
     }
   };
 
 const actualPrint = () => {
+  logger.info('Actual print triggered (invoice)');
   // Apply printing-specific CSS similar to PDF capture to ensure only the print container is rendered
   const body = document.body;
   body.classList.add('capturing-pdf');
@@ -221,9 +227,12 @@ const actualPrint = () => {
   void body.offsetHeight;
   setTimeout(async () => {
     try {
+      logger.info('Invoking IPC print...');
       // Use IPC print which returns a promise that resolves when dialog closes
       await (window as any).electronAPI.db.files.print();
+      logger.info('IPC print completed successfully.');
     } catch (err) {
+      logger.error(`IPC print failed, falling back to window.print(): ${err instanceof Error ? err.message : String(err)}`);
       console.error('IPC print failed, falling back to window.print():', err);
       window.print();
     } finally {
