@@ -306,24 +306,40 @@ const Receivables: React.FC = () => {
               return dateA.localeCompare(dateB);
            });
 
+         let detailsArray = [];
+
          for (const inv of selectedInvoices) {
             if (remainingAmount <= 0) break;
             
             const applyToThis = Math.min(remainingAmount, inv.balance);
-            const taxAmount = applyToThis * (taxDeductionRate / 100);
             
-            const paymentData = {
-                ...basePayment,
-                amount: applyToThis,
-                tax_deduction: taxAmount,
-                tax_deduction_rate: taxDeductionRate,
+            detailsArray.push({
                 reference_type: inv.id === 'opening_balance' ? null : 'sales_invoice',
                 reference_id: inv.id === 'opening_balance' ? null : inv.id,
-            };
+                amount: applyToThis,
+                invoice_number: inv.invoice_number,
+            });
             
-            await (window as any).electronAPI.db.payments.create(paymentData);
             remainingAmount = Math.round((remainingAmount - applyToThis) * 100) / 100;
          }
+         
+         const taxAmount = amount * (taxDeductionRate / 100);
+         
+         // If only 1 invoice is fully/partially paid, we could set its ref_id. 
+         // But grouping them all in 'details' works identically in our updated handler.
+         const isSingle = detailsArray.length === 1;
+         
+         const paymentData = {
+             ...basePayment,
+             amount: amount - remainingAmount, // The actual applied amount
+             tax_deduction: taxAmount,
+             tax_deduction_rate: taxDeductionRate,
+             reference_type: isSingle ? detailsArray[0].reference_type : 'bulk',
+             reference_id: isSingle ? detailsArray[0].reference_id : null,
+             details: JSON.stringify(detailsArray)
+         };
+         
+         await (window as any).electronAPI.db.payments.create(paymentData);
       }
 
       // Selection is now required, so remainingAmount (if any) is treated as an overpayment?
@@ -670,7 +686,15 @@ const Receivables: React.FC = () => {
               { title: 'Method', dataIndex: 'payment_method', key: 'method', render: (m) => <Tag>{m}</Tag> },
               { title: 'Amount', dataIndex: 'amount', key: 'amount', align: 'right' as const, render: (v) => Number(v).toLocaleString() },
               { title: 'Ded %', dataIndex: 'tax_deduction_rate', key: 'tax_deduction_rate', align: 'right' as const, render: (v) => v ? `${v}%` : '—' },
-              { title: 'Ref', dataIndex: 'reference_type', key: 'ref', render: (v, r: any) => v && v !== 'null' ? (v === 'sales_invoice' ? `Sales Invoice (${r.invoice_number || '#' + r.reference_id})` : `${v} (#${r.reference_id})`) : 'General' },
+              { title: 'Ref', dataIndex: 'reference_type', key: 'ref', render: (v, r: any) => {
+                  if (r.details) {
+                      try {
+                          const parsed = JSON.parse(r.details);
+                          if (parsed.length > 1) return `Bulk Payment (${parsed.length} items)`;
+                      } catch (e) {}
+                  }
+                  return v && v !== 'null' && v !== 'bulk' ? (v === 'sales_invoice' ? `Sales Invoice (${r.invoice_number || '#' + r.reference_id})` : `${v} (#${r.reference_id})`) : 'General';
+              }},
               {
                 title: 'Action',
                 key: 'action',
@@ -732,7 +756,7 @@ const Receivables: React.FC = () => {
                 }
             ]}
           >
-            <InputNumber min={1} max={maxAllowedAmount ?? undefined} precision={0} style={{ width: '100%' }} />
+            <InputNumber min={1} max={maxAllowedAmount ?? undefined} precision={0} style={{ width: '100%' }} disabled={!!(editingPayment && editingPayment.details && (() => { try { return JSON.parse(editingPayment.details).length > 1; } catch (e) { return false; } })())} />
           </Form.Item>
           <Form.Item name="tax_deduction_rate" label="Tax deduction %">
             <InputNumber min={0} max={100} style={{ width: '100%' }} addonAfter="%" />
@@ -763,6 +787,31 @@ const Receivables: React.FC = () => {
           <Form.Item name="notes" label="Notes">
             <Input.TextArea rows={2} />
           </Form.Item>
+
+          {editingPayment && editingPayment.details && (() => {
+              try {
+                  const detailsArray = JSON.parse(editingPayment.details);
+                  if (detailsArray.length > 1) {
+                      return (
+                          <div style={{ marginTop: 16 }}>
+                              <h4 style={{ margin: '0 0 8px 0' }}>Allocated Invoices</h4>
+                              <Table
+                                  dataSource={detailsArray}
+                                  rowKey={(r: any) => r.reference_id || 'opening_balance'}
+                                  size="small"
+                                  pagination={false}
+                                  columns={[
+                                      { title: 'Ref', dataIndex: 'invoice_number', key: 'invoice_number', render: (v, r: any) => v || (r.reference_type === null ? 'Opening Balance' : 'Unknown') },
+                                      { title: 'Amount', dataIndex: 'amount', key: 'amount', align: 'right', render: (v) => Number(v).toLocaleString() }
+                                  ]}
+                                  style={{ border: '1px solid #f0f0f0', borderRadius: 4 }}
+                              />
+                          </div>
+                      );
+                  }
+              } catch (e) {}
+              return null;
+          })()}
         </Form>
       </Modal>
 

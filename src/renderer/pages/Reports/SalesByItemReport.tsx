@@ -162,6 +162,8 @@ const SalesByItemReport: React.FC = () => {
                 value={selectedCustomer}
                 onChange={setSelectedCustomer}
                 options={customers.map(c => ({ label: c.name, value: c.id }))}
+                showSearch
+                optionFilterProp="label"
               />
               <Input placeholder="Item Name" value={itemName} onChange={e => setItemName(e.target.value)} style={{ width: 150 }} />
               <Input placeholder="Brand" value={brand} onChange={e => setBrand(e.target.value)} style={{ width: 120 }} />

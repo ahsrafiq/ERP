@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Table, Button, Space, Modal, Form, Input, DatePicker, Select, InputNumber, message, notification, Popconfirm, Switch, Tag } from 'antd';
-import { PlusOutlined, EditOutlined, PrinterOutlined, DeleteOutlined, FileTextOutlined, MinusCircleOutlined, MinusSquareOutlined, LockOutlined, StopOutlined, EyeOutlined, SearchOutlined, CloseOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, PrinterOutlined, DeleteOutlined, FileTextOutlined, MinusCircleOutlined, MinusSquareOutlined, LockOutlined, StopOutlined, UndoOutlined, EyeOutlined, SearchOutlined, CloseOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
@@ -435,6 +435,29 @@ const DeliveryChallans: React.FC = () => {
         }
     };
 
+    const handleEnable = async (id: number) => {
+        try {
+            const fetched = await (window as any).electronAPI.db.deliveryChallans.getById(id);
+            if (!fetched.success || !fetched.data) {
+                notification.error({ message: 'Error', description: 'Failed to load challan', duration: 0 });
+                return;
+            }
+            const data = fetched.data;
+            const result = await (window as any).electronAPI.db.deliveryChallans.update(id, {
+                ...data,
+                status: 'confirmed',
+            });
+            if (result.success) {
+                message.success('Delivery Challan re-enabled');
+                loadChallans();
+            } else {
+                notification.error({ message: 'Error', description: result.error || 'Failed to re-enable challan', duration: 0 });
+            }
+        } catch (error) {
+            notification.error({ message: 'Error', description: 'Failed to re-enable challan', duration: 0 });
+        }
+    };
+
     const handleSave = async (values: any) => {
         if (!currentCompany) return;
 
@@ -517,6 +540,16 @@ const DeliveryChallans: React.FC = () => {
             key: 'actions',
             render: (_: any, record: any) => {
                 if (record.status === 'cancelled') {
+                    if (isAdminUser) {
+                        return (
+                            <Space>
+                                <Tag color="red">Disabled</Tag>
+                                <Popconfirm title="Re-enable this delivery challan?" onConfirm={() => handleEnable(record.id)} okText="Yes, Re-enable" cancelText="Cancel">
+                                    <Button icon={<UndoOutlined />} title="Re-enable (Admin)" style={{ color: '#52c41a', borderColor: '#52c41a' }} />
+                                </Popconfirm>
+                            </Space>
+                        );
+                    }
                     return <Tag color="red">Disabled</Tag>;
                 }
                 if (isReadOnlySection) {
@@ -818,14 +851,28 @@ const DeliveryChallans: React.FC = () => {
                                              <Form.Item {...restField} name={[name, 'unit_price']} label="Price" initialValue={0} style={{ marginBottom: 0, width: 100, flexShrink: 0 }}>
                                                 <InputNumber placeholder="Price" min={0} style={{ width: 100 }} />
                                             </Form.Item>
-                                            {isPurchaseEnabled && (
-                                                <Form.Item {...restField} name={[name, 'deduct_stock']} label="Remove Stock" initialValue={1} style={{ marginBottom: 0, width: 120, flexShrink: 0 }}>
-                                                    <Select>
-                                                        <Select.Option value={1}>Yes</Select.Option>
-                                                        <Select.Option value={0}>No</Select.Option>
-                                                    </Select>
-                                                </Form.Item>
-                                            )}
+                                            {isPurchaseEnabled && (() => {
+                                                const currentItem = watchedItems?.[name];
+                                                const stockItem = items.find((i: any) => i.id === currentItem?.item_id);
+                                                const currentStock = Number(stockItem?.quantity) || 0;
+                                                const inputtedQty = Number(currentItem?.quantity) || 0;
+                                                const availableStock = currentStock - inputtedQty;
+                                                return (
+                                                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
+                                                        <Form.Item {...restField} name={[name, 'deduct_stock']} label="Remove Stock" initialValue={1} style={{ marginBottom: 0, width: 120, flexShrink: 0 }}>
+                                                            <Select>
+                                                                <Select.Option value={1}>Yes</Select.Option>
+                                                                <Select.Option value={0}>No</Select.Option>
+                                                            </Select>
+                                                        </Form.Item>
+                                                        {currentItem?.item_id && currentItem?.deduct_stock !== 0 && (
+                                                            <div style={{ paddingBottom: 6, fontSize: 13, color: availableStock < 0 ? '#cf1322' : '#52c41a', whiteSpace: 'nowrap', fontWeight: 500 }}>
+                                                                Stock: {availableStock}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })()}
                                             <Button danger onClick={() => remove(name)} icon={<DeleteOutlined />} style={{ flexShrink: 0 }} />
                                         </div>
                                         <Form.Item {...restField} name={[name, 'description']} style={{ marginBottom: 0 }}>

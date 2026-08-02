@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Table, Button, Space, Modal, Form, Input, InputNumber, Select, DatePicker, message, notification, Tag, Popconfirm } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, LockOutlined, StopOutlined, EyeOutlined, SearchOutlined, MinusSquareOutlined, CloseOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, DeleteOutlined, LockOutlined, StopOutlined, UndoOutlined, EyeOutlined, SearchOutlined, MinusSquareOutlined, CloseOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useApp } from '../../context/AppContext';
 import { useLocation } from 'react-router-dom';
@@ -266,6 +266,29 @@ const PurchaseInvoices: React.FC = () => {
     }
   };
 
+  const handleEnableInvoice = async (id: number) => {
+    try {
+      const fetched = await (window as any).electronAPI.db.purchaseInvoices.getById(id);
+      if (!fetched.success || !fetched.data) {
+        message.error('Failed to load invoice');
+        return;
+      }
+      const data = fetched.data;
+      const result = await (window as any).electronAPI.db.purchaseInvoices.update(id, {
+        ...data,
+        status: 'finalized',
+      });
+      if (result.success) {
+        message.success('Invoice re-enabled');
+        loadInvoices();
+      } else {
+        message.error(result.error || 'Failed to re-enable invoice');
+      }
+    } catch (error) {
+      message.error('Failed to re-enable invoice');
+    }
+  };
+
   const columns = [
     {
       title: 'Invoice Number',
@@ -303,6 +326,16 @@ const PurchaseInvoices: React.FC = () => {
       key: 'actions',
       render: (_: any, record: any) => {
         if (record.status === 'cancelled') {
+          if (isAdminUser) {
+            return (
+              <Space>
+                <Tag color="red">Disabled</Tag>
+                <Popconfirm title="Re-enable this invoice?" onConfirm={() => handleEnableInvoice(record.id)} okText="Yes, Re-enable" cancelText="Cancel">
+                  <Button icon={<UndoOutlined />} title="Re-enable (Admin)" style={{ color: '#52c41a', borderColor: '#52c41a' }} />
+                </Popconfirm>
+              </Space>
+            );
+          }
           return <Tag color="red">Disabled</Tag>;
         }
         if (isReadOnlySection) {
@@ -537,6 +570,7 @@ const PurchaseInvoices: React.FC = () => {
                               ...currentItems[name],
                               unit_price: item.purchase_price,
                               gst_rate: item.gst_rate || 0,
+                              location: item.location || undefined,
                             };
                             form.setFieldsValue({ items: currentItems });
                           }
@@ -549,6 +583,27 @@ const PurchaseInvoices: React.FC = () => {
                         ))}
                       </Select>
                     </Form.Item>
+                    {(() => {
+                      const currentItem = watchedItems?.[name];
+                      const itemObj = items.find((i: any) => i.id === currentItem?.item_id);
+                      const hasLocation = itemObj && itemObj.location && itemObj.location.trim() !== '';
+                      if (currentItem?.item_id) {
+                        return (
+                          <Form.Item
+                            {...restField}
+                            name={[name, 'location']}
+                            rules={[]}
+                          >
+                            <Input 
+                              placeholder="Location" 
+                              style={{ width: 120 }} 
+                              disabled={hasLocation}
+                            />
+                          </Form.Item>
+                        );
+                      }
+                      return null;
+                    })()}
                     <Form.Item
                       {...restField}
                       name={[name, 'quantity']}

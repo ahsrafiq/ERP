@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Table, Button, Space, Modal, Form, Input, DatePicker, Select, InputNumber, message, notification, Popconfirm, Row, Col, Tag, AutoComplete, Switch } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, PrinterOutlined, FileTextOutlined, CheckCircleOutlined, MinusCircleOutlined, MinusSquareOutlined, LockOutlined, StopOutlined, EyeOutlined, SearchOutlined, CloseOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, DeleteOutlined, PrinterOutlined, FileTextOutlined, CheckCircleOutlined, MinusCircleOutlined, MinusSquareOutlined, LockOutlined, StopOutlined, UndoOutlined, EyeOutlined, SearchOutlined, CloseOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
@@ -495,6 +495,30 @@ const SalesQuotations: React.FC = () => {
         }
     };
 
+    const handleEnable = async (id: number) => {
+        try {
+            const fetched = await (window as any).electronAPI.db.salesQuotations.getById(id);
+            if (!fetched.success || !fetched.data) {
+                notification.error({ message: 'Error', description: 'Failed to load quotation', duration: 0 });
+                return;
+            }
+            const data = fetched.data;
+            const result = await (window as any).electronAPI.db.salesQuotations.update(id, {
+                ...data,
+                quotation_number: data.quotation_number,
+                status: 'draft',
+            });
+            if (result.success) {
+                message.success('Quotation re-enabled');
+                loadQuotations();
+            } else {
+                notification.error({ message: 'Error', description: result.error || 'Failed to re-enable', duration: 0 });
+            }
+        } catch {
+            notification.error({ message: 'Error', description: 'Failed to re-enable', duration: 0 });
+        }
+    };
+
     const handleSave = async (values: any) => {
         if (!currentCompany) return;
         try {
@@ -623,6 +647,16 @@ const SalesQuotations: React.FC = () => {
             render: (_: any, record: any) => {
                 const isDisabled = record.status === 'cancelled';
                 if (isDisabled) {
+                    if (isAdminUser) {
+                        return (
+                            <Space>
+                                <Tag color="red">Disabled</Tag>
+                                <Popconfirm title="Re-enable this quotation?" onConfirm={() => handleEnable(record.id)} okText="Yes, Re-enable" cancelText="Cancel">
+                                    <Button icon={<UndoOutlined />} title="Re-enable (Admin)" style={{ color: '#52c41a', borderColor: '#52c41a' }} />
+                                </Popconfirm>
+                            </Space>
+                        );
+                    }
                     return <Tag color="red">Disabled</Tag>;
                 }
                 if (isReadOnlySection) {

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Table, Button, Space, Modal, Form, Input, InputNumber, Select, DatePicker, message, notification, Alert, Progress, Tag, Switch, Popconfirm } from 'antd';
-import { EditOutlined, DeleteOutlined, PrinterOutlined, LockOutlined, StopOutlined, EyeOutlined, SearchOutlined, MinusSquareOutlined, CloseOutlined, WarningOutlined } from '@ant-design/icons';
+import { EditOutlined, DeleteOutlined, PrinterOutlined, LockOutlined, StopOutlined, UndoOutlined, EyeOutlined, SearchOutlined, MinusSquareOutlined, CloseOutlined, WarningOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useApp } from '../../context/AppContext';
 import { filterRowsByOperationalFiscalYear } from '../../utils/fiscalYearFilter';
@@ -458,6 +458,29 @@ const actualPrint = () => {
     }
   };
 
+  const handleEnableInvoice = async (id: number) => {
+    try {
+      const fetched = await (window as any).electronAPI.db.salesInvoices.getById(id);
+      if (!fetched.success || !fetched.data) {
+        notification.error({ message: 'Error', description: 'Failed to load invoice', duration: 0 });
+        return;
+      }
+      const data = fetched.data;
+      const result = await (window as any).electronAPI.db.salesInvoices.update(id, {
+        ...data,
+        status: 'finalized',
+      });
+      if (result.success) {
+        message.success('Invoice re-enabled');
+        loadInvoices();
+      } else {
+        notification.error({ message: 'Error', description: result.error || 'Failed to re-enable invoice', duration: 0 });
+      }
+    } catch (error) {
+      notification.error({ message: 'Error', description: 'Failed to re-enable invoice', duration: 0 });
+    }
+  };
+
   const getOverdueStatusTag = (record: any) => {
     if (record.status === 'cancelled') return null;
     const balance = Number(record.balance) || 0;
@@ -535,6 +558,16 @@ const actualPrint = () => {
       key: 'actions',
       render: (_: any, record: any) => {
         if (record.status === 'cancelled') {
+          if (isAdminUser) {
+            return (
+              <Space>
+                <Tag color="red">Disabled</Tag>
+                <Popconfirm title={`Re-enable this ${docLabel.toLowerCase()}?`} onConfirm={() => handleEnableInvoice(record.id)} okText="Yes, Re-enable" cancelText="Cancel">
+                  <Button icon={<UndoOutlined />} title="Re-enable (Admin)" style={{ color: '#52c41a', borderColor: '#52c41a' }} />
+                </Popconfirm>
+              </Space>
+            );
+          }
           return <Tag color="red">Disabled</Tag>;
         }
         // Read-only users: allow only viewing/printing
