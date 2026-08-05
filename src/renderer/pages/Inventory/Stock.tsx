@@ -4,7 +4,7 @@ import { PlusOutlined } from '@ant-design/icons';
 import { useApp } from '../../context/AppContext';
 
 const Stock: React.FC = () => {
-  const { currentCompany, user } = useApp();
+  const { currentCompany, user, globalRefreshKey } = useApp();
   const [balances, setBalances] = useState<any[]>([]);
   const [warehouses, setWarehouses] = useState<any[]>([]);
   const [items, setItems] = useState<any[]>([]);
@@ -18,7 +18,7 @@ const Stock: React.FC = () => {
       loadWarehouses();
       loadItems();
     }
-  }, [currentCompany]);
+  }, [currentCompany, globalRefreshKey]);
 
   const loadBalances = async () => {
     if (!currentCompany) return;

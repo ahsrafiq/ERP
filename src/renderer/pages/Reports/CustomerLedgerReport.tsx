@@ -214,10 +214,10 @@ const CustomerLedgerReport: React.FC = () => {
       // Calculate running balance
       let runningBalance = 0;
       const ledgerRows: LedgerEntry[] = entries.map((entry) => {
-        // Balance = Previous + Debit - (Credit + Tax)
-        // For payments, credit is net amount, taxDeductionAmount is withheld tax
-        const creditImpact = (entry.credit || 0) + (entry.taxDeductionAmount || 0);
-        runningBalance += (entry.debit || 0) - creditImpact;
+      // Balance = Previous + Debit - Credit
+        // credit (p.amount) already equals the full invoice amount settled (gross).
+        // taxDeductionAmount is informational only — do NOT deduct it again from the balance.
+        runningBalance += (entry.debit || 0) - (entry.credit || 0);
         return { ...entry, balance: runningBalance } as LedgerEntry;
       });
 
@@ -439,6 +439,8 @@ const CustomerLedgerReport: React.FC = () => {
     invRef: r.reference ? `Inv # ${r.reference}` : '-',
     debit: r.debit > 0 ? Number(r.debit).toLocaleString() : '-',
     credit: r.credit > 0 ? Number(r.credit).toLocaleString() : '-',
+    taxDeductionRate: r.type === 'payment' && r.taxDeductionRate ? `${r.taxDeductionRate}%` : undefined,
+    taxDeductionAmount: r.type === 'payment' && r.taxDeductionAmount ? Number(r.taxDeductionAmount).toLocaleString() : undefined,
     balance: Number(r.balance || 0).toLocaleString(),
   }));
   const dateFromLabel = dateFrom ? dayjs(dateFrom).format('DD-MMM-YYYY') : (ledger.length > 0 ? dayjs(ledger[0].date).format('DD-MMM-YYYY') : '-');

@@ -350,15 +350,8 @@ const Receivables: React.FC = () => {
       receiptForm.resetFields();
       setSelectedReceiptKeys([]);
 
-      // Fetch fresh balance to see if we should close the modal
-      const fresh = await (window as any).electronAPI.db.customers.getById(selectedCustomer.id);
-      const newBalance = Number(fresh?.data?.balance || 0);
-
-      if (Math.abs(newBalance) < 0.01) {
-        setReceiptModalVisible(false);
-      } else {
-        openReceiptForm(selectedCustomer); // Refresh current view (dues/history)
-      }
+      // Always refresh the current view; never auto-close when balance hits zero
+      openReceiptForm(selectedCustomer);
       loadCustomers();
     } catch (e: any) {
       notification.error({ message: 'Error', description: e?.message || 'Failed to record receipt', duration: 0 });

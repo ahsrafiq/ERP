@@ -8,6 +8,8 @@ export type ReportLedgerPdfRow = {
   invRef: string;
   debit: string;
   credit: string;
+  taxDeductionRate?: string;
+  taxDeductionAmount?: string;
   balance: string;
 };
 
@@ -63,6 +65,8 @@ export const ReportLedgerPdfDocument: React.FC<ReportLedgerPdfDocumentProps> = (
           <th>INV #</th>
           <th>Debit</th>
           <th>Credit</th>
+          <th>Tax Ded %</th>
+          <th>Tax Ded Amt</th>
           <th>Closing Balance</th>
         </tr>
       </thead>
@@ -75,6 +79,8 @@ export const ReportLedgerPdfDocument: React.FC<ReportLedgerPdfDocumentProps> = (
             <td className="erp-report-pdf-td-left">{r.invRef}</td>
             <td className="erp-report-pdf-td-num">{r.debit}</td>
             <td className="erp-report-pdf-td-num">{r.credit}</td>
+            <td className="erp-report-pdf-td-num">{r.taxDeductionRate || '—'}</td>
+            <td className="erp-report-pdf-td-num">{r.taxDeductionAmount || '—'}</td>
             <td className="erp-report-pdf-td-num">{r.balance}</td>
           </tr>
         ))}
@@ -85,6 +91,8 @@ export const ReportLedgerPdfDocument: React.FC<ReportLedgerPdfDocumentProps> = (
             <td colSpan={4} style={{ textAlign: 'right', paddingRight: '10px' }}>TOTAL</td>
             <td className="erp-report-pdf-td-num">{totalDebit || '-'}</td>
             <td className="erp-report-pdf-td-num">{totalCredit || '-'}</td>
+            <td className="erp-report-pdf-td-num">—</td>
+            <td className="erp-report-pdf-td-num">—</td>
             <td className="erp-report-pdf-td-num">{closingBalance || '-'}</td>
           </tr>
         </tfoot>

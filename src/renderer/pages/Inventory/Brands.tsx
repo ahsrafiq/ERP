@@ -4,7 +4,7 @@ import { PlusOutlined, EditOutlined, DeleteOutlined, LockOutlined } from '@ant-d
 import { useApp } from '../../context/AppContext';
 
 const Brands: React.FC = () => {
-  const { user, globalRefreshKey } = useApp();
+  const { user, globalRefreshKey, triggerGlobalRefresh } = useApp();
   const [brands, setBrands] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
@@ -75,6 +75,7 @@ const Brands: React.FC = () => {
       setEditingBrand(null);
       form.resetFields();
       loadBrands();
+      triggerGlobalRefresh();
     } catch (error) {
       notification.error({ message: 'Error', description: 'Operation failed', duration: 0 });
     }

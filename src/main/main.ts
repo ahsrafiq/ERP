@@ -3,7 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import winston from 'winston';
 import 'winston-daily-rotate-file';
-import { initializeDatabase, closeDatabase } from './database/schema';
+import { initializeDatabase, closeDatabase, getDatabase } from './database/schema';
 import {
   authHandlers,
   userHandlers,
@@ -93,7 +93,7 @@ let backupInterval: NodeJS.Timeout | null = null;
 let lastBackupDate = '';
 let lastBackupSlots: { [date: string]: { '12': boolean; '18': boolean } } = {};
 
-function performAutomaticDatabaseBackup(now: Date) {
+async function performAutomaticDatabaseBackup(now: Date) {
   const config = getConfig();
   const backupRoot = (config as any).backupPath as string | undefined;
   if (!backupRoot || !backupRoot.trim()) {
@@ -111,7 +111,7 @@ function performAutomaticDatabaseBackup(now: Date) {
 
     fs.mkdirSync(targetDir, { recursive: true });
     const targetPath = path.join(targetDir, 'erp.db');
-    fs.copyFileSync(dbPath, targetPath);
+    await getDatabase().backup(targetPath);
 
     // Also backup the uploads folder (logos, letterheads, etc.)
     const uploadsPath = path.join(app.getPath('userData'), 'uploads');
@@ -255,8 +255,7 @@ function createMenu() {
                 fs.mkdirSync(targetDir, { recursive: true });
 
                 // Backup DB
-                const dbPath = path.join(app.getPath('userData'), 'database', 'erp.db');
-                fs.copyFileSync(dbPath, path.join(targetDir, 'erp.db'));
+                await getDatabase().backup(path.join(targetDir, 'erp.db'));
 
                 // Backup Uploads
                 const uploadsPath = path.join(app.getPath('userData'), 'uploads');
@@ -291,8 +290,7 @@ function createMenu() {
 
             if (filePath) {
               try {
-                const dbPath = path.join(app.getPath('userData'), 'database', 'erp.db');
-                fs.copyFileSync(dbPath, filePath);
+                await getDatabase().backup(filePath);
                 dialog.showMessageBox({ type: 'info', title: 'Backup Success', message: 'Database file backed up successfully.' });
               } catch (error: any) {
                 dialog.showErrorBox('Backup Failed', error.message);

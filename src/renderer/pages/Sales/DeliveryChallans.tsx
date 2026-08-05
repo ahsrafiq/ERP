@@ -10,7 +10,7 @@ import XLSX from 'xlsx-js-style';
 import logger from '../../utils/logger';
 
 const DeliveryChallans: React.FC = () => {
-    const { currentCompany, companies, user, fiscalYear, minimizeModal, globalRefreshKey, isPurchaseEnabled } = useApp();
+    const { currentCompany, companies, user, fiscalYear, minimizeModal, globalRefreshKey, triggerGlobalRefresh, isPurchaseEnabled } = useApp();
     const navigate = useNavigate();
     const location = useLocation();
     const docLabel = currentCompany?.is_gst_enabled ? 'Invoice' : 'Bill';
@@ -305,7 +305,7 @@ const DeliveryChallans: React.FC = () => {
             if (raw) { try { const arr = JSON.parse(raw); terms = Array.isArray(arr) ? arr : [raw]; } catch { terms = [raw]; } }
             const itemsWithBrandId = (result.data.items || []).map((row: any) => {
                 const master = items.find((i: any) => i.id === row.item_id);
-                return { ...row, brand_id: master?.brand_id ?? row.brand_id };
+                return { ...row, brand_id: master?.brand_id ?? row.brand_id, deduct_stock: row.deduct_stock ?? 0 };
             });
             form.setFieldsValue({
                 ...result.data,
@@ -508,6 +508,7 @@ const DeliveryChallans: React.FC = () => {
                         setModalVisible(false);
                         setEditingChallan(null);
                         loadChallans();
+                        triggerGlobalRefresh();
                     } else {
                         notification.error({ message: 'Error', description: result.error || 'Failed to create challan', duration: 0 });
                     }
@@ -787,10 +788,6 @@ const DeliveryChallans: React.FC = () => {
                                     }
                                     const itemsData = form.getFieldValue('items') || [];
                                     const itemIds = itemsData.map((item: any) => item?.item_id).filter(Boolean);
-                                    const uniqueIds = new Set(itemIds);
-                                    if (uniqueIds.size !== itemIds.length) {
-                                        return Promise.reject(new Error('Duplicate items found. Each item can only be added once.'));
-                                    }
                                 },
                             },
                         ]}
@@ -859,7 +856,7 @@ const DeliveryChallans: React.FC = () => {
                                                 const availableStock = currentStock - inputtedQty;
                                                 return (
                                                     <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
-                                                        <Form.Item {...restField} name={[name, 'deduct_stock']} label="Remove Stock" initialValue={1} style={{ marginBottom: 0, width: 120, flexShrink: 0 }}>
+                                                        <Form.Item {...restField} name={[name, 'deduct_stock']} label="Remove Stock" initialValue={0} style={{ marginBottom: 0, width: 120, flexShrink: 0 }}>
                                                             <Select>
                                                                 <Select.Option value={1}>Yes</Select.Option>
                                                                 <Select.Option value={0}>No</Select.Option>
@@ -867,7 +864,7 @@ const DeliveryChallans: React.FC = () => {
                                                         </Form.Item>
                                                         {currentItem?.item_id && currentItem?.deduct_stock !== 0 && (
                                                             <div style={{ paddingBottom: 6, fontSize: 13, color: availableStock < 0 ? '#cf1322' : '#52c41a', whiteSpace: 'nowrap', fontWeight: 500 }}>
-                                                                Stock: {availableStock}
+                                                                Stock: {availableStock} {stockItem?.location ? `(${stockItem.location})` : ''}
                                                             </div>
                                                         )}
                                                     </div>

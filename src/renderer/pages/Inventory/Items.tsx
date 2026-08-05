@@ -46,7 +46,7 @@ const Items: React.FC = () => {
 
   useEffect(() => {
     loadBrands();
-  }, []);
+  }, [globalRefreshKey]);
 
   useEffect(() => {
     if (currentCompany?.id) {
@@ -497,7 +497,6 @@ const Items: React.FC = () => {
             <Select
               placeholder="Type to search brand"
               showSearch
-              optionFilterProp="children"
               filterOption={(input, option) =>
                 String(option?.children ?? '').toLowerCase().includes(input.toLowerCase())
               }
