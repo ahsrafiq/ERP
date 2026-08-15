@@ -305,7 +305,7 @@ const DeliveryChallans: React.FC = () => {
             if (raw) { try { const arr = JSON.parse(raw); terms = Array.isArray(arr) ? arr : [raw]; } catch { terms = [raw]; } }
             const itemsWithBrandId = (result.data.items || []).map((row: any) => {
                 const master = items.find((i: any) => i.id === row.item_id);
-                return { ...row, brand_id: master?.brand_id ?? row.brand_id, deduct_stock: row.deduct_stock ?? 0 };
+                return { ...row, brand_id: master?.brand_id ?? row.brand_id, deduct_stock: row.deduct_stock === 1 ? 1 : 0 };
             });
             form.setFieldsValue({
                 ...result.data,

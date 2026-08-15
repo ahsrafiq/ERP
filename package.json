@@ -1,6 +1,6 @@
 {
   "name": "erp-desktop",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "Modern Enterprise ERP Desktop Application",
   "main": "dist/main.js",
   "author": "",
@@ -82,7 +82,8 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "ERP Desktop",
-      "differentialPackage": false
+      "differentialPackage": false,
+      "deleteAppDataOnUninstall": false
     },
     "portable": {
       "artifactName": "ERP-Desktop-Portable.exe"

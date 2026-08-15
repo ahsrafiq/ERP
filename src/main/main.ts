@@ -3,7 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import winston from 'winston';
 import 'winston-daily-rotate-file';
-import { initializeDatabase, closeDatabase, getDatabase } from './database/schema';
+import { initializeDatabase, closeDatabase, getDatabase, sanitizeLegacyDeductStock } from './database/schema';
 import {
   authHandlers,
   userHandlers,
@@ -21,7 +21,8 @@ import {
   fileHandlers,
   salesQuotationHandlers,
   deliveryChallanHandlers,
-  customReportHandlers
+  customReportHandlers,
+  reportHandlers
 } from './database/handlers';
 import { isMasterMode, getConfig, saveConfig } from './config';
 import { dbBridge } from './database/bridge';
@@ -333,6 +334,11 @@ function createMenu() {
                   const dbPath = path.join(app.getPath('userData'), 'database', 'erp.db');
                   closeDatabase();
                   fs.copyFileSync(dbToRestore, dbPath);
+                  try {
+                    const restoredDb = initializeDatabase();
+                    sanitizeLegacyDeductStock(restoredDb);
+                    closeDatabase();
+                  } catch (e) { console.error('Post-restore sanitize error:', e); }
 
                   if (fs.existsSync(uploadsToRestore)) {
                     const targetUploadsPath = path.join(app.getPath('userData'), 'uploads');
@@ -381,6 +387,11 @@ function createMenu() {
                   const dbPath = path.join(app.getPath('userData'), 'database', 'erp.db');
                   closeDatabase();
                   fs.copyFileSync(filePaths[0], dbPath);
+                  try {
+                    const restoredDb = initializeDatabase();
+                    sanitizeLegacyDeductStock(restoredDb);
+                    closeDatabase();
+                  } catch (e) { console.error('Post-restore sanitize error:', e); }
 
                   dialog.showMessageBox({ type: 'info', title: 'Restore Success', message: 'Database restored successfully. The application will now restart.' }).then(() => {
                     app.relaunch();
@@ -671,6 +682,16 @@ ipcMain.handle('file:getSavePath', async (_event, defaultName: string) => {
   setLastSavedDirectory(folderPath);
 
   return { success: true, filePath };
+});
+
+ipcMain.handle('file:saveToPath', async (_event, filePath: string, base64Data: string) => {
+  try {
+    const buffer = Buffer.from(base64Data, 'base64');
+    fs.writeFileSync(filePath, buffer);
+    return { success: true, filePath };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
 });
 
 // Step 2: Capture PDF from current page and write to the already-chosen path.
@@ -1085,6 +1106,11 @@ ipcMain.handle('db:expenses:createCategory', async (event, category: any) => {
 // Custom Reports
 ipcMain.handle('db:customReports:getAll', async (event, companyId: number) => {
   return dbBridge.customReports.getAll(companyId);
+});
+
+// Reports
+ipcMain.handle('db:reports:getCustomerHistory', async (event, companyId: number, filters?: any) => {
+  return dbBridge.reports.getCustomerHistory(companyId, filters);
 });
 
 ipcMain.handle('db:customReports:create', async (event, report: any) => {

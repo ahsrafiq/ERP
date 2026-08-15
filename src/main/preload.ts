@@ -149,6 +149,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
       create: (report: any) => ipcRenderer.invoke('db:customReports:create', report),
       delete: (id: number) => ipcRenderer.invoke('db:customReports:delete', id),
     },
+    reports: {
+      getCustomerHistory: (companyId: number, filters?: any) => ipcRenderer.invoke('db:reports:getCustomerHistory', companyId, filters),
+    },
     heartbeat: () => ipcRenderer.invoke('db:heartbeat'),
     config: {
       get: () => ipcRenderer.invoke('db:config:get'),
@@ -159,6 +162,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       readAsDataURL: (path: string) => ipcRenderer.invoke('file:readAsDataURL', path),
       printToPDF: () => ipcRenderer.invoke('file:printToPDF'),
       getSavePath: (defaultName: string) => ipcRenderer.invoke('file:getSavePath', defaultName),
+      saveToPath: (filePath: string, base64Data: string) => ipcRenderer.invoke('file:saveToPath', filePath, base64Data),
       captureAndSave: (filePath: string, heightMM?: number) => ipcRenderer.invoke('file:captureAndSave', filePath, heightMM),
       printHtmlToPDF: (html: string, filePath: string, heightMM: number) => ipcRenderer.invoke('file:printHtmlToPDF', html, filePath, heightMM),
       print: () => ipcRenderer.invoke('file:print'),

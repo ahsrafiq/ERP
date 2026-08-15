@@ -39,6 +39,26 @@
             "date": 1785957009745,
             "name": "C:\\Users\\HP\\Desktop\\ERP\\logs\\application-2026-08-06.log",
             "hash": "fa5a33d33401e957b3815411eb5da8567e6db8c29dabb79c1f2a2ba33881b1dc"
+        },
+        {
+            "date": 1786100101648,
+            "name": "C:\\Users\\HP\\Desktop\\ERP\\logs\\application-2026-08-07.log",
+            "hash": "0d30f9a532ea464b72c6d48fd67cc169d37b6f618d533783ec9d3061d43508dd"
+        },
+        {
+            "date": 1786188044356,
+            "name": "C:\\Users\\HP\\Desktop\\ERP\\logs\\application-2026-08-08.log",
+            "hash": "a9236b787fd1bd49ed630ec9652a0adc3acc0bfdca75662cac5623e53e43d0ed"
+        },
+        {
+            "date": 1786385380580,
+            "name": "C:\\Users\\HP\\Desktop\\ERP\\logs\\application-2026-08-10.log",
+            "hash": "ece7c6646c9cfbf4687a7d51c52e263939b9ad899102c3f32072343119e55ebf"
+        },
+        {
+            "date": 1786389217544,
+            "name": "C:\\Users\\HP\\Desktop\\ERP\\logs\\application-2026-08-11.log",
+            "hash": "e5c07d1a53ffca18fcfe08e43293e663ed70351727ff586f22c822f7aee7ea13"
         }
     ],
     "hashType": "sha256"

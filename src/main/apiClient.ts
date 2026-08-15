@@ -206,6 +206,9 @@ export const apiClient = {
         create: (report: any) => apiRequest('post', '/custom-reports', report),
         delete: (id: number) => apiRequest('delete', `/custom-reports/${id}`),
     },
+    reportHandlers: {
+        getCustomerHistory: (companyId: number, filters?: any) => apiRequest('get', '/reports/customer-history', { companyId, ...filters }),
+    },
     fileHandlers: {
         readAsDataURL: (atomPath: string) => apiRequest('post', '/files/read', { atomPath }),
         saveFile: (base64Data: string, fileName: string, subDir: string) => apiRequest('post', '/files/save', { base64Data, fileName, subDir }),

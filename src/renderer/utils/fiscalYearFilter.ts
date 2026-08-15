@@ -119,5 +119,25 @@ export function paymentMatchesOperationalFiscalYear(
   if (refType === 'sales_invoice' && !Number.isNaN(refId) && salesInvoiceById[refId]) {
     refNum = salesInvoiceById[refId].invoice_number;
   }
+
+  // For bulk payments: check any referenced invoice inside the details JSON for a /YY match
+  if (refType === 'bulk' && payment.details) {
+    try {
+      const detailsArr = JSON.parse(payment.details as string);
+      for (const det of detailsArr) {
+        const detRefId = det.reference_id != null ? Number(det.reference_id) : NaN;
+        if (!Number.isNaN(detRefId) && salesInvoiceById[detRefId]?.invoice_number) {
+          if (documentMatchesFiscalYearSuffix(salesInvoiceById[detRefId].invoice_number, fiscalYear)) {
+            return true;
+          }
+        }
+        // Also check the invoice_number stored directly in the details entry
+        if (det.invoice_number && documentMatchesFiscalYearSuffix(det.invoice_number, fiscalYear)) {
+          return true;
+        }
+      }
+    } catch (e) {}
+  }
+
   return operationalRecordMatchesFiscalYear(payment, fiscalYear, { referencedInvoiceNumber: refNum });
 }

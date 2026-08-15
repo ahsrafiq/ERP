@@ -21,6 +21,7 @@ import {
     searchHandlers,
     adjustmentNoteHandlers,
     customReportHandlers,
+    reportHandlers,
     warehouseHandlers,
     fileHandlers,
     settingsHandlers
@@ -193,6 +194,11 @@ app.delete('/api/adjustment-notes/:id', async (req, res) => res.json(await adjus
 app.get('/api/custom-reports', async (req, res) => res.json(await customReportHandlers.getAll(Number(req.query.companyId))));
 app.post('/api/custom-reports', async (req, res) => res.json(await customReportHandlers.create(req.body)));
 app.delete('/api/custom-reports/:id', async (req, res) => res.json(await customReportHandlers.delete(Number(req.params.id))));
+
+// Reports
+app.get('/api/reports/customer-history', async (req, res) => {
+    res.json(await reportHandlers.getCustomerHistory(Number(req.query.companyId), req.query));
+});
 
 // Payments
 app.get('/api/payments', async (req, res) => res.json(await paymentHandlers.getAll(Number(req.query.companyId), req.query)));

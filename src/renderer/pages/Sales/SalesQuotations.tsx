@@ -39,7 +39,7 @@ function saveSuggestion(key: string, value: string, defaults: string[] = []) {
 }
 
 const SalesQuotations: React.FC = () => {
-    const { currentCompany, companies, user, fiscalYear, minimizeModal, globalRefreshKey } = useApp();
+    const { currentCompany, companies, user, fiscalYear, minimizeModal, globalRefreshKey, isPurchaseEnabled } = useApp();
     const navigate = useNavigate();
     const location = useLocation();
     const [quotations, setQuotations] = useState<any[]>([]);
@@ -80,6 +80,7 @@ const SalesQuotations: React.FC = () => {
     const [dcSourceQuotation, setDcSourceQuotation] = useState<any>(null);
     const [dcSelectedItems, setDcSelectedItems] = useState<React.Key[]>([]);
     const [dcItemQuantities, setDcItemQuantities] = useState<{ [key: number]: number }>({});
+    const [dcItemDeductStock, setDcItemDeductStock] = useState<{ [key: number]: number }>({});
     const [dcPoNumber, setDcPoNumber] = useState('');
     const [dcForceCreate, setDcForceCreate] = useState(false);
     const [pendingOnly, setPendingOnly] = useState(false); // Toggle to show only quotations without DC
@@ -347,8 +348,13 @@ const SalesQuotations: React.FC = () => {
                     setDcSelectedItems(result.data.items.map((_: any, i: number) => i));
                     setDcForceCreate(hasExistingDc);
                     const initialQuants: any = {};
-                    result.data.items.forEach((it: any, i: number) => { initialQuants[i] = it.quantity; });
+                    const initialDeduct: any = {};
+                    result.data.items.forEach((it: any, i: number) => { 
+                        initialQuants[i] = it.quantity; 
+                        initialDeduct[i] = 0; // Default to NO
+                    });
                     setDcItemQuantities(initialQuants);
+                    setDcItemDeductStock(initialDeduct);
                     setDcPoNumber('');
                     setDcSelectionModal(true);
                 } else {
@@ -382,7 +388,8 @@ const SalesQuotations: React.FC = () => {
                 const i = Number(key);
                 return {
                     ...dcSourceQuotation.items[i],
-                    quantity: dcItemQuantities[i] || dcSourceQuotation.items[i].quantity
+                    quantity: dcItemQuantities[i] || dcSourceQuotation.items[i].quantity,
+                    deduct_stock: dcItemDeductStock[i] !== undefined ? dcItemDeductStock[i] : 0
                 };
             });
             // Ensure all data is plain and serializable for IPC
@@ -394,6 +401,7 @@ const SalesQuotations: React.FC = () => {
                 description: it.description,
                 unit_price: it.unit_price,
                 brand_id: it.brand_id,
+                deduct_stock: it.deduct_stock
             }))));
             const plainPo = dcPoNumber?.trim() || '';
             const plainFy = fiscalYear ? JSON.parse(JSON.stringify(fiscalYear)) : undefined;
@@ -414,6 +422,7 @@ const SalesQuotations: React.FC = () => {
                 setDcForceCreate(false);
                 setDcPoNumber('');
                 setDcItemQuantities({});
+                setDcItemDeductStock({});
                 navigate('/sales/delivery-challans');
             } else if (result.error === 'ALREADY_EXISTS') {
                 Modal.confirm({
@@ -1094,8 +1103,7 @@ const SalesQuotations: React.FC = () => {
                     ref={passwordInputRef}
                     autoFocus
                 />
-            </Modal>
-            {/* DC item selection modal */}
+            </Modal>            {/* DC item selection modal */}
             <Modal
                 title="Create Delivery Challan — Select Items"
                 open={dcSelectionModal}
@@ -1105,10 +1113,11 @@ const SalesQuotations: React.FC = () => {
                     setDcForceCreate(false); 
                     setDcPoNumber(''); 
                     setDcItemQuantities({}); 
+                    setDcItemDeductStock({});
                 }}
                 onOk={() => confirmCreateDC()}
                 okText="Create DC"
-                width={700}
+                width={isPurchaseEnabled ? 950 : 700}
             >
                 <div style={{ marginBottom: 16 }}>
                   <label style={{ fontWeight: 500, display: 'block', marginBottom: 4 }}>PO Number (Optional)</label>
@@ -1150,13 +1159,49 @@ const SalesQuotations: React.FC = () => {
                                     )
                                 },
                                 { title: 'Brand', dataIndex: 'brand', key: 'brand' },
+                                ...(isPurchaseEnabled ? [
+                                    {
+                                        title: 'Remove Stock',
+                                        key: 'deduct_stock',
+                                        render: (_: any, record: any) => {
+                                            const deductValue = dcItemDeductStock[record._idx] !== undefined ? dcItemDeductStock[record._idx] : 0;
+                                            return (
+                                                <Select
+                                                    value={deductValue}
+                                                    onChange={(val) => {
+                                                        setDcItemDeductStock({ ...dcItemDeductStock, [record._idx]: val });
+                                                    }}
+                                                    style={{ width: 90 }}
+                                                >
+                                                    <Select.Option value={1}>Yes</Select.Option>
+                                                    <Select.Option value={0}>No</Select.Option>
+                                                </Select>
+                                            );
+                                        }
+                                    },
+                                    {
+                                        title: 'Stock Info',
+                                        key: 'stock_info',
+                                        render: (_: any, record: any) => {
+                                            const deductValue = dcItemDeductStock[record._idx] !== undefined ? dcItemDeductStock[record._idx] : 0;
+                                            if (deductValue === 0) return null;
+                                            const stockItem = items.find((i: any) => i.id === record.item_id);
+                                            const currentStock = Number(stockItem?.quantity) || 0;
+                                            const inputtedQty = dcItemQuantities[record._idx] !== undefined ? dcItemQuantities[record._idx] : record.quantity;
+                                            const availableStock = currentStock - inputtedQty;
+                                            return (
+                                                <span style={{ color: availableStock < 0 ? '#cf1322' : '#52c41a', fontWeight: 500 }}>
+                                                    Stock: {availableStock} {stockItem?.location ? `(${stockItem.location})` : ''}
+                                                </span>
+                                            );
+                                        }
+                                    }
+                                ] : [])
                             ]}
                         />
                     </div>
                 )}
             </Modal>
-
-
             <Modal
                 title="Print Preview"
                 open={isPreviewVisible}

@@ -201,6 +201,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         ...(isPurchaseEnabled ? [{ key: '/reports/purchase', label: 'Purchase Report' }] : []),
         { key: '/reports/inventory', label: 'Stock Report' },
         { key: '/reports/customer-ledger', label: 'Customer Ledger' },
+        { key: '/reports/customer-history', label: 'Customer History' },
         ...(isPurchaseEnabled ? [{ key: '/reports/vendor-ledger', label: 'Vendor Ledger' }] : []),
         { key: '/reports/tax', label: 'Tax Deduction Report' },
         { key: '/reports/recovery', label: 'Recovery Report' },

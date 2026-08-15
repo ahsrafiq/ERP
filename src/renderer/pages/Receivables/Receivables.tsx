@@ -3,7 +3,7 @@ import { Table, Button, Modal, Form, Input, InputNumber, DatePicker, Select, mes
 import { DollarOutlined, DeleteOutlined, CloseOutlined, EditOutlined, SearchOutlined, LockOutlined, MinusSquareOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useApp } from '../../context/AppContext';
-import { documentMatchesFiscalYearSuffix, paymentMatchesOperationalFiscalYear } from '../../utils/fiscalYearFilter';
+import { documentMatchesFiscalYearSuffix } from '../../utils/fiscalYearFilter';
 
 const Receivables: React.FC = () => {
   const { currentCompany, user, fiscalYear, minimizeModal, globalRefreshKey } = useApp();
@@ -115,16 +115,15 @@ const Receivables: React.FC = () => {
             if (id) salesInvoiceById[id] = { invoice_number: inv.invoice_number };
           }
         }
-        const filtered = payResult.data.filter(
-          (p: any) =>
-            p.customer_id === customerId &&
-            paymentMatchesOperationalFiscalYear(p as Record<string, unknown>, fiscalYear, salesInvoiceById)
-        ).map((p: any) => {
-          if (p.reference_type === 'sales_invoice' && p.reference_id) {
-             return { ...p, invoice_number: salesInvoiceById[Number(p.reference_id)]?.invoice_number };
-          }
-          return p;
-        });
+        // Show all payments for this customer regardless of fiscal year
+        const filtered = payResult.data
+          .filter((p: any) => p.customer_id === customerId)
+          .map((p: any) => {
+            if (p.reference_type === 'sales_invoice' && p.reference_id) {
+              return { ...p, invoice_number: salesInvoiceById[Number(p.reference_id)]?.invoice_number };
+            }
+            return p;
+          });
         setPayments(filtered);
       } else {
         setPayments([]);

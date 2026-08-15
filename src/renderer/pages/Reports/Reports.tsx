@@ -74,6 +74,14 @@ const Reports: React.FC = () => {
       available: true,
     },
     {
+      title: 'Customer History',
+      description: 'Monthly business done vs payment recovered for customers',
+      icon: <FileExcelOutlined />,
+      type: 'customer_history',
+      route: '/reports/customer-history',
+      available: true,
+    },
+    {
       title: 'Vendor Ledger',
       description: 'Individual vendor ledger — purchases, payments, and running balance',
       icon: <FileExcelOutlined />,
