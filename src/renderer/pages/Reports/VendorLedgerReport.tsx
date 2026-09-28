@@ -62,7 +62,7 @@ const VendorLedgerReport: React.FC = () => {
       ]);
 
       const invoices: any[] = (invRes.success ? (Array.isArray(invRes.data) ? invRes.data : []) : [])
-        .filter((inv: any) => Number(inv.vendor_id) === Number(vendorId) && inv.status !== 'draft');
+        .filter((inv: any) => Number(inv.vendor_id) === Number(vendorId) && inv.status !== 'draft' && inv.status !== 'cancelled');
 
       const payments: any[] = (payRes.success ? (Array.isArray(payRes.data) ? payRes.data : []) : [])
         .filter((p: any) => Number(p.vendor_id) === Number(vendorId));

@@ -1,5 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Layout as AntLayout, Menu, Avatar, Dropdown, Select, Space, Typography, Button, message } from 'antd';
+import {
+  Layout as AntLayout, Menu, Avatar, Dropdown,
+  Select, Space, Typography, Button, message
+} from 'antd';
 import {
   DashboardOutlined,
   UserOutlined,
@@ -24,8 +27,6 @@ import { useApp } from '../../context/AppContext';
 import { attachModalEnterToSubmit } from '../../utils/modalEnterSubmit';
 import './Layout.css';
 
-// const { Header, Content } = AntLayout; // Moved inside component
-
 interface LayoutProps {
   children: React.ReactNode;
 }
@@ -35,13 +36,13 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [logoDataUrl, setLogoDataUrl] = useState<string | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
-  const { 
-    currentCompany, 
-    setCurrentCompany, 
-    companies, 
-    user, 
-    fiscalYear, 
-    setFiscalYear, 
+  const {
+    currentCompany,
+    setCurrentCompany,
+    companies,
+    user,
+    fiscalYear,
+    setFiscalYear,
     logout,
     minimizedModals,
     restoreModal,
@@ -278,9 +279,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         }}
       >
         <div className="logo" style={{ justifyContent: collapsed ? 'center' : 'space-between', padding: collapsed ? '0' : '0 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
-          <Avatar 
-            src={logoDataUrl || undefined} 
-            shape={collapsed ? 'circle' : 'square'} 
+          <Avatar
+            src={logoDataUrl || undefined}
+            shape={collapsed ? 'circle' : 'square'}
             size={collapsed ? 32 : 40}
             icon={!logoDataUrl && <h2 style={{ fontSize: '18px', margin: 0 }}>{currentCompany?.name?.[0].toUpperCase() || 'E'}</h2>}
             style={{ flexShrink: 0 }}
@@ -329,9 +330,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 options={fyOptions}
               />
             </Space>
-            <Button 
-              type="text" 
-              icon={<SyncOutlined />} 
+            <Button
+              type="text"
+              icon={<SyncOutlined />}
               onClick={() => {
                 triggerGlobalRefresh();
                 message.success('System data refreshed', 1);
@@ -342,11 +343,11 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               Refresh
             </Button>
           </div>
-            <Space size="large">
-              <Dropdown menu={{ items: userMenuItems, onClick: handleUserMenuClick }} placement="bottomRight">
-                <Avatar style={{ cursor: 'pointer' }} icon={<UserOutlined />} />
-              </Dropdown>
-            </Space>
+          <Space size="large">
+            <Dropdown menu={{ items: userMenuItems, onClick: handleUserMenuClick }} placement="bottomRight">
+              <Avatar style={{ cursor: 'pointer' }} icon={<UserOutlined />} />
+            </Dropdown>
+          </Space>
         </Header>
         <Content className="app-content">
           {children}
@@ -366,12 +367,12 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                   <FileTextOutlined style={{ color: '#1890ff' }} />
                   <span className="modal-title">{modal.title}</span>
                 </span>
-                <CloseOutlined 
+                <CloseOutlined
                   className="modal-close-icon"
                   onClick={(e) => {
                     e.stopPropagation();
                     removeMinimizedModal(modal.id);
-                  }} 
+                  }}
                 />
               </div>
             ))}

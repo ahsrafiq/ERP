@@ -125,7 +125,7 @@ const CustomerLedgerReport: React.FC = () => {
       ]);
 
       const invoices = (invRes.success ? invRes.data : []) || [];
-      let filteredInvoices = [...invoices];
+      let filteredInvoices = [...invoices].filter((inv: any) => inv.status !== 'cancelled');
 
       // Apply Overdue filter if requested
       if (overdueOnly) {
